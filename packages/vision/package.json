@@ -1,6 +1,9 @@
 {
 	"name": "@handfinity/vision",
 	"version": "1.0.0",
+	"private": "true",
+	"type": "module",
+	"exports": "./src/index.js",
 	"description": "",
 	"main": "index.js",
 	"scripts": {
@@ -8,6 +11,5 @@
 	},
 	"keywords": [],
 	"author": "",
-	"license": "ISC",
-	"type": "commonjs"
+	"license": "ISC"
 }
