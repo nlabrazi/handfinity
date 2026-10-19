@@ -4,7 +4,7 @@
 pipeline {
     agent {
         docker {
-            image 'node:24-bookworm-slim'
+            image 'node:24-bookworm'
         }
     }
 
