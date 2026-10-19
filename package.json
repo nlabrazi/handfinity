@@ -1,0 +1,31 @@
+{
+	"name": "handfinity",
+	"version": "1.0.0",
+	"description": "",
+	"scripts": {
+		"dev": "npm run dev -w playground",
+		"build": "npm run build -w playground",
+		"check": "biome check .",
+		"format": "biome check --write ."
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nlabrazi/handfinity.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"type": "commonjs",
+	"bugs": {
+		"url": "https://github.com/nlabrazi/handfinity/issues"
+	},
+	"homepage": "https://github.com/nlabrazi/handfinity#readme",
+	"private": true,
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "2.5.15"
+	}
+}
