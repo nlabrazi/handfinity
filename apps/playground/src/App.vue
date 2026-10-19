@@ -8,6 +8,7 @@ import {
 	type HandPoint,
 	type HandTracker,
 } from "@handfinity/vision";
+import { createPinchDetector, type HandPose } from "@handfinity/core";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -16,6 +17,11 @@ const isRunning = ref(false);
 const isLoading = ref(false);
 const handCount = ref(0);
 const error = ref("");
+
+const pinchActive = ref(false);
+const pinchTransition = ref("Aucun");
+
+const pinch = createPinchDetector();
 
 let stream: MediaStream | null = null;
 let tracker: HandTracker | null = null;
@@ -42,7 +48,7 @@ function drawHands(hands: HandPoint[][]) {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 	for (const points of hands) {
-		ctx.strokeStyle = "#22d3ee";
+		ctx.strokeStyle = pinchActive.value ? "#4ade80" : "#22d3ee";
 		ctx.lineWidth = 3;
 
 		for (const connection of HAND_CONNECTIONS) {
@@ -83,6 +89,31 @@ function detectFrame() {
 			const hands = tracker.detect(video, performance.now());
 
 			handCount.value = hands.length;
+
+			// V1 : une seule main pour éviter de mélanger les gestes.
+			const hand = hands.length === 1 ? hands[0] : undefined;
+
+			const pose: HandPose | null =
+				hand?.[0] && hand[4] && hand[8] && hand[9]
+					? {
+							wrist: hand[0],
+							thumbTip: hand[4],
+							indexTip: hand[8],
+							middleBase: hand[9],
+						}
+					: null;
+
+			const gesture = pinch.update(pose, video.videoWidth / video.videoHeight);
+
+			if (gesture) {
+				pinchActive.value = gesture.type !== "pinch:end";
+
+				if (gesture.type !== "pinch:move") {
+					pinchTransition.value = gesture.type;
+					console.info("[Handfinity]", gesture);
+				}
+			}
+
 			drawHands(hands);
 		}
 
@@ -112,6 +143,10 @@ function stop() {
 	isRunning.value = false;
 	handCount.value = 0;
 	lastVideoTime = -1;
+
+	pinch.reset();
+	pinchActive.value = false;
+	pinchTransition.value = "Aucun";
 }
 
 async function toggleCamera() {
@@ -202,6 +237,22 @@ onBeforeUnmount(() => {
 
 				<span class="text-sm text-slate-400">
 					Hands detected: {{ handCount }}
+				</span>
+			</div>
+
+			<div class="flex flex-wrap items-center gap-4 text-sm">
+				<span
+					class="rounded-lg px-4 py-2 font-medium"
+					:class="pinchActive
+            ? 'bg-green-500/20 text-green-400'
+            : 'bg-slate-800 text-slate-400'
+          "
+				>
+					{{ pinchActive ? "PINCH ACTIVE" : "PINCH INACTIVE" }}
+				</span>
+
+				<span class="text-slate-400">
+					Last transition: {{ pinchTransition }}
 				</span>
 			</div>
 

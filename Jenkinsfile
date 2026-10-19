@@ -38,6 +38,12 @@ pipeline {
             }
         }
 
+        stage('Unit tests') {
+            steps {
+                sh 'npm test -w @handfinity/core'
+            }
+        }
+
         stage('Build') {
             steps {
                 sh 'npm run build'
