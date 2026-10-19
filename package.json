@@ -4,10 +4,11 @@
 	"description": "",
 	"scripts": {
 		"dev": "npm run dev -w playground",
-		"build": "npm run build -w playground",
+		"build": "npm run build -w playground && npm run build -w paint",
 		"check": "biome check .",
 		"format": "biome format --write .",
-		"lint": "biome lint ."
+		"lint": "biome lint .",
+		"format:check": "biome format ."
 	},
 	"repository": {
 		"type": "git",

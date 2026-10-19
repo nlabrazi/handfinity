@@ -42,7 +42,7 @@ const count = ref(0);
 				<li>
 					<a href="https://vuejs.org/" target="_blank">
 						<img class="button-icon" :src="vueLogo" alt="">
-						Learn more
+						Learn more will come soon
 					</a>
 				</li>
 			</ul>

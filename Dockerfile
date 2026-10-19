@@ -20,6 +20,9 @@ COPY . .
 FROM base AS dev
 ENV NODE_ENV=development
 
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000 3001
 
 # Build : sélection du sous-projet
