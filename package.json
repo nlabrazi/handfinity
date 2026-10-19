@@ -6,7 +6,8 @@
 		"dev": "npm run dev -w playground",
 		"build": "npm run build -w playground",
 		"check": "biome check .",
-		"format": "biome check --write ."
+		"format": "biome format --write .",
+		"lint": "biome lint ."
 	},
 	"repository": {
 		"type": "git",
