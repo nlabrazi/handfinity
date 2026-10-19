@@ -3,7 +3,9 @@
 	"version": "1.0.0",
 	"private": "true",
 	"type": "module",
-	"exports": "./src/index.js",
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"description": "",
 	"main": "index.js",
 	"scripts": {
@@ -13,6 +15,7 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"@handfinity/core": "1.0.0",
 		"@mediapipe/tasks-vision": "^1.1.1"
 	}
 }
