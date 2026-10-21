@@ -1,4 +1,4 @@
-# Handfinity Paint — V1.1, étape 1
+# Handfinity Paint — V1.1, étapes 1 et 2
 
 Application Vue 3 permettant de dessiner avec l'index pendant un pincement
 pouce-index. Depuis la racine du monorepo :
@@ -6,6 +6,18 @@ pouce-index. Depuis la racine du monorepo :
 ```bash
 npm run dev -w paint
 ```
+
+## Réglages du pinceau
+
+- **Color** ouvre le sélecteur de couleur. La couleur initiale est le bleu `#38bdf8`.
+- **Width** règle l'épaisseur de 1 à 40 pixels, avec une valeur initiale de 6 pixels.
+  Ces pixels correspondent à l'image exportée ; l'affichage du dessin s'adapte
+  à la taille disponible à l'écran.
+- L'aperçu sur fond quadrillé montre les réglages sélectionnés pour le prochain trait.
+- Chaque trait conserve la couleur et l'épaisseur choisies au début du pincement,
+  même si les réglages changent pendant le dessin. Les traits précédents restent identiques.
+- Les réglages sont conservés lors d'un effacement et d'un arrêt/reprise de la caméra,
+  jusqu'au rechargement de la page. L'export PNG conserve les couleurs et les épaisseurs.
 
 ## Tracé et relâchement
 
@@ -51,5 +63,7 @@ Pour valider le ressenti avec une webcam : dessiner un point, un petit trait,
 une ligne lente puis un cercle rapide ; relâcher en mouvement ; masquer brièvement
 la main puis la faire réapparaître près et loin de sa position ; introduire une
 seconde main. Vérifier aussi Clear, l'export pendant un trait et l'arrêt/reprise
-de la caméra. Les couleurs, l'épaisseur réglable et Undo / Redo restent prévus
-pour les itérations suivantes.
+de la caméra. Pour les réglages du pinceau, dessiner plusieurs traits de couleurs
+et d'épaisseurs différentes, modifier les réglages pendant un pincement et vérifier
+que seul le prochain trait adopte le nouveau style, y compris dans l'export PNG.
+Undo / Redo reste prévu pour l'itération suivante.
