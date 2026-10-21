@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
 import {
 	startPinchSession,
 	type PinchEvent,
@@ -20,6 +20,7 @@ const previewCanvasRef = ref<HTMLCanvasElement | null>(null);
 const isRunning = ref(false);
 const isLoading = ref(false);
 const isPinching = ref(false);
+const hasTrackedHand = ref(false);
 const pointer = ref<Point | null>(null);
 const error = ref("");
 const cameraAspect = ref("16 / 9");
@@ -30,11 +31,68 @@ const canRedo = ref(false);
 
 let session: PinchSession | null = null;
 let stroke: ReturnType<typeof createSmoothStroke> | null = null;
-let activeStroke: DrawingStroke | null = null;
+const activeStroke = shallowRef<DrawingStroke | null>(null);
 let strokePoints: Point[] = [];
 const history = createDrawingHistory();
 const pointSmoother = createPointSmoother();
 let disposed = false;
+
+const gestureFeedback = computed(() => {
+	if (isLoading.value) {
+		return {
+			state: "loading",
+			label: "Starting camera",
+			help: "Allow camera access and wait for hand tracking to start.",
+			color: "text-slate-300",
+		};
+	}
+	if (error.value) {
+		return {
+			state: "error",
+			label: "Session interrupted",
+			help: "Check the error below, then try starting the camera again.",
+			color: "text-red-400",
+		};
+	}
+	if (!isRunning.value) {
+		return {
+			state: "stopped",
+			label: "Camera off",
+			help: "Start the camera to draw with your hand.",
+			color: "text-slate-300",
+		};
+	}
+	if (!pointer.value) {
+		return {
+			state: "searching",
+			label: hasTrackedHand.value ? "Tracking lost" : "Show one hand",
+			help: "Keep one hand clearly visible in the camera frame.",
+			color: "text-amber-300",
+		};
+	}
+	if (isPinching.value && !activeStroke.value) {
+		return {
+			state: "paused",
+			label: "Release to continue",
+			help: "Open your fingers, then pinch again to start a new stroke.",
+			color: "text-amber-300",
+		};
+	}
+	if (isPinching.value) {
+		return {
+			state: "drawing",
+			label: "Drawing",
+			help: "Release your fingers to finish the stroke and use Undo / Redo.",
+			color: "text-green-400",
+		};
+	}
+	return {
+		state: "ready",
+		label: "Ready",
+		help: "Pinch your thumb and index finger to draw.",
+		color: "text-sky-400",
+	};
+});
 
 function toCanvasPoint(point: Point, canvas: HTMLCanvasElement): Point {
 	return {
@@ -52,9 +110,9 @@ function clearPreview() {
 function finishStroke() {
 	stroke?.finish();
 	stroke = null;
-	if (activeStroke) {
-		history.add(activeStroke);
-		activeStroke = null;
+	if (activeStroke.value) {
+		history.add(activeStroke.value);
+		activeStroke.value = null;
 		strokePoints = [];
 		updateHistoryControls();
 	}
@@ -126,12 +184,12 @@ function handleGesture(event: PinchEvent) {
 
 		// Copier les réglages pour garder le même style jusqu'à la fin du trait.
 		strokePoints = [drawingPoint];
-		activeStroke = {
+		activeStroke.value = {
 			points: strokePoints,
 			color: brushColor.value,
 			width: brushWidth.value,
 		};
-		stroke = createSmoothStroke(ctx, previewCtx, activeStroke);
+		stroke = createSmoothStroke(ctx, previewCtx, activeStroke.value);
 		stroke.start(point);
 		return;
 	}
@@ -149,6 +207,7 @@ function stop() {
 	pointSmoother.reset();
 	isRunning.value = false;
 	isPinching.value = false;
+	hasTrackedHand.value = false;
 	pointer.value = null;
 }
 
@@ -172,6 +231,7 @@ async function toggleCamera() {
 		const controller = await startPinchSession(video, {
 			onGesture: handleGesture,
 			onPointer: (point, timestamp) => {
+				if (point) hasTrackedHand.value = true;
 				if (!point) {
 					pointer.value = null;
 					pointSmoother.reset();
@@ -294,13 +354,38 @@ onBeforeUnmount(() => {
 
 				<div
 					v-if="pointer"
-					class="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white"
-					:class="isPinching ? 'bg-green-400' : 'bg-sky-400'"
+					aria-hidden="true"
+					data-gesture-cursor
+					:data-state="gestureFeedback.state"
+					class="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-slate-950/70 transition-[width,height,box-shadow] duration-100 motion-reduce:transition-none"
+					:class="gestureFeedback.state === 'drawing'
+						? 'size-7 ring-4 ring-green-400/60'
+						: gestureFeedback.state === 'paused'
+							? 'size-6 border-dashed ring-2 ring-amber-300/60'
+							: 'size-5 ring-2 ring-sky-400/60'"
 					:style="{
 				left: `${(1 - pointer.x) * 100}%`,
 				top: `${pointer.y * 100}%`,
 			}"
-				/>
+				>
+					<span
+						v-if="gestureFeedback.state === 'drawing'"
+						class="size-2.5 rounded-full border border-white"
+						:style="{ backgroundColor: activeStroke?.color }"
+					/>
+				</div>
+			</div>
+
+			<div
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+				class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-3"
+			>
+				<p class="text-sm font-semibold" :class="gestureFeedback.color">
+					{{ gestureFeedback.label }}
+				</p>
+				<p class="mt-1 text-sm text-slate-300">{{ gestureFeedback.help }}</p>
 			</div>
 
 			<fieldset class="min-w-0 rounded-lg border border-slate-700 px-4 pb-4">
@@ -408,18 +493,7 @@ onBeforeUnmount(() => {
 				>
 					Export PNG
 				</button>
-
-				<span
-					class="text-sm"
-					:class="isPinching ? 'text-green-400' : 'text-slate-400'"
-				>
-					{{ isPinching ? "Drawing..." : "Ready" }}
-				</span>
 			</div>
-
-			<p v-if="isPinching" class="text-sm text-slate-400">
-				Release the pinch to use Undo / Redo.
-			</p>
 
 			<p v-if="error" role="alert" class="text-red-400">
 				{{ error }}

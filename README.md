@@ -68,8 +68,8 @@ En complément des interfaces de démonstration, Handfinity repose sur un **mote
 Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont superposés pour transformer les gestes de la main en tracés visibles directement dans le navigateur :
 - **Démarrage manuel** : Un bouton lance ou arrête la caméra sans activation automatique à l'ouverture de la page.
 - **Aperçu en miroir** : La vidéo est inversée horizontalement pour correspondre aux mouvements naturels de l'utilisateur.
-- **Curseur gestuel** : La position de l'index est représentée par un repère coloré au-dessus de l'image.
-- **Statut du dessin** : L'interface indique lorsque le pincement est actif et qu'un tracé peut être réalisé.
+- **Curseur gestuel** : Un cercle vide suit l'index au repos ; il s'agrandit et affiche la couleur du trait pendant le dessin. Après Clear pendant un pincement, un cercle pointillé invite à relâcher les doigts.
+- **Statut du dessin** : Une consigne accompagne chaque état : caméra arrêtée ou en cours de démarrage, attente d'une main, prêt à dessiner, tracé actif, perte de suivi et relâchement nécessaire.
 - **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Voir [Paint V1.1](apps/paint/README.md).
 - **Pinceau réglable** : Sélecteur de couleur, épaisseur de 1 à 40 pixels et aperçu. Chaque trait conserve ses réglages jusqu'à sa fin ; le pinceau initial est bleu clair et mesure 6 pixels.
 - **Effacement immédiat** : Le bouton **Clear** vide la surface de dessin sans redémarrer la webcam.

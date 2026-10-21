@@ -1,4 +1,4 @@
-# Handfinity Paint — V1.1, étapes 1 à 3
+# Handfinity Paint — V1.1, étapes 1 à 4
 
 Application Vue 3 permettant de dessiner avec l'index pendant un pincement
 pouce-index. Depuis la racine du monorepo :
@@ -50,6 +50,23 @@ npm run dev -w paint
 - L'historique reste en mémoire dans l'onglet et disparaît au rechargement de la page.
   L'export PNG représente le dessin actuellement visible après les annulations.
 
+## Retour visuel du geste
+
+- Le statut distingue la caméra arrêtée, son démarrage, l'attente d'une main,
+  la main prête à dessiner, le tracé actif et la perte de suivi.
+- Le curseur est un cercle vide au repos. Au début du trait, il s'agrandit,
+  affiche un halo vert et un centre de la couleur du trait en cours. Une
+  modification du pinceau pendant le tracé ne change pas cette couleur.
+- Après **Clear** pendant un pincement, le curseur devient pointillé et ambré.
+  Le message **Release to continue** invite à relâcher avant de dessiner à nouveau.
+- Le curseur disparaît quand la main n'est plus suivie. **Tracking lost** signale
+  cette interruption ; **Show one hand** s'affiche avant la première détection
+  de la session. Les délais de détection et la tolérance de perte restent identiques.
+- Les états sont accompagnés d'une consigne textuelle annoncée aux lecteurs
+  d'écran. La courte transition de taille du curseur respecte la préférence
+  de réduction des animations ; sa position reste synchronisée avec le pinceau.
+- Ces indications restent dans l'interface et ne sont pas incluses dans l'export PNG.
+
 ## Perte de suivi
 
 Une absence de main peut être tolérée jusqu'à 120 ms depuis la dernière détection.
@@ -83,5 +100,7 @@ et d'épaisseurs différentes, modifier les réglages pendant un pincement et v�
 que seul le prochain trait adopte le nouveau style, y compris dans l'export PNG.
 Pour l'historique, vérifier plusieurs annulations/rétablissements, Clear puis Undo,
 Clear pendant un trait, un nouveau trait après Undo, l'export après restauration
-et l'arrêt/reprise de la caméra. Le retour visuel des gestes et le refactoring
-restent prévus pour les deux itérations suivantes.
+et l'arrêt/reprise de la caméra. Pour le retour visuel, observer le curseur et le
+statut avant/après un pincement, pendant une perte de suivi et après Clear sans
+relâcher les doigts. Vérifier aussi le démarrage et une erreur caméra.
+Le refactoring reste prévu pour la cinquième et dernière itération.
