@@ -8,6 +8,10 @@ import {
 } from "@handfinity/vision";
 import { createSmoothStroke } from "./lib/smooth-stroke";
 import { createPointSmoother } from "./lib/point-smoother";
+import {
+	createDrawingHistory,
+	type DrawingStroke,
+} from "./lib/drawing-history";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -21,16 +25,20 @@ const error = ref("");
 const cameraAspect = ref("16 / 9");
 const brushColor = ref("#38bdf8");
 const brushWidth = ref(6);
+const canUndo = ref(false);
+const canRedo = ref(false);
 
 let session: PinchSession | null = null;
 let stroke: ReturnType<typeof createSmoothStroke> | null = null;
+let activeStroke: DrawingStroke | null = null;
+let strokePoints: Point[] = [];
+const history = createDrawingHistory();
 const pointSmoother = createPointSmoother();
 let disposed = false;
 
 function toCanvasPoint(point: Point, canvas: HTMLCanvasElement): Point {
-	// La webcam est affichée en miroir ; le dessin reste dans le bon sens.
 	return {
-		x: (1 - point.x) * canvas.width,
+		x: point.x * canvas.width,
 		y: point.y * canvas.height,
 	};
 }
@@ -44,6 +52,50 @@ function clearPreview() {
 function finishStroke() {
 	stroke?.finish();
 	stroke = null;
+	if (activeStroke) {
+		history.add(activeStroke);
+		activeStroke = null;
+		strokePoints = [];
+		updateHistoryControls();
+	}
+}
+
+function updateHistoryControls() {
+	canUndo.value = history.canUndo;
+	canRedo.value = history.canRedo;
+}
+
+function redrawHistory() {
+	const canvas = canvasRef.value;
+	const ctx = canvas?.getContext("2d");
+	const previewCtx = previewCanvasRef.value?.getContext("2d");
+	if (!canvas || !ctx || !previewCtx) return;
+
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	clearPreview();
+	for (const drawing of history.strokes) {
+		const first = drawing.points[0];
+		if (!first) continue;
+		// Rejouer uniquement les courbes définitives, sans aperçu intermédiaire.
+		const renderer = createSmoothStroke(ctx, null, drawing);
+		renderer.start(toCanvasPoint(first, canvas));
+		for (const point of drawing.points.slice(1)) {
+			renderer.move(toCanvasPoint(point, canvas));
+		}
+		renderer.finish();
+	}
+}
+
+function undo() {
+	if (isPinching.value || isLoading.value || !history.undo()) return;
+	redrawHistory();
+	updateHistoryControls();
+}
+
+function redo() {
+	if (isPinching.value || isLoading.value || !history.redo()) return;
+	redrawHistory();
+	updateHistoryControls();
 }
 
 function handleGesture(event: PinchEvent) {
@@ -65,21 +117,27 @@ function handleGesture(event: PinchEvent) {
 	if (!canvas || !ctx || !previewCtx) return;
 
 	pointer.value = pointSmoother.update(event.position, event.timestamp);
-	const point = toCanvasPoint(pointer.value, canvas);
+	// Mémoriser les points lissés dans le repère du dessin, déjà adapté au miroir.
+	const drawingPoint = { x: 1 - pointer.value.x, y: pointer.value.y };
+	const point = toCanvasPoint(drawingPoint, canvas);
 
 	if (event.type === "pinch:start") {
 		finishStroke();
 
 		// Copier les réglages pour garder le même style jusqu'à la fin du trait.
-		stroke = createSmoothStroke(ctx, previewCtx, {
+		strokePoints = [drawingPoint];
+		activeStroke = {
+			points: strokePoints,
 			color: brushColor.value,
 			width: brushWidth.value,
-		});
+		};
+		stroke = createSmoothStroke(ctx, previewCtx, activeStroke);
 		stroke.start(point);
 		return;
 	}
 
 	if (event.type === "pinch:move" && stroke) {
+		strokePoints.push(drawingPoint);
 		stroke.move(point);
 	}
 }
@@ -149,6 +207,8 @@ async function toggleCamera() {
 			preview.width = video.videoWidth;
 			preview.height = video.videoHeight;
 		}
+		// Une nouvelle résolution vidéo efface le Canvas, mais pas les traits mémorisés.
+		redrawHistory();
 
 		isRunning.value = true;
 	} catch (err) {
@@ -163,10 +223,11 @@ function clearCanvas() {
 	const canvas = canvasRef.value;
 	if (!canvas) return;
 
-	stroke?.cancel();
-	stroke = null;
-	clearPreview();
-	canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+	// Conserver aussi la portion visible d'un trait interrompu pour annuler Clear.
+	finishStroke();
+	history.clear();
+	redrawHistory();
+	updateHistoryControls();
 }
 
 function exportPng() {
@@ -316,6 +377,24 @@ onBeforeUnmount(() => {
 
 				<button
 					type="button"
+					:disabled="!canUndo || isPinching || isLoading"
+					@click="undo"
+					class="rounded-lg bg-slate-800 px-5 py-3 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Undo
+				</button>
+
+				<button
+					type="button"
+					:disabled="!canRedo || isPinching || isLoading"
+					@click="redo"
+					class="rounded-lg bg-slate-800 px-5 py-3 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Redo
+				</button>
+
+				<button
+					type="button"
 					@click="clearCanvas"
 					class="rounded-lg bg-slate-800 px-5 py-3 hover:bg-slate-700"
 				>
@@ -337,6 +416,10 @@ onBeforeUnmount(() => {
 					{{ isPinching ? "Drawing..." : "Ready" }}
 				</span>
 			</div>
+
+			<p v-if="isPinching" class="text-sm text-slate-400">
+				Release the pinch to use Undo / Redo.
+			</p>
 
 			<p v-if="error" role="alert" class="text-red-400">
 				{{ error }}

@@ -7,14 +7,14 @@ type BrushOptions = {
 
 export function createSmoothStroke(
 	ctx: CanvasRenderingContext2D,
-	preview: CanvasRenderingContext2D,
+	preview: CanvasRenderingContext2D | null,
 	options: BrushOptions,
 ) {
 	let previous: Point | null = null;
 	let previousMidpoint: Point | null = null;
 
 	function clearPreview() {
-		preview.clearRect(0, 0, preview.canvas.width, preview.canvas.height);
+		preview?.clearRect(0, 0, preview.canvas.width, preview.canvas.height);
 	}
 
 	function cancel() {
@@ -26,6 +26,7 @@ export function createSmoothStroke(
 	function start(point: Point) {
 		cancel();
 		for (const context of [ctx, preview]) {
+			if (!context) continue;
 			context.strokeStyle = options.color;
 			context.fillStyle = options.color;
 			context.lineWidth = options.width;
@@ -59,7 +60,7 @@ export function createSmoothStroke(
 
 		// Seule la terminaison reste provisoire, jusqu'à la position du curseur.
 		clearPreview();
-		drawTail(preview);
+		if (preview) drawTail(preview);
 	}
 
 	function drawTail(context: CanvasRenderingContext2D) {

@@ -1,4 +1,4 @@
-# Handfinity Paint — V1.1, étapes 1 et 2
+# Handfinity Paint — V1.1, étapes 1 à 3
 
 Application Vue 3 permettant de dessiner avec l'index pendant un pincement
 pouce-index. Depuis la racine du monorepo :
@@ -32,6 +32,24 @@ npm run dev -w paint
 - La portion temporaire est conservée à la fin du trait et incluse dans l'export
   PNG, même si le pincement est encore actif. La webcam n'est pas exportée.
 
+## Undo / Redo
+
+- **Undo** annule le dernier trait complet. **Redo** le rétablit avec ses points
+  lissés, sa couleur et son épaisseur d'origine, indépendamment des réglages actuels.
+- Les boutons sont désactivés pendant un pincement et l'initialisation de la caméra.
+  Relâcher les doigts permet de les utiliser.
+- Un nouveau trait après Undo remplace la suite annulée : les anciens traits
+  annulés ne sont alors plus disponibles avec Redo.
+- **Clear** est une action annulable : un seul Undo restaure tout le dessin effacé.
+  Si Clear interrompt un trait, sa partie déjà tracée est également conservée.
+  Il faut relâcher puis pincer à nouveau pour dessiner après Clear.
+- Effacer un dessin déjà vide n'ajoute pas d'action à l'historique.
+- L'historique reste disponible lorsque la caméra est arrêtée ou redémarrée.
+  Les positions normalisées permettent de redessiner les traits si la résolution
+  vidéo change. Les épaisseurs restent exprimées en pixels de l'image exportée.
+- L'historique reste en mémoire dans l'onglet et disparaît au rechargement de la page.
+  L'export PNG représente le dessin actuellement visible après les annulations.
+
 ## Perte de suivi
 
 Une absence de main peut être tolérée jusqu'à 120 ms depuis la dernière détection.
@@ -43,9 +61,6 @@ Un nouveau pincement doit ensuite être confirmé pour commencer un autre trait.
 Ces délais utilisent l'horloge du navigateur. Leur observation reste limitée
 par la cadence réelle de la caméra et du traitement.
 
-**Clear** annule le trait en cours et efface les deux Canvas. Si la main reste
-pincée, il faut relâcher puis pincer à nouveau pour dessiner.
-
 ## Vérifications
 
 ```bash
@@ -55,8 +70,8 @@ npm run format:check
 npm run build
 ```
 
-Les tests couvrent le filtrage, la terminaison des traits, les transitions du
-pincement et les interruptions de suivi. La CI exécute les suites de Paint,
+Les tests couvrent le filtrage, la terminaison des traits, l'historique,
+les transitions du pincement et les interruptions de suivi. La CI exécute les suites de Paint,
 core et vision.
 
 Pour valider le ressenti avec une webcam : dessiner un point, un petit trait,
@@ -66,4 +81,7 @@ seconde main. Vérifier aussi Clear, l'export pendant un trait et l'arrêt/repri
 de la caméra. Pour les réglages du pinceau, dessiner plusieurs traits de couleurs
 et d'épaisseurs différentes, modifier les réglages pendant un pincement et vérifier
 que seul le prochain trait adopte le nouveau style, y compris dans l'export PNG.
-Undo / Redo reste prévu pour l'itération suivante.
+Pour l'historique, vérifier plusieurs annulations/rétablissements, Clear puis Undo,
+Clear pendant un trait, un nouveau trait après Undo, l'export après restauration
+et l'arrêt/reprise de la caméra. Le retour visuel des gestes et le refactoring
+restent prévus pour les deux itérations suivantes.
