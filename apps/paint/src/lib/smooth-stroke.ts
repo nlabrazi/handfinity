@@ -1,14 +1,10 @@
 import type { Point } from "@handfinity/vision";
-
-type BrushOptions = {
-	color: string;
-	width: number;
-};
+import type { BrushSettings } from "./brush";
 
 export function createSmoothStroke(
 	ctx: CanvasRenderingContext2D,
 	preview: CanvasRenderingContext2D | null,
-	options: BrushOptions,
+	options: BrushSettings,
 ) {
 	let previous: Point | null = null;
 	let previousMidpoint: Point | null = null;

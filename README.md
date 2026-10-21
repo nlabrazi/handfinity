@@ -70,7 +70,7 @@ Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont supe
 - **Aperçu en miroir** : La vidéo est inversée horizontalement pour correspondre aux mouvements naturels de l'utilisateur.
 - **Curseur gestuel** : Un cercle vide suit l'index au repos ; il s'agrandit et affiche la couleur du trait pendant le dessin. Après Clear pendant un pincement, un cercle pointillé invite à relâcher les doigts.
 - **Statut du dessin** : Une consigne accompagne chaque état : caméra arrêtée ou en cours de démarrage, attente d'une main, prêt à dessiner, tracé actif, perte de suivi et relâchement nécessaire.
-- **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Voir [Paint V1.1](apps/paint/README.md).
+- **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Les cinq étapes de [Paint V1.1](apps/paint/README.md) sont implémentées, avec une séparation entre interface, session caméra et gestion du dessin.
 - **Pinceau réglable** : Sélecteur de couleur, épaisseur de 1 à 40 pixels et aperçu. Chaque trait conserve ses réglages jusqu'à sa fin ; le pinceau initial est bleu clair et mesure 6 pixels.
 - **Effacement immédiat** : Le bouton **Clear** vide la surface de dessin sans redémarrer la webcam.
 - **Undo / Redo** : Annulation par trait et rétablissement avec le style d'origine. Clear est également annulable ; les commandes d'historique sont disponibles après relâchement du pincement.

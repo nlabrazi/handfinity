@@ -1,4 +1,4 @@
-# Handfinity Paint — V1.1, étapes 1 à 4
+# Handfinity Paint — V1.1
 
 Application Vue 3 permettant de dessiner avec l'index pendant un pincement
 pouce-index. Depuis la racine du monorepo :
@@ -78,6 +78,27 @@ Un nouveau pincement doit ensuite être confirmé pour commencer un autre trait.
 Ces délais utilisent l'horloge du navigateur. Leur observation reste limitée
 par la cadence réelle de la caméra et du traitement.
 
+## Organisation du code
+
+Les cinq itérations de V1.1 sont implémentées : tracé lissé, réglages du pinceau,
+Undo / Redo, retour visuel et refactoring.
+
+| Fichier | Responsabilité |
+| --- | --- |
+| `src/App.vue` | Assemble l'interface et fournit les références de la vidéo et des Canvas avec `useTemplateRef`. |
+| `src/composables/usePaint.ts` | Gère la session caméra, le filtrage du pointeur, les gestes et la libération des ressources. |
+| `src/composables/useDrawingCanvas.ts` | Gère les traits, leur rendu, l'historique, le redimensionnement et l'export. Les points reçus sont déjà lissés et adaptés au miroir. |
+| `src/components/BrushControls.vue` | Affiche et modifie les réglages du pinceau via deux `v-model`. |
+| `src/components/GestureCursor.vue` | Affiche le curseur selon la position et l'état reçus. |
+| `src/lib/brush.ts` | Centralise le type, les valeurs initiales et les limites du pinceau. |
+| `src/lib/gesture-feedback.ts` | Déduit le statut et la consigne à afficher à partir de l'état de Paint. |
+| `src/lib/drawing-history.ts`, `smooth-stroke.ts`, `point-smoother.ts` | Contiennent les fonctions indépendantes de Vue pour l'historique, les courbes et le filtrage. |
+
+La disponibilité d'Undo / Redo est calculée au même endroit pour les boutons et
+les commandes. Chaque instance possède son propre dessin et sa propre session.
+La destruction du composable ferme la session, même si son initialisation
+se termine après la fermeture de l'application.
+
 ## Vérifications
 
 ```bash
@@ -88,8 +109,10 @@ npm run build
 ```
 
 Les tests couvrent le filtrage, la terminaison des traits, l'historique,
-les transitions du pincement et les interruptions de suivi. La CI exécute les suites de Paint,
-core et vision.
+les transitions du pincement, les interruptions de suivi et le cycle de vie de
+Paint : démarrage concurrent, fermeture pendant l'initialisation, arrêt pendant
+un trait, erreur de suivi et reprise après erreur caméra.
+La CI exécute les suites de Paint, core et vision.
 
 Pour valider le ressenti avec une webcam : dessiner un point, un petit trait,
 une ligne lente puis un cercle rapide ; relâcher en mouvement ; masquer brièvement
@@ -103,4 +126,3 @@ Clear pendant un trait, un nouveau trait après Undo, l'export après restaurati
 et l'arrêt/reprise de la caméra. Pour le retour visuel, observer le curseur et le
 statut avant/après un pincement, pendant une perte de suivi et après Clear sans
 relâcher les doigts. Vérifier aussi le démarrage et une erreur caméra.
-Le refactoring reste prévu pour la cinquième et dernière itération.
