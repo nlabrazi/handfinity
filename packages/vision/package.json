@@ -1,13 +1,24 @@
 {
 	"name": "@handfinity/vision",
 	"version": "1.0.0",
+	"private": "true",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"test": "vitest run"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
-	"type": "commonjs"
+	"dependencies": {
+		"@handfinity/core": "1.0.0",
+		"@mediapipe/tasks-vision": "^1.1.1"
+	},
+	"devDependencies": {
+		"vitest": "^5.0.5"
+	}
 }
