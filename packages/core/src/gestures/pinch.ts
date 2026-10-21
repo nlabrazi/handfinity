@@ -10,16 +10,22 @@ export type HandPose = {
 	middleBase: Point;
 };
 
-export type PinchEvent = {
-	type: "pinch:start" | "pinch:move" | "pinch:end";
+type PinchSample = {
 	position: Point;
 	ratio: number;
+	timestamp: number;
 };
+
+export type PinchEvent = PinchSample &
+	(
+		| { type: "pinch:start" | "pinch:move" }
+		| { type: "pinch:end"; reason: "released" | "tracking-lost" }
+	);
 
 const START_THRESHOLD = 0.32;
 const END_THRESHOLD = 0.46;
-const SMOOTHING = 0.35;
-const STABLE_FRAMES = 2;
+const START_HOLD_MS = 40;
+const END_HOLD_MS = 60;
 
 function distance(a: Point, b: Point, aspectRatio: number): number {
 	return Math.hypot((a.x - b.x) * aspectRatio, a.y - b.y);
@@ -27,91 +33,101 @@ function distance(a: Point, b: Point, aspectRatio: number): number {
 
 export function createPinchDetector() {
 	let active = false;
-	let smoothedRatio: number | null = null;
-	let stableFrames = 0;
+	let transitionSince: number | null = null;
+	let lastRatio = 0;
 	let lastPosition: Point = { x: 0, y: 0 };
 
 	function reset() {
 		active = false;
-		smoothedRatio = null;
-		stableFrames = 0;
+		transitionSince = null;
+		lastRatio = 0;
 		lastPosition = { x: 0, y: 0 };
 	}
 
-	function update(hand: HandPose | null, aspectRatio = 1): PinchEvent | null {
+	function suspend() {
+		// Une observation manquante ne confirme ni fermeture ni ouverture.
+		transitionSince = null;
+	}
+
+	function update(
+		hand: HandPose | null,
+		aspectRatio = 1,
+		timestamp = performance.now(),
+	): PinchEvent | null {
 		if (!hand) {
 			const wasActive = active;
 			const position = lastPosition;
-			const ratio = smoothedRatio ?? 0;
+			const ratio = lastRatio;
 
 			reset();
 
-			return wasActive ? { type: "pinch:end", position, ratio } : null;
+			return wasActive
+				? {
+						type: "pinch:end",
+						reason: "tracking-lost",
+						position,
+						ratio,
+						timestamp,
+					}
+				: null;
 		}
 
 		const palmSize = distance(hand.wrist, hand.middleBase, aspectRatio);
+		if (palmSize < 0.00001) return update(null, aspectRatio, timestamp);
 
-		if (palmSize < 0.00001) {
-			return update(null);
-		}
-
-		const rawRatio =
+		const ratio =
 			distance(hand.thumbTip, hand.indexTip, aspectRatio) / palmSize;
-
-		smoothedRatio =
-			smoothedRatio === null
-				? rawRatio
-				: SMOOTHING * rawRatio + (1 - SMOOTHING) * smoothedRatio;
-
-		lastPosition = {
-			x: (hand.thumbTip.x + hand.indexTip.x) / 2,
-			y: (hand.thumbTip.y + hand.indexTip.y) / 2,
-		};
+		lastRatio = ratio;
 
 		if (active) {
-			if (smoothedRatio >= END_THRESHOLD) {
-				stableFrames++;
-
-				if (stableFrames >= STABLE_FRAMES) {
+			if (ratio >= END_THRESHOLD) {
+				transitionSince ??= timestamp;
+				if (timestamp - transitionSince >= END_HOLD_MS) {
 					active = false;
-					stableFrames = 0;
-
+					transitionSince = null;
 					return {
 						type: "pinch:end",
+						reason: "released",
 						position: lastPosition,
-						ratio: smoothedRatio,
+						ratio,
+						timestamp,
 					};
 				}
-			} else {
-				stableFrames = 0;
+				// Geler la pointe pendant la confirmation, sans couper le trait
+				// sur une mesure bruitée ni dessiner le mouvement d'ouverture.
+				return null;
 			}
 
+			transitionSince = null;
+			lastPosition = { ...hand.indexTip };
 			return {
 				type: "pinch:move",
 				position: lastPosition,
-				ratio: smoothedRatio,
+				ratio,
+				timestamp,
 			};
 		}
 
-		if (smoothedRatio <= START_THRESHOLD) {
-			stableFrames++;
-
-			if (stableFrames >= STABLE_FRAMES) {
+		if (ratio <= START_THRESHOLD) {
+			transitionSince ??= timestamp;
+			if (timestamp - transitionSince >= START_HOLD_MS) {
 				active = true;
-				stableFrames = 0;
-
+				transitionSince = null;
+				// Le pinceau suit l'index ; le pouce ne sert qu'à déclencher le geste.
+				lastPosition = { ...hand.indexTip };
 				return {
 					type: "pinch:start",
 					position: lastPosition,
-					ratio: smoothedRatio,
+					ratio,
+					timestamp,
 				};
 			}
 		} else {
-			stableFrames = 0;
+			transitionSince = null;
 		}
 
 		return null;
 	}
 
-	return { update, reset };
+	return { update, reset, suspend };
 }

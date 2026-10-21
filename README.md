@@ -31,7 +31,7 @@
 - 🎨 **Rendu Canvas 2D** : Affichage des repères des mains dans le Playground et superposition du dessin sur la vidéo dans Paint.
 - 🔊 **Retour visuel en direct** : Curseur coloré, statut du geste et indication de l'état de la caméra pour comprendre les interactions.
 - 🧹 **Outillage performant** : **Biome v2** pour le linting et le formatage, y compris les fichiers Vue avec prise en charge expérimentale.
-- 🧪 **Qualité & Tests** : Tests unitaires **Vitest** dans le package core et pipeline **Jenkins** ; tests E2E **Playwright** prévus.
+- 🧪 **Qualité & Tests** : Tests **Vitest** dans Paint, core et vision, exécutés par le pipeline **Jenkins** ; tests E2E **Playwright** prévus.
 - 🐳 **Développement Docker** : Deux services isolés, sources montées en volumes, hot reload Vite avec polling et démarrage commun via Docker Compose.
 
 ---
@@ -70,7 +70,7 @@ Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont supe
 - **Aperçu en miroir** : La vidéo est inversée horizontalement pour correspondre aux mouvements naturels de l'utilisateur.
 - **Curseur gestuel** : La position de l'index est représentée par un repère coloré au-dessus de l'image.
 - **Statut du dessin** : L'interface indique lorsque le pincement est actif et qu'un tracé peut être réalisé.
-- **Tracé continu** : Les événements `pinch:start` et `pinch:move` dessinent des points et segments sur un Canvas 2D.
+- **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Voir [Paint V1.1, étape 1](apps/paint/README.md).
 - **Style de pinceau initial** : Trait bleu clair avec extrémités arrondies et épaisseur proportionnelle à la largeur du Canvas.
 - **Effacement immédiat** : Le bouton **Clear** vide la surface de dessin sans redémarrer la webcam.
 - **Export en 1 clic** : Le bouton **Export PNG** télécharge le résultat dans `handfinity-paint.png`.
@@ -144,7 +144,7 @@ Cette commande compile les applications Vue avec Vite et produit leurs fichiers 
   - [x] Exécution dans un agent Docker Node.js 24
   - [x] Installation reproductible des dépendances via `npm ci`
   - [x] Étapes automatisées **Lint** et **Format check**
-  - [x] Tests unitaires **Vitest** du package `@handfinity/core`
+  - [x] Tests **Vitest** de Paint, `@handfinity/core` et `@handfinity/vision`
   - [x] Build des deux applications et notifications Telegram configurées dans le pipeline
 - [ ] **Déploiement public sur VPS — à finaliser**
   - [ ] Corriger et valider la cible Docker `prod` avec la configuration Nginx
@@ -293,6 +293,7 @@ restent également à mettre en place.
 | `npm run format:check` | Vérifie le formatage sans modifier les fichiers (utilisé en CI) |
 | `npm run check` | Lance la vérification complète `biome check .` |
 | `npm test -w @handfinity/core` | Exécute les tests unitaires **Vitest** du package core |
+| `npm test` | Exécute les tests **Vitest** de Paint, core et vision |
 | `docker compose up --build` | Démarre les deux applications en développement avec hot reload |
 
 ---

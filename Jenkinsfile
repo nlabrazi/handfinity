@@ -40,7 +40,7 @@ pipeline {
 
         stage('Unit tests') {
             steps {
-                sh 'npm test -w @handfinity/core'
+                sh 'npm test'
             }
         }
 

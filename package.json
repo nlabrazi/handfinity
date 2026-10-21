@@ -5,6 +5,7 @@
 	"scripts": {
 		"dev": "npm run dev -w playground",
 		"build": "npm run build -w playground && npm run build -w paint",
+		"test": "npm test --workspaces --if-present",
 		"check": "biome check .",
 		"format": "biome format --write .",
 		"lint": "biome lint .",
