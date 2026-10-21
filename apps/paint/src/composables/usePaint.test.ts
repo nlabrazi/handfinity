@@ -3,7 +3,10 @@ import { effectScope, shallowRef, type EffectScope } from "vue";
 import { startPinchSession, type PinchSession } from "@handfinity/vision";
 import { usePaint } from "./usePaint";
 
-vi.mock("@handfinity/vision", () => ({ startPinchSession: vi.fn() }));
+vi.mock("@handfinity/vision", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@handfinity/vision")>()),
+	startPinchSession: vi.fn(),
+}));
 
 const scopes: EffectScope[] = [];
 

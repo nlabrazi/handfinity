@@ -12,3 +12,4 @@ export type {
 } from "./pinch-session";
 
 export type { PinchEvent, Point } from "@handfinity/core";
+export { createPointSmoother } from "@handfinity/core";

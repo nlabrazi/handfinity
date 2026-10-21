@@ -92,7 +92,8 @@ Undo / Redo, retour visuel et refactoring.
 | `src/components/GestureCursor.vue` | Affiche le curseur selon la position et l'état reçus. |
 | `src/lib/brush.ts` | Centralise le type, les valeurs initiales et les limites du pinceau. |
 | `src/lib/gesture-feedback.ts` | Déduit le statut et la consigne à afficher à partir de l'état de Paint. |
-| `src/lib/drawing-history.ts`, `smooth-stroke.ts`, `point-smoother.ts` | Contiennent les fonctions indépendantes de Vue pour l'historique, les courbes et le filtrage. |
+| `src/lib/drawing-history.ts`, `smooth-stroke.ts` | Contiennent les fonctions indépendantes de Vue pour l'historique et les courbes. |
+| `packages/core/src/pointer/point-smoother.ts` (racine du monorepo) | Filtre de position partagé avec Playground, accessible dans Paint via `@handfinity/vision`. |
 
 La disponibilité d'Undo / Redo est calculée au même endroit pour les boutons et
 les commandes. Chaque instance possède son propre dessin et sa propre session.

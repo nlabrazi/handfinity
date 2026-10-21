@@ -8,7 +8,13 @@ import {
 	type HandPoint,
 	type HandTracker,
 } from "@handfinity/vision";
-import { createPinchDetector, type HandPose } from "@handfinity/core";
+import {
+	createPinchDetector,
+	createPointSmoother,
+	type HandPose,
+	type Point,
+} from "@handfinity/core";
+import NavigationSandbox from "./components/NavigationSandbox.vue";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -20,14 +26,24 @@ const error = ref("");
 
 const pinchActive = ref(false);
 const pinchTransition = ref("Aucun");
+const pointer = ref<Point | null>(null);
 
 const pinch = createPinchDetector();
+const pointSmoother = createPointSmoother();
+const POINTER_STALE_MS = 120;
+let lastPointerAt: number | null = null;
 
 let stream: MediaStream | null = null;
 let tracker: HandTracker | null = null;
 let frameId = 0;
 let lastVideoTime = -1;
 let disposed = false;
+
+function resetPointer() {
+	pointer.value = null;
+	lastPointerAt = null;
+	pointSmoother.reset();
+}
 
 function drawHands(hands: HandPoint[][]) {
 	const canvas = canvasRef.value;
@@ -83,10 +99,18 @@ function detectFrame() {
 	if (!video || !tracker) return;
 
 	try {
+		const timestamp = performance.now();
+		// Retirer aussi le curseur si le flux cesse de fournir des images.
+		if (
+			lastPointerAt !== null &&
+			timestamp - lastPointerAt > POINTER_STALE_MS
+		) {
+			resetPointer();
+		}
 		if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
 			lastVideoTime = video.currentTime;
 
-			const hands = tracker.detect(video, performance.now());
+			const hands = tracker.detect(video, timestamp);
 
 			handCount.value = hands.length;
 
@@ -103,7 +127,18 @@ function detectFrame() {
 						}
 					: null;
 
-			const gesture = pinch.update(pose, video.videoWidth / video.videoHeight);
+			if (pose) {
+				pointer.value = pointSmoother.update(pose.indexTip, timestamp);
+				lastPointerAt = timestamp;
+			} else {
+				resetPointer();
+			}
+
+			const gesture = pinch.update(
+				pose,
+				video.videoWidth / video.videoHeight,
+				timestamp,
+			);
 
 			if (gesture) {
 				pinchActive.value = gesture.type !== "pinch:end";
@@ -145,6 +180,7 @@ function stop() {
 	lastVideoTime = -1;
 
 	pinch.reset();
+	resetPointer();
 	pinchActive.value = false;
 	pinchTransition.value = "Aucun";
 }
@@ -195,70 +231,81 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<main class="min-h-screen bg-slate-950 p-8 text-white">
-		<div class="mx-auto max-w-4xl space-y-6">
+	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-8">
+		<div class="mx-auto max-w-6xl space-y-6">
 			<header>
 				<h1 class="text-3xl font-bold">Handfinity</h1>
 				<p class="text-slate-400">Vision Playground</p>
 			</header>
 
-			<div class="relative aspect-video overflow-hidden rounded-xl bg-black">
-				<video
-					ref="videoRef"
-					autoplay
-					muted
-					playsinline
-					aria-label="Live camera preview"
-					class="absolute inset-0 h-full w-full -scale-x-100 object-contain"
-				/>
-
-				<canvas
-					ref="canvasRef"
-					aria-hidden="true"
-					class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
-				/>
-			</div>
-
-			<div class="flex items-center gap-4">
-				<button
-					type="button"
-					:disabled="isLoading"
-					@click="toggleCamera"
-					class="rounded-lg bg-blue-600 px-5 py-3 font-medium hover:bg-blue-500 disabled:opacity-50"
+			<div class="grid items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+				<section
+					aria-label="Camera and gesture diagnostics"
+					class="min-w-0 space-y-4"
 				>
-					{{
-						isLoading
-							? "Initializing..."
-							: isRunning
-								? "Stop camera"
-								: "Start camera"
-					}}
-				</button>
+					<div
+						class="relative aspect-video overflow-hidden rounded-xl bg-black"
+					>
+						<video
+							ref="videoRef"
+							autoplay
+							muted
+							playsinline
+							aria-label="Live camera preview"
+							class="absolute inset-0 h-full w-full -scale-x-100 object-contain"
+						/>
 
-				<span class="text-sm text-slate-400">
-					Hands detected: {{ handCount }}
-				</span>
+						<canvas
+							ref="canvasRef"
+							aria-hidden="true"
+							class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
+						/>
+					</div>
+
+					<div class="flex flex-wrap items-center gap-4">
+						<button
+							type="button"
+							:disabled="isLoading"
+							@click="toggleCamera"
+							class="rounded-lg bg-blue-600 px-5 py-3 font-medium hover:bg-blue-500 disabled:opacity-50"
+						>
+							{{
+								isLoading
+									? "Initializing..."
+									: isRunning
+										? "Stop camera"
+										: "Start camera"
+							}}
+						</button>
+
+						<span class="text-sm text-slate-400">
+							Hands detected: {{ handCount }}
+						</span>
+					</div>
+
+					<div class="flex flex-wrap items-center gap-4 text-sm">
+						<span
+							class="rounded-lg px-4 py-2 font-medium"
+							:class="pinchActive
+		            ? 'bg-green-500/20 text-green-400'
+		            : 'bg-slate-800 text-slate-400'
+		          "
+						>
+							{{ pinchActive ? "PINCH ACTIVE" : "PINCH INACTIVE" }}
+						</span>
+
+						<span class="text-slate-400">
+							Last transition: {{ pinchTransition }}
+						</span>
+					</div>
+
+					<p v-if="error" role="alert" class="text-red-400">
+						{{ error }}
+					</p>
+				</section>
+
+				<NavigationSandbox :pointer="pointer" :is-running="isRunning" />
 			</div>
-
-			<div class="flex flex-wrap items-center gap-4 text-sm">
-				<span
-					class="rounded-lg px-4 py-2 font-medium"
-					:class="pinchActive
-            ? 'bg-green-500/20 text-green-400'
-            : 'bg-slate-800 text-slate-400'
-          "
-				>
-					{{ pinchActive ? "PINCH ACTIVE" : "PINCH INACTIVE" }}
-				</span>
-
-				<span class="text-slate-400">
-					Last transition: {{ pinchTransition }}
-				</span>
-			</div>
-
-			<p v-if="error" role="alert" class="text-red-400">
-				{{ error }}
-			</p>
 		</div>
 	</main>
 </template>

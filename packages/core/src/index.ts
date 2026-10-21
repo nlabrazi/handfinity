@@ -1,4 +1,5 @@
 export { createPinchDetector } from "./gestures/pinch";
+export { createPointSmoother } from "./pointer/point-smoother";
 
 export type {
 	Point,

@@ -1,11 +1,11 @@
 import { computed, onScopeDispose, ref, type Ref } from "vue";
 import {
 	startPinchSession,
+	createPointSmoother,
 	type PinchEvent,
 	type PinchSession,
 	type Point,
 } from "@handfinity/vision";
-import { createPointSmoother } from "../lib/point-smoother";
 import { getGestureFeedback } from "../lib/gesture-feedback";
 import { useDrawingCanvas, type DrawingCanvases } from "./useDrawingCanvas";
 

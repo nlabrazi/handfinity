@@ -23,7 +23,7 @@
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur via les API Web, sans serveur de capture ni équipement spécialisé.
 - 🎮 **3 composants complémentaires** :
-  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement.
+  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement. Une [zone de navigation expérimentale](apps/playground/README.md) permet de survoler quatre cartes avec un curseur lissé.
   - **Handfinity Paint** : Dessin sans contact sur un Canvas à partir des mouvements de l'index et du pouce.
   - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`) et de la vision (`@handfinity/vision`) dans les futures applications.
 - 👓 **Interaction gestuelle sans contact** : Détection du pincement (*pinch*) pour démarrer, poursuivre et arrêter un tracé, sans souris ni écran tactile.

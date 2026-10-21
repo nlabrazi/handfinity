@@ -1,4 +1,4 @@
-import type { Point } from "@handfinity/vision";
+import type { Point } from "../gestures/pinch";
 
 // En millisecondes pour garder le même filtrage quelle que soit la cadence vidéo.
 const SMOOTHING_TIME_MS = 30;
