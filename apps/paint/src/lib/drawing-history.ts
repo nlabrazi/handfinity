@@ -1,10 +1,9 @@
 import type { Point } from "@handfinity/vision";
+import type { BrushSettings } from "./brush";
 
-export type DrawingStroke = {
+export type DrawingStroke = Readonly<BrushSettings> & {
 	// Coordonnées normalisées dans le dessin, indépendantes de la résolution vidéo.
 	readonly points: readonly Readonly<Point>[];
-	readonly color: string;
-	readonly width: number;
 };
 
 type DrawingAction =

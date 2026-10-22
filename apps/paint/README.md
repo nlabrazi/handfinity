@@ -1,4 +1,4 @@
-# Handfinity Paint — V1.1, étapes 1 à 4
+# Handfinity Paint — V1.1
 
 Application Vue 3 permettant de dessiner avec l'index pendant un pincement
 pouce-index. Depuis la racine du monorepo :
@@ -6,6 +6,12 @@ pouce-index. Depuis la racine du monorepo :
 ```bash
 npm run dev -w paint
 ```
+
+L'application autonome utilise `http://localhost:3001`. Le hub (`npm run dev`)
+intègre le même atelier sur `http://localhost:3000/paint`. Dans le hub, quitter
+l'atelier arrête la caméra tout en conservant le dessin, Undo/Redo et le pinceau
+en mémoire. Un retour ne redémarre pas la webcam ; un rechargement de la page
+efface le dessin, qui peut être sauvegardé avec **Export PNG**.
 
 ## Réglages du pinceau
 
@@ -78,6 +84,33 @@ Un nouveau pincement doit ensuite être confirmé pour commencer un autre trait.
 Ces délais utilisent l'horloge du navigateur. Leur observation reste limitée
 par la cadence réelle de la caméra et du traitement.
 
+## Organisation du code
+
+Les cinq itérations de V1.1 sont implémentées : tracé lissé, réglages du pinceau,
+Undo / Redo, retour visuel et refactoring.
+
+| Fichier | Responsabilité |
+| --- | --- |
+| `src/App.vue` | Assemble l'interface et fournit les références de la vidéo et des Canvas avec `useTemplateRef`. |
+| `src/composables/usePaint.ts` | Pilote la session partagée, le filtrage du pointeur et les gestes ; arrête la session à la désactivation ou à la destruction. |
+| `packages/vision/src/tracking-session.ts` (racine du monorepo) | Mutualise caméra, détection, identités, boucle vidéo et nettoyage avec Playground. |
+| `packages/vision/src/pinch-session.ts` (racine du monorepo) | Adapte les observations de la session commune aux événements de pincement et de pointeur. |
+| `src/composables/useDrawingCanvas.ts` | Gère les traits, leur rendu, l'historique, le redimensionnement et l'export. Les points reçus sont déjà lissés et adaptés au miroir. |
+| `src/components/BrushControls.vue` | Affiche et modifie les réglages du pinceau via deux `v-model`. |
+| `src/components/GestureCursor.vue` | Affiche le curseur selon la position et l'état reçus. |
+| `src/lib/brush.ts` | Centralise le type, les valeurs initiales et les limites du pinceau. |
+| `src/lib/gesture-feedback.ts` | Déduit le statut et la consigne à afficher à partir de l'état de Paint. |
+| `src/lib/drawing-history.ts`, `smooth-stroke.ts` | Contiennent les fonctions indépendantes de Vue pour l'historique et les courbes. |
+| `packages/core/src/pointer/point-smoother.ts` (racine du monorepo) | Filtre de position partagé avec Playground, accessible dans Paint via `@handfinity/vision`. |
+
+La disponibilité d'Undo / Redo est calculée au même endroit pour les boutons et
+les commandes. Chaque instance possède son propre dessin et sa propre session.
+La destruction du composable ou sa désactivation par `KeepAlive` ferme la session.
+L'arrêt est disponible pendant l'initialisation : la caméra déjà acquise est
+libérée immédiatement, même si le modèle charge encore. Un flux ou détecteur
+reçu après l'arrêt est libéré à son arrivée. Une ancienne initialisation ne peut
+ni arrêter la session suivante, ni modifier son erreur ou son état de chargement.
+
 ## Vérifications
 
 ```bash
@@ -88,8 +121,12 @@ npm run build
 ```
 
 Les tests couvrent le filtrage, la terminaison des traits, l'historique,
-les transitions du pincement et les interruptions de suivi. La CI exécute les suites de Paint,
-core et vision.
+les transitions du pincement, les interruptions de suivi et le cycle de vie de
+Paint : démarrage concurrent, fermeture pendant l'initialisation, arrêt pendant
+un trait, erreur de suivi et reprise après erreur caméra. Les tests de vision
+couvrent également l'annulation pendant l'autorisation caméra, la lecture vidéo
+et le chargement du modèle, ainsi que les résultats tardifs après redémarrage.
+La CI exécute les suites de Paint, core et vision.
 
 Pour valider le ressenti avec une webcam : dessiner un point, un petit trait,
 une ligne lente puis un cercle rapide ; relâcher en mouvement ; masquer brièvement
@@ -103,4 +140,3 @@ Clear pendant un trait, un nouveau trait après Undo, l'export après restaurati
 et l'arrêt/reprise de la caméra. Pour le retour visuel, observer le curseur et le
 statut avant/après un pincement, pendant une perte de suivi et après Clear sans
 relâcher les doigts. Vérifier aussi le démarrage et une erreur caméra.
-Le refactoring reste prévu pour la cinquième et dernière itération.

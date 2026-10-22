@@ -1,6 +1,8 @@
 export async function startCamera(
 	video: HTMLVideoElement,
+	signal?: AbortSignal,
 ): Promise<MediaStream> {
+	signal?.throwIfAborted();
 	if (!navigator.mediaDevices?.getUserMedia) {
 		throw new Error("Camera API unavailable. HTTPS or localhost required.");
 	}
@@ -14,14 +16,27 @@ export async function startCamera(
 		},
 	});
 
+	let released = false;
+	function release() {
+		if (released) return;
+		released = true;
+		stopCamera(stream);
+		if (video.srcObject === stream) video.srcObject = null;
+	}
+
+	signal?.addEventListener("abort", release, { once: true });
 	try {
+		// Une autorisation navigateur peut arriver après la fermeture du projet.
+		signal?.throwIfAborted();
 		video.srcObject = stream;
 		await video.play();
+		signal?.throwIfAborted();
 		return stream;
 	} catch (error) {
-		stopCamera(stream);
-		video.srcObject = null;
+		release();
 		throw error;
+	} finally {
+		signal?.removeEventListener("abort", release);
 	}
 }
 

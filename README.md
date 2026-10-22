@@ -12,18 +12,19 @@
 # 🖐️ Handfinity
 
 <p align="center">
-  <a href="http://localhost:3001">
+  <a href="http://localhost:3000">
     <img src="public/screenshot.png" alt="Handfinity Screenshot" width="100%" height="400" />
   </a>
 </p>
 
 ### ℹ️ Description
 
-**Handfinity** est une plateforme expérimentale de **reconnaissance des mains et des gestes par webcam** permettant de créer des interactions sans contact. Son architecture modulaire repose sur un **moteur de vision partagé** et plusieurs applications indépendantes, à commencer par **Vision Playground** pour expérimenter et **Handfinity Paint** pour dessiner dans l'air.
+**Handfinity** est une plateforme expérimentale de **reconnaissance des mains et des gestes par webcam** permettant de créer des interactions sans contact. Un [accueil immersif](apps/hub/README.md) donne accès à **Vision Playground** pour expérimenter et **Handfinity Paint** pour dessiner dans l'air. Les projets partagent le moteur de vision et restent aussi utilisables indépendamment.
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur via les API Web, sans serveur de capture ni équipement spécialisé.
-- 🎮 **3 composants complémentaires** :
-  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement.
+- 🎮 **Un accueil et deux expériences** :
+  - **Hub** : Accueil animé sur `/`, avec une main holographique, des aperçus des projets et des emplacements « À venir ». Paint et Playground ont leurs propres routes : `/paint` et `/playground`.
+  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement. Une [zone de navigation expérimentale](apps/playground/README.md) permet de survoler quatre cartes avec un curseur lissé.
   - **Handfinity Paint** : Dessin sans contact sur un Canvas à partir des mouvements de l'index et du pouce.
   - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`) et de la vision (`@handfinity/vision`) dans les futures applications.
 - 👓 **Interaction gestuelle sans contact** : Détection du pincement (*pinch*) pour démarrer, poursuivre et arrêter un tracé, sans souris ni écran tactile.
@@ -32,7 +33,7 @@
 - 🔊 **Retour visuel en direct** : Curseur coloré, statut du geste et indication de l'état de la caméra pour comprendre les interactions.
 - 🧹 **Outillage performant** : **Biome v2** pour le linting et le formatage, y compris les fichiers Vue avec prise en charge expérimentale.
 - 🧪 **Qualité & Tests** : Tests **Vitest** dans Paint, core et vision, exécutés par le pipeline **Jenkins** ; tests E2E **Playwright** prévus.
-- 🐳 **Développement Docker** : Deux services isolés, sources montées en volumes, hot reload Vite avec polling et démarrage commun via Docker Compose.
+- 🐳 **Développement Docker** : Trois services isolés, sources montées en volumes, hot reload Vite avec polling et démarrage commun via Docker Compose.
 
 ---
 
@@ -70,7 +71,7 @@ Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont supe
 - **Aperçu en miroir** : La vidéo est inversée horizontalement pour correspondre aux mouvements naturels de l'utilisateur.
 - **Curseur gestuel** : Un cercle vide suit l'index au repos ; il s'agrandit et affiche la couleur du trait pendant le dessin. Après Clear pendant un pincement, un cercle pointillé invite à relâcher les doigts.
 - **Statut du dessin** : Une consigne accompagne chaque état : caméra arrêtée ou en cours de démarrage, attente d'une main, prêt à dessiner, tracé actif, perte de suivi et relâchement nécessaire.
-- **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Voir [Paint V1.1](apps/paint/README.md).
+- **Tracé lissé** : Le curseur et le pinceau partagent une position filtrée ; des courbes quadratiques relient les points sur un Canvas 2D. Les cinq étapes de [Paint V1.1](apps/paint/README.md) sont implémentées, avec une séparation entre interface, session caméra et gestion du dessin.
 - **Pinceau réglable** : Sélecteur de couleur, épaisseur de 1 à 40 pixels et aperçu. Chaque trait conserve ses réglages jusqu'à sa fin ; le pinceau initial est bleu clair et mesure 6 pixels.
 - **Effacement immédiat** : Le bouton **Clear** vide la surface de dessin sans redémarrer la webcam.
 - **Undo / Redo** : Annulation par trait et rétablissement avec le style d'origine. Clear est également annulable ; les commandes d'historique sont disponibles après relâchement du pincement.
@@ -81,17 +82,92 @@ Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont supe
 - **Analyse vidéo continue** : Le Playground traite les nouvelles images de la caméra et dessine les connexions entre les points de repère pour visualiser les mouvements.
 - **Transitions gestuelles explicites** : Les événements de début, déplacement et fin de pincement évitent de prolonger un trait après relâchement ; la stabilité dépend aussi de la webcam, de l'éclairage et des mouvements.
 
+### Modèle d'observation partagé
+
+`HandTracker.detect(video, timestamp)` retourne un tableau de `HandObservation`
+(vide si aucune main n'est détectée). Les types sont définis dans
+`@handfinity/core` et réexportés par `@handfinity/vision`, qui convertit les
+résultats de MediaPipe :
+
+- `landmarks` : les 21 repères `{ x, y, z }`, dans l'ordre du détecteur
+  (poignet : 0, bout du pouce : 4, bout de l'index : 8, base du majeur : 9).
+  `x` et `y` sont normalisés par les dimensions de l'image source, avant le
+  miroir appliqué à l'affichage. `z` est relatif au poignet, à une échelle proche
+  de `x` ; il ne s'agit pas d'une distance en mètres.
+- `handedness` : `left`, `right` ou `unknown`. La classification porte sur
+  l'image transmise au détecteur ; le miroir CSS de l'aperçu ne la modifie pas.
+- `handednessConfidence` : score de classification gauche/droite entre 0 et 1,
+  ou `null` si la latéralité est absente ou inconnue. Il ne représente pas la
+  confiance globale du suivi ou la précision des repères.
+- `timestamp` : horodatage monotone en millisecondes passé à `detect`, commun
+  aux mains d'une même image. Les applications utilisent `performance.now()`.
+
+Les observations sont des instantanés indépendants des objets MediaPipe,
+exposés en lecture seule dans les types. Leur ordre et leur latéralité ne sont
+pas des identifiants stables entre deux images. Paint et Playground conservent
+pour l'instant leur interaction à une seule main.
+
+Les conventions des repères et des résultats sont décrites dans la
+[documentation MediaPipe Hand Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js#handle_and_display_results).
+
+### Identités des mains
+
+`createHandIdentityTracker`, exporté par `@handfinity/core`, associe les observations
+d'au plus deux mains dans le temps. `update(observations, timestamp, aspectRatio)`
+retourne les pistes identifiées (`tracked` ou `missing`) et les événements
+`hand:found` / `hand:lost`. `advance(timestamp)` expire le suivi même sans nouvelle
+image ; `reset()` efface l'état sans réutiliser les anciens numéros.
+
+Une absence brève peut conserver l'identité pendant 120 ms si la main réapparaît
+à proximité. Une ambiguïté termine les identités concernées ; une nouvelle
+identification commence quand les observations deviennent distinctes. La position
+et la taille des paumes guident l'association, avec la latéralité comme indice
+secondaire. Cette continuité est locale à la session, sans garantie de
+réidentification physique après occultation.
+
+Le [Playground](apps/playground/README.md#suivi-de-deux-mains) affiche les numéros,
+les états et les transitions pour les essais. Paint termine un trait lors d'un
+changement d'identité ; le dessin et le curseur restent limités à une seule main.
+
+### Sessions de suivi communes
+
+Paint et Playground utilisent `createTrackingSession` dans `@handfinity/vision`.
+Chaque instance possède sa caméra, son détecteur, sa boucle vidéo et son suivi
+d'identités. `start(video)` initialise le suivi ; `stop()` est disponible dès la
+création de la session, y compris pendant un démarrage en attente. Une même
+instance peut être arrêtée puis redémarrée.
+
+Le callback `onFrame` reçoit les observations, le suivi des identités, le ratio
+d'image et `hasNewFrame`. Ce dernier distingue une nouvelle image d'une simple
+avancée du temps : l'expiration du suivi continue sans rejouer les gestes ni
+détecter deux fois la même image. `onError` signale une erreur de la boucle après
+nettoyage ; les erreurs d'initialisation rejettent la promesse de `start`.
+
+Playground conserve le rendu et ses diagnostics. `createPinchSession` adapte
+la session commune aux événements de pincement utilisés par Paint ;
+`startPinchSession` reste disponible comme raccourci qui attend le démarrage.
+
+Le projet actif possède sa session et l'arrête lorsqu'on le quitte. La caméra
+n'est pas conservée entre deux routes. Un arrêt libère immédiatement les
+ressources déjà disponibles ; un flux ou détecteur reçu ensuite est libéré à
+son arrivée, sans relancer le suivi ni modifier la session suivante.
+
 ### Lancement et distribution des applications
 
 #### En développement :
 ```bash
-# Lancer le Playground sur http://localhost:3000
+# Lancer l'accueil sur http://localhost:3000
+# Paint : /paint ; Playground : /playground
 npm run dev
 
-# Lancer Paint sur http://localhost:3001 (dans un autre terminal)
+# Facultatif : lancer les applications autonomes
 npm run dev -w paint
+# Paint : http://localhost:3001
+npm run dev -w playground
+# Playground : http://localhost:3002
 ```
-Sous Windows, Linux ou macOS, les deux applications peuvent être lancées depuis la racine du monorepo. **Docker Compose** permet également de démarrer les deux services avec une seule commande.
+Le hub suffit pour accéder aux deux expériences depuis une même application.
+**Docker Compose** permet également de démarrer les trois services avec une seule commande.
 
 #### En production (Build statique des applications) :
 Pour compiler les interfaces web **sans imposer Node.js aux visiteurs** :
@@ -99,6 +175,7 @@ Pour compiler les interfaces web **sans imposer Node.js aux visiteurs** :
 npm run build
 ```
 Cette commande compile les applications Vue avec Vite et produit leurs fichiers statiques dans les dossiers de sortie :
+- **Hub** : Build dans `apps/hub/dist/`, contenant l'accueil et les deux expériences avec leurs routes.
 - **Playground** : Build dans `apps/playground/dist/`, destiné aux essais et à l'observation des gestes.
 - **Paint** : Build dans `apps/paint/dist/`, destiné à l'expérience de dessin sans contact.
 - **Distribution web** : Les fichiers générés peuvent être servis par un serveur HTTP statique, par exemple Nginx derrière Caddy avec HTTPS.
@@ -133,9 +210,9 @@ Cette commande compile les applications Vue avec Vite et produit leurs fichiers 
   - [x] Indicateur de position et de statut du geste
   - [x] Effacement de la surface et export de l'image en PNG
 - [x] **v1.1 — Expérience de Développement & Outillage**
-  - [x] Environnements de développement Vite dédiés aux deux applications
+  - [x] Environnements de développement Vite dédiés aux applications
   - [x] Hot reload Docker avec bind mounts et polling
-  - [x] Ports distincts : **3000 (Playground)** et **3001 (Paint)**
+  - [x] Ports distincts : **3000 (Hub)**, **3001 (Paint)** et **3002 (Playground)**
   - [x] Volumes `node_modules` séparés pour chaque service
   - [x] Interface responsive avec Tailwind CSS
   - [x] Scripts npm de lint, formatage, vérification et compilation
@@ -146,11 +223,18 @@ Cette commande compile les applications Vue avec Vite et produit leurs fichiers 
   - [x] Installation reproductible des dépendances via `npm ci`
   - [x] Étapes automatisées **Lint** et **Format check**
   - [x] Tests **Vitest** de Paint, `@handfinity/core` et `@handfinity/vision`
-  - [x] Build des deux applications et notifications Telegram configurées dans le pipeline
+  - [x] Build des trois applications et notifications Telegram configurées dans le pipeline
+- [ ] **Accueil immersif et navigation gestuelle**
+  - [x] Zone de pointage et survol expérimental dans Playground
+  - [x] Accueil immersif distinct sur `/`, routes `/paint` et `/playground`
+  - [x] Ambiance animée, pause et respect de la réduction des mouvements
+  - [x] Retour dans Paint avec dessin conservé et caméra arrêtée
+  - [ ] Validation et défilement gestuels dans Playground
+  - [ ] Branchement des gestes sur l'accueil
 - [ ] **Déploiement public sur VPS — à finaliser**
-  - [ ] Corriger et valider la cible Docker `prod` avec la configuration Nginx
-  - [ ] Préparer les images ou services de production de Playground et Paint
-  - [ ] Publier les deux interfaces derrière Caddy en HTTPS
+  - [ ] Valider la cible Docker `prod` avec la configuration Nginx
+  - [ ] Préparer l'image ou le service de production du hub
+  - [ ] Publier le hub et ses expériences derrière Caddy en HTTPS
   - [ ] Vérifier les permissions de webcam sur l'URL publique
   - [ ] Tester l'expérience sur plusieurs navigateurs et formats d'écran
   - [ ] Ajouter une véritable capture d'écran au README
@@ -164,12 +248,12 @@ Cette commande compile les applications Vue avec Vite et produit leurs fichiers 
 
 ## Utiliser Handfinity
 
-1. **Démarrer la caméra** : ouvrez **Vision Playground** ou **Handfinity Paint**, puis cliquez sur **Start camera** et autorisez le navigateur à accéder à la webcam.
+1. **Choisir une expérience** : depuis l'accueil, ouvrez **Vision Playground** ou **Handfinity Paint** au clic, au toucher ou au clavier. Cliquez ensuite sur **Start camera** et autorisez le navigateur à accéder à la webcam.
 2. **Explorer la détection** : dans le Playground, observez les points articulaires de la main et les connexions. Rapprochez le pouce et l'index pour voir le statut **PINCH ACTIVE**.
 3. **Dessiner sans contact** : dans Paint, rapprochez le pouce et l'index pour commencer un trait, déplacez la main en maintenant le geste et relâchez pour arrêter de dessiner.
 4. **Effacer ou exporter** : utilisez **Clear** pour recommencer, ou **Export PNG** pour enregistrer le dessin. Arrêtez ensuite la webcam avec **Stop camera**.
 
-**Caméra et aide :** la caméra n'est pas activée automatiquement. Un message s'affiche en cas d'échec d'initialisation ou d'indisponibilité du périphérique. Le Playground est l'outil privilégié pour comprendre la détection avant d'utiliser Paint.
+**Caméra et aide :** la caméra n'est pas activée automatiquement. Quitter un projet ferme sa session ; le dessin et l'historique de Paint restent en mémoire pendant la navigation dans le hub, jusqu'au rechargement de l'onglet. Un message s'affiche en cas d'échec d'initialisation ou d'indisponibilité du périphérique. Le Playground est l'outil privilégié pour comprendre la détection avant d'utiliser Paint.
 
 **Lecture des gestes :** les repères fournis par MediaPipe sont des coordonnées estimées à partir de l'image. La reconnaissance dépend de la visibilité de la main, de la lumière et de la qualité du flux vidéo. Dans le Playground V1, le pincement est évalué sur une seule main détectée.
 
@@ -191,32 +275,33 @@ cd handfinity
 # 2. Installer les dépendances du monorepo
 npm ci
 
-# 3. Lancer le Playground
+# 3. Lancer le hub et accéder aux deux expériences
 npm run dev
-# Playground : http://localhost:3000
-# Dans un autre terminal : npm run dev -w paint
-# Paint : http://localhost:3001
+# Accueil : http://localhost:3000
+# Paint : http://localhost:3000/paint
+# Playground : http://localhost:3000/playground
 ```
 
 ### Option B : Développer avec Docker
 
-Cette configuration utilise **Docker Compose** et deux services indépendants :
-`playground` et `paint`. Chaque conteneur démarre Vite avec le code source monté
+Cette configuration utilise **Docker Compose** et trois services indépendants :
+`hub`, `playground` et `paint`. Chaque conteneur démarre Vite avec le code source monté
 en volume, sans dépendance à un backend ni à une base de données.
-Le Playground écoute sur le port **3000** et Paint sur le port **3001**, tous deux
-exposés sur la machine hôte.
+Le hub écoute sur le port **3000**, Paint sur **3001** et Playground sur **3002**,
+exposés sur la machine hôte. Pour travailler uniquement dans le hub,
+`docker compose up --build hub` suffit.
 
 La variable `CHOKIDAR_USEPOLLING=true` est définie dans `docker-compose.yml` pour
 fiabiliser la détection des fichiers modifiés, notamment avec Docker / WSL2.
-Les noms de services sont `playground` et `paint`.
 
 ```bash
 docker compose up --build
-# Playground : http://localhost:3000
+# Accueil et projets : http://localhost:3000
 # Paint : http://localhost:3001
+# Playground : http://localhost:3002
 ```
 
-Les dossiers `node_modules` utilisés par les deux conteneurs résident dans des
+Les dossiers `node_modules` utilisés par les trois conteneurs résident dans des
 volumes Docker distincts, tandis que le dépôt est monté dans `/app`.
 Les services exécutent `npm ci` au démarrage afin de disposer des dépendances.
 
@@ -229,7 +314,7 @@ Après une modification de `docker-compose.yml`, réappliquer la configuration a
 Le navigateur doit afficher `[vite] connected` dans sa console. Une modification
 valide de `apps/paint/src/App.vue` doit ensuite provoquer une mise à jour HMR.
 En cas d'erreur Vue ou TypeScript, vérifier la console du navigateur et les
-logs avec `docker compose logs -f paint` ou `docker compose logs -f playground`.
+logs avec `docker compose logs -f hub`, `paint` ou `playground`.
 
 Après l'ajout d'une dépendance dans le monorepo, synchroniser le lockfile et
 recréer le service concerné pour actualiser son volume `node_modules` :
@@ -243,8 +328,8 @@ docker compose up -d --build --force-recreate
 
 ## 🌐 Déploiement sur VPS et exécution côté navigateur
 
-**État actuel : Handfinity dispose de deux applications web fonctionnelles en
-local et d'une configuration Docker pour le développement. Le déploiement public
+**État actuel : Handfinity dispose d'un hub et de deux expériences fonctionnelles
+en local, avec une configuration Docker pour le développement. Le déploiement public
 sur VPS avec HTTPS reste à finaliser.**
 
 Aujourd'hui, les interactions passent directement par le navigateur :
@@ -275,9 +360,10 @@ resteront gérées par le navigateur de chacun.
 
 Le fichier `docker-compose.yml` actuel lance **les serveurs de développement**
 avec hot reload ; ce n'est pas une configuration de production. Le `Dockerfile`
-comporte une cible `prod` basée sur Nginx, mais elle doit être validée avant
-usage (le `COPY docker/nginx.conf` ne correspond pas au fichier `nginx.conf`
-présent à la racine). La configuration Caddy/HTTPS et le déploiement public
+comporte une cible `prod` basée sur Nginx qui construit le hub par défaut. Elle
+copie le fichier `nginx.conf` de la racine, avec un fallback vers `index.html`
+pour les routes du hub. L'image de production reste à valider.
+La configuration Caddy/HTTPS et le déploiement public
 restent également à mettre en place.
 
 ---
@@ -286,16 +372,17 @@ restent également à mettre en place.
 
 | Commande | Description |
 | :--- | :--- |
-| `npm run dev` | Démarre **Vision Playground** avec Vite sur le port 3000 |
+| `npm run dev` | Démarre le **Hub** sur le port 3000, avec `/`, `/paint` et `/playground` |
 | `npm run dev -w paint` | Démarre **Handfinity Paint** sur le port 3001 |
-| `npm run build` | Compile **Playground** et **Paint** pour la production |
+| `npm run dev -w playground` | Démarre **Vision Playground** sur le port 3002 |
+| `npm run build` | Compile **Playground**, **Paint** et le **Hub** pour la production |
 | `npm run lint` | Exécute le linter **Biome** sur l'ensemble du monorepo |
 | `npm run format` | Formate le code avec **Biome** |
 | `npm run format:check` | Vérifie le formatage sans modifier les fichiers (utilisé en CI) |
 | `npm run check` | Lance la vérification complète `biome check .` |
 | `npm test -w @handfinity/core` | Exécute les tests unitaires **Vitest** du package core |
 | `npm test` | Exécute les tests **Vitest** de Paint, core et vision |
-| `docker compose up --build` | Démarre les deux applications en développement avec hot reload |
+| `docker compose up --build` | Démarre les trois applications en développement avec hot reload |
 
 ---
 

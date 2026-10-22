@@ -3,8 +3,8 @@
 	"version": "1.0.0",
 	"description": "",
 	"scripts": {
-		"dev": "npm run dev -w playground",
-		"build": "npm run build -w playground && npm run build -w paint",
+		"dev": "npm run dev -w hub",
+		"build": "npm run build -w playground && npm run build -w paint && npm run build -w hub",
 		"test": "npm test --workspaces --if-present",
 		"check": "biome check .",
 		"format": "biome format --write .",

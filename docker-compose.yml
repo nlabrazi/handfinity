@@ -1,5 +1,22 @@
 
 services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: handfinity-hub
+    restart: unless-stopped
+    init: true
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - hub_node_modules:/app/node_modules
+    command: sh -c "npm ci && exec npm run dev -w hub"
+
   playground:
     build:
       context: .
@@ -11,7 +28,7 @@ services:
     environment:
       CHOKIDAR_USEPOLLING: "true"
     ports:
-      - "3000:3000"
+      - "3002:3002"
     volumes:
       - ./:/app
       - playground_node_modules:/app/node_modules
@@ -35,5 +52,6 @@ services:
     command: sh -c "npm ci && exec npm run dev -w paint"
 
 volumes:
+  hub_node_modules:
   playground_node_modules:
   paint_node_modules:

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HandPoint } from "@handfinity/core";
 import { startCamera, stopCamera } from "./camera";
-import { createHandTracker, type HandPoint } from "./hand-tracker";
-import { startPinchSession, type PinchCallbacks } from "./pinch-session";
+import { createHandTracker, type HandTracker } from "./hand-tracker";
+import { createPinchSession, type PinchCallbacks } from "./pinch-session";
 
 vi.mock("./camera", () => ({ startCamera: vi.fn(), stopCamera: vi.fn() }));
 vi.mock("./hand-tracker", () => ({ createHandTracker: vi.fn() }));
@@ -39,7 +40,7 @@ async function setup() {
 		videoHeight: 720,
 		srcObject: stream,
 	} as HTMLVideoElement;
-	const tracker = { detect: vi.fn<() => HandPoint[][]>(), close: vi.fn() };
+	const tracker = { detect: vi.fn<HandTracker["detect"]>(), close: vi.fn() };
 	vi.mocked(startCamera).mockResolvedValue(stream);
 	vi.mocked(createHandTracker).mockResolvedValue(tracker);
 	const callbacks = {
@@ -47,7 +48,8 @@ async function setup() {
 		onPointer: vi.fn(),
 		onError: vi.fn(),
 	};
-	const session = await startPinchSession(video, callbacks);
+	const session = createPinchSession(callbacks);
+	await session.start(video);
 
 	function frame(
 		timestamp: number,
@@ -56,7 +58,14 @@ async function setup() {
 	) {
 		now = timestamp;
 		if (fresh) video.currentTime = timestamp / 1000 + 1;
-		tracker.detect.mockReturnValue(hands);
+		tracker.detect.mockReturnValue(
+			hands.map((landmarks) => ({
+				landmarks,
+				handedness: "unknown",
+				handednessConfidence: null,
+				timestamp,
+			})),
+		);
 		const callback = nextFrame;
 		nextFrame = undefined;
 		callback?.(timestamp);
@@ -104,6 +113,50 @@ describe("Pinch session", () => {
 		frame(140, [hand(0.3)]);
 		expect(callbacks.onGesture).toHaveBeenLastCalledWith(
 			expect.objectContaining({ type: "pinch:start" }),
+		);
+	});
+
+	it("ends the old stroke on an identity change without an intervening empty frame", async () => {
+		const { start, frame, callbacks } = await setup();
+		start();
+		frame(80, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:end", reason: "tracking-lost" }),
+		);
+		frame(120, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenLastCalledWith(
+			expect.objectContaining({ type: "pinch:start" }),
+		);
+		const restarted = callbacks.onGesture.mock.lastCall?.[0];
+		expect(restarted?.position.x).toBeCloseTo(0.84);
+		expect(restarted?.position.y).toBe(0.4);
+		expect(
+			callbacks.onGesture.mock.calls.some(
+				([event]) => event.type === "pinch:move",
+			),
+		).toBe(false);
+	});
+
+	it("does not confirm a pinch using observations from two different identities", async () => {
+		const { frame, callbacks } = await setup();
+		frame(0);
+		frame(40, [hand(0.3)]);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		frame(80, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:start" }),
+		);
+	});
+
+	it("suspends a stroke on invalid landmarks and ends it when tracking expires", async () => {
+		const { start, frame, callbacks } = await setup();
+		start();
+		frame(80, [hand(Number.NaN)]);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		expect(callbacks.onPointer).toHaveBeenLastCalledWith(null, 80);
+		frame(161, [hand(Number.NaN)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:end", reason: "tracking-lost" }),
 		);
 	});
 
@@ -185,5 +238,18 @@ describe("Pinch session", () => {
 		expect(callbacks.onError).toHaveBeenCalledExactlyOnceWith(error);
 		expect(stopCamera).toHaveBeenCalledExactlyOnceWith(stream);
 		expect(tracker.close).toHaveBeenCalledOnce();
+	});
+
+	it("requires a fresh pinch confirmation after restarting the same session", async () => {
+		const { start, frame, callbacks, session, video } = await setup();
+		start();
+		session.stop();
+		await session.start(video);
+		frame(80);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		frame(120);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:start", timestamp: 120 }),
+		);
 	});
 });
