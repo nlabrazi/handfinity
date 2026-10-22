@@ -1,4 +1,5 @@
 import {
+	createHandIdentityTracker,
 	createPinchDetector,
 	type HandPose,
 	type PinchEvent,
@@ -17,12 +18,6 @@ export type PinchCallbacks = {
 	onError?(error: unknown): void;
 };
 
-const LOST_HAND_GRACE_MS = 120;
-
-function distance(a: Point, b: Point, aspectRatio: number) {
-	return Math.hypot((a.x - b.x) * aspectRatio, a.y - b.y);
-}
-
 export async function startPinchSession(
 	video: HTMLVideoElement,
 	callbacks: PinchCallbacks,
@@ -39,18 +34,15 @@ export async function startPinchSession(
 	}
 
 	const detector = createPinchDetector();
+	const identities = createHandIdentityTracker();
 	let stopped = false;
 	let frameId = 0;
 	let lastVideoTime = -1;
-	let lastPose: HandPose | null = null;
-	let lastSeenAt: number | null = null;
-	let missing = false;
+	let activeHandId: number | null = null;
 
 	function endTracking(timestamp: number) {
 		const event = detector.update(null, 1, timestamp);
-		lastPose = null;
-		lastSeenAt = null;
-		missing = false;
+		activeHandId = null;
 		callbacks.onPointer?.(null, timestamp);
 		if (event) callbacks.onGesture(event);
 	}
@@ -61,6 +53,7 @@ export async function startPinchSession(
 
 		cancelAnimationFrame(frameId);
 		detector.reset();
+		identities.reset();
 		tracker.close();
 		stopCamera(stream);
 
@@ -76,18 +69,25 @@ export async function startPinchSession(
 
 		try {
 			const timestamp = performance.now();
-			// Expirer aussi quand la vidéo ne fournit plus de nouvelle image.
-			if (lastSeenAt !== null && timestamp - lastSeenAt > LOST_HAND_GRACE_MS) {
-				endTracking(timestamp);
-			}
-
 			if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
 				lastVideoTime = video.currentTime;
 				const hands = tracker.detect(video, timestamp);
 				const aspectRatio = video.videoWidth / video.videoHeight;
+				const tracking = identities.update(hands, timestamp, aspectRatio);
 
-				// V1 : ne pas mélanger les identités de deux mains.
-				const hand = hands.length === 1 ? hands[0]?.landmarks : undefined;
+				// Le dessin reste à une main, avec une identité explicite.
+				const tracked =
+					hands.length === 1 && !tracking.ambiguous
+						? tracking.hands.find((item) => item.status === "tracked")
+						: undefined;
+				if (
+					activeHandId !== null &&
+					((tracked && tracked.id !== activeHandId) ||
+						!tracking.hands.some((item) => item.id === activeHandId))
+				) {
+					endTracking(timestamp);
+				}
+				const hand = tracked?.observation.landmarks;
 				const pose: HandPose | null =
 					hand?.[0] && hand[4] && hand[8] && hand[9]
 						? {
@@ -98,34 +98,25 @@ export async function startPinchSession(
 							}
 						: null;
 
-				if (pose) {
-					// Une reprise éloignée peut être une autre main : ne pas relier
-					// les positions. La tolérance est relative à la taille de la paume.
-					if (missing && lastPose) {
-						const maxDistance =
-							distance(lastPose.wrist, lastPose.middleBase, aspectRatio) / 2;
-						if (
-							distance(lastPose.indexTip, pose.indexTip, aspectRatio) >
-								maxDistance ||
-							distance(lastPose.wrist, pose.wrist, aspectRatio) > maxDistance
-						) {
-							endTracking(timestamp);
-						}
-					}
-					missing = false;
-					lastPose = pose;
-					lastSeenAt = timestamp;
+				if (pose && tracked) {
+					activeHandId = tracked.id;
 					callbacks.onPointer?.(pose.indexTip, timestamp);
 
 					const event = detector.update(pose, aspectRatio, timestamp);
 					if (event) callbacks.onGesture(event);
-				} else if (hands.length > 1) {
-					// Une ambiguïté entre deux mains interrompt immédiatement le geste.
+				} else if (hands.length > 1 || tracking.ambiguous) {
 					endTracking(timestamp);
 				} else {
-					missing = true;
 					detector.suspend();
 					callbacks.onPointer?.(null, timestamp);
+				}
+			} else {
+				const tracking = identities.advance(timestamp);
+				if (
+					activeHandId !== null &&
+					!tracking.hands.some((item) => item.id === activeHandId)
+				) {
+					endTracking(timestamp);
 				}
 			}
 		} catch (error) {

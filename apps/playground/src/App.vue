@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref, shallowRef } from "vue";
 import {
 	createHandTracker,
 	HAND_CONNECTIONS,
@@ -9,10 +9,14 @@ import {
 	type HandTracker,
 } from "@handfinity/vision";
 import {
+	createHandIdentityTracker,
 	createPinchDetector,
 	createPointSmoother,
 	type HandPose,
+	type HandTrackingFrame,
+	type PinchEvent,
 	type Point,
+	type TrackedHand,
 } from "@handfinity/core";
 import NavigationSandbox from "./components/NavigationSandbox.vue";
 
@@ -27,11 +31,14 @@ const error = ref("");
 const pinchActive = ref(false);
 const pinchTransition = ref("Aucun");
 const pointer = ref<Point | null>(null);
+const trackedHands = shallowRef<readonly TrackedHand[]>([]);
+const trackingAmbiguous = ref(false);
+const trackingTransition = ref("None");
 
+const identities = createHandIdentityTracker();
 const pinch = createPinchDetector();
 const pointSmoother = createPointSmoother();
-const POINTER_STALE_MS = 120;
-let lastPointerAt: number | null = null;
+let activeHandId: number | null = null;
 
 let stream: MediaStream | null = null;
 let tracker: HandTracker | null = null;
@@ -41,8 +48,48 @@ let disposed = false;
 
 function resetPointer() {
 	pointer.value = null;
-	lastPointerAt = null;
 	pointSmoother.reset();
+}
+
+function recordGesture(event: PinchEvent | null) {
+	if (!event) return;
+	pinchActive.value = event.type !== "pinch:end";
+	if (event.type !== "pinch:move") {
+		pinchTransition.value = event.type;
+		console.info("[Handfinity]", event);
+	}
+}
+
+function endInteraction(timestamp: number) {
+	recordGesture(pinch.update(null, 1, timestamp));
+	activeHandId = null;
+	resetPointer();
+}
+
+function showTracking(frame: HandTrackingFrame) {
+	trackedHands.value = frame.hands;
+	trackingAmbiguous.value = frame.ambiguous;
+	if (frame.events.length) {
+		trackingTransition.value = frame.events
+			.map((event) =>
+				event.type === "hand:found"
+					? `Hand #${event.handId} appeared`
+					: `Hand #${event.handId} lost (${event.reason})`,
+			)
+			.join(" · ");
+	}
+	if (
+		activeHandId !== null &&
+		!frame.hands.some((hand) => hand.id === activeHandId)
+	) {
+		endInteraction(frame.timestamp);
+	}
+}
+
+function handColor(id: number) {
+	return (
+		["#22d3ee", "#fb923c", "#a78bfa", "#4ade80"][(id - 1) % 4] ?? "#22d3ee"
+	);
 }
 
 function drawHands(hands: HandObservation[]) {
@@ -63,8 +110,12 @@ function drawHands(hands: HandObservation[]) {
 
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-	for (const { landmarks: points } of hands) {
-		ctx.strokeStyle = pinchActive.value ? "#4ade80" : "#22d3ee";
+	for (const observation of hands) {
+		const points = observation.landmarks;
+		const tracked = trackedHands.value.find(
+			(hand) => hand.status === "tracked" && hand.observation === observation,
+		);
+		ctx.strokeStyle = tracked ? handColor(tracked.id) : "#94a3b8";
 		ctx.lineWidth = 3;
 
 		for (const connection of HAND_CONNECTIONS) {
@@ -91,6 +142,21 @@ function drawHands(hands: HandObservation[]) {
 			);
 			ctx.fill();
 		}
+
+		const wrist = points[0];
+		if (tracked && wrist) {
+			ctx.save();
+			ctx.translate(wrist.x * canvas.width, wrist.y * canvas.height);
+			// Le canvas entier est affiché en miroir : retourner aussi le texte.
+			ctx.scale(-1, 1);
+			ctx.font = "bold 24px sans-serif";
+			ctx.lineWidth = 4;
+			ctx.strokeStyle = "#020617";
+			ctx.fillStyle = handColor(tracked.id);
+			ctx.strokeText(`#${tracked.id}`, 10, -12);
+			ctx.fillText(`#${tracked.id}`, 10, -12);
+			ctx.restore();
+		}
 	}
 }
 
@@ -100,22 +166,26 @@ function detectFrame() {
 
 	try {
 		const timestamp = performance.now();
-		// Retirer aussi le curseur si le flux cesse de fournir des images.
-		if (
-			lastPointerAt !== null &&
-			timestamp - lastPointerAt > POINTER_STALE_MS
-		) {
-			resetPointer();
-		}
 		if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
 			lastVideoTime = video.currentTime;
 
 			const hands = tracker.detect(video, timestamp);
+			const tracking = identities.update(
+				hands,
+				timestamp,
+				video.videoWidth / video.videoHeight,
+			);
+			showTracking(tracking);
 
 			handCount.value = hands.length;
 
-			// V1 : une seule main pour éviter de mélanger les gestes.
-			const hand = hands.length === 1 ? hands[0]?.landmarks : undefined;
+			// Le suivi accepte deux mains ; le curseur reste à une seule main.
+			const tracked =
+				hands.length === 1 && !tracking.ambiguous
+					? tracking.hands.find((item) => item.status === "tracked")
+					: undefined;
+			if (activeHandId !== tracked?.id) endInteraction(timestamp);
+			const hand = tracked?.observation.landmarks;
 
 			const pose: HandPose | null =
 				hand?.[0] && hand[4] && hand[8] && hand[9]
@@ -127,29 +197,28 @@ function detectFrame() {
 						}
 					: null;
 
-			if (pose) {
+			if (pose && tracked) {
+				activeHandId = tracked.id;
 				pointer.value = pointSmoother.update(pose.indexTip, timestamp);
-				lastPointerAt = timestamp;
 			} else {
 				resetPointer();
 			}
 
-			const gesture = pinch.update(
-				pose,
-				video.videoWidth / video.videoHeight,
-				timestamp,
+			recordGesture(
+				pinch.update(pose, video.videoWidth / video.videoHeight, timestamp),
 			);
 
-			if (gesture) {
-				pinchActive.value = gesture.type !== "pinch:end";
-
-				if (gesture.type !== "pinch:move") {
-					pinchTransition.value = gesture.type;
-					console.info("[Handfinity]", gesture);
-				}
-			}
-
 			drawHands(hands);
+		} else {
+			const tracking = identities.advance(timestamp);
+			showTracking(tracking);
+			if (tracking.events.length) {
+				const visible = tracking.hands
+					.filter((hand) => hand.status === "tracked")
+					.map((hand) => hand.observation);
+				handCount.value = visible.length;
+				drawHands(visible);
+			}
 		}
 
 		frameId = requestAnimationFrame(detectFrame);
@@ -178,6 +247,11 @@ function stop() {
 	isRunning.value = false;
 	handCount.value = 0;
 	lastVideoTime = -1;
+	identities.reset();
+	trackedHands.value = [];
+	trackingAmbiguous.value = false;
+	trackingTransition.value = "None";
+	activeHandId = null;
 
 	pinch.reset();
 	resetPointer();
@@ -281,6 +355,30 @@ onBeforeUnmount(() => {
 						<span class="text-sm text-slate-400">
 							Hands detected: {{ handCount }}
 						</span>
+					</div>
+
+					<div
+						class="space-y-2 rounded-lg bg-slate-900 p-3 text-sm"
+						data-hand-tracking
+					>
+						<p class="font-medium">Hand identities</p>
+						<ul v-if="trackedHands.length" class="space-y-1">
+							<li
+								v-for="hand in trackedHands"
+								:key="hand.id"
+								:style="{ color: handColor(hand.id) }"
+							>
+								Hand #{{ hand.id }} · {{ hand.observation.handedness }} ·
+								{{ hand.status }}
+							</li>
+						</ul>
+						<p v-else class="text-slate-400">No identified hands.</p>
+						<p v-if="trackingAmbiguous" class="text-amber-300">
+							Ambiguous positions — separate your hands to restart tracking.
+						</p>
+						<p class="text-slate-400">
+							Last tracking event: {{ trackingTransition }}
+						</p>
 					</div>
 
 					<div class="flex flex-wrap items-center gap-4 text-sm">

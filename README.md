@@ -110,6 +110,25 @@ pour l'instant leur interaction à une seule main.
 Les conventions des repères et des résultats sont décrites dans la
 [documentation MediaPipe Hand Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js#handle_and_display_results).
 
+### Identités des mains
+
+`createHandIdentityTracker`, exporté par `@handfinity/core`, associe les observations
+d'au plus deux mains dans le temps. `update(observations, timestamp, aspectRatio)`
+retourne les pistes identifiées (`tracked` ou `missing`) et les événements
+`hand:found` / `hand:lost`. `advance(timestamp)` expire le suivi même sans nouvelle
+image ; `reset()` efface l'état sans réutiliser les anciens numéros.
+
+Une absence brève peut conserver l'identité pendant 120 ms si la main réapparaît
+à proximité. Une ambiguïté termine les identités concernées ; une nouvelle
+identification commence quand les observations deviennent distinctes. La position
+et la taille des paumes guident l'association, avec la latéralité comme indice
+secondaire. Cette continuité est locale à la session, sans garantie de
+réidentification physique après occultation.
+
+Le [Playground](apps/playground/README.md#suivi-de-deux-mains) affiche les numéros,
+les états et les transitions pour les essais. Paint termine un trait lors d'un
+changement d'identité ; le dessin et le curseur restent limités à une seule main.
+
 ### Lancement et distribution des applications
 
 #### En développement :

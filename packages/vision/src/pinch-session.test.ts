@@ -115,6 +115,50 @@ describe("Pinch session", () => {
 		);
 	});
 
+	it("ends the old stroke on an identity change without an intervening empty frame", async () => {
+		const { start, frame, callbacks } = await setup();
+		start();
+		frame(80, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:end", reason: "tracking-lost" }),
+		);
+		frame(120, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenLastCalledWith(
+			expect.objectContaining({ type: "pinch:start" }),
+		);
+		const restarted = callbacks.onGesture.mock.lastCall?.[0];
+		expect(restarted?.position.x).toBeCloseTo(0.84);
+		expect(restarted?.position.y).toBe(0.4);
+		expect(
+			callbacks.onGesture.mock.calls.some(
+				([event]) => event.type === "pinch:move",
+			),
+		).toBe(false);
+	});
+
+	it("does not confirm a pinch using observations from two different identities", async () => {
+		const { frame, callbacks } = await setup();
+		frame(0);
+		frame(40, [hand(0.3)]);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		frame(80, [hand(0.3)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:start" }),
+		);
+	});
+
+	it("suspends a stroke on invalid landmarks and ends it when tracking expires", async () => {
+		const { start, frame, callbacks } = await setup();
+		start();
+		frame(80, [hand(Number.NaN)]);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		expect(callbacks.onPointer).toHaveBeenLastCalledWith(null, 80);
+		frame(161, [hand(Number.NaN)]);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:end", reason: "tracking-lost" }),
+		);
+	});
+
 	it("ends immediately when two hands make the tracking ambiguous", async () => {
 		const { start, frame, callbacks } = await setup();
 		start();
