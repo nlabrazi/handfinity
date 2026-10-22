@@ -2,11 +2,13 @@
 import { useId } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { provideMotionPreferences } from "./composables/useMotionPreferences";
+import { usePageTransition } from "./composables/usePageTransition";
 
 const route = useRoute();
 const brandGradient = useId();
 const { reducedMotion, paused, motionPaused, toggleMotion } =
 	provideMotionPreferences();
+const pageTransition = usePageTransition(motionPaused);
 
 function focusPage(element: Element) {
 	const heading = element.querySelector("h1");
@@ -91,7 +93,15 @@ function focusPage(element: Element) {
 
 		<div id="experience" tabindex="-1">
 			<RouterView v-slot="{ Component, route: currentRoute }">
-				<Transition name="portal" mode="out-in" @after-enter="focusPage">
+				<Transition
+					:css="false"
+					mode="out-in"
+					@enter="pageTransition.enter"
+					@leave="pageTransition.leave"
+					@enter-cancelled="pageTransition.cancel"
+					@leave-cancelled="pageTransition.cancel"
+					@after-enter="focusPage"
+				>
 					<KeepAlive include="PaintWorkspace">
 						<component :is="Component" :key="currentRoute.name" />
 					</KeepAlive>

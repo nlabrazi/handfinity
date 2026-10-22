@@ -1,32 +1,17 @@
 <script setup lang="ts">
+import { useTemplateRef } from "vue";
+import { useHomeAnimations } from "../composables/useHomeAnimations";
 import { RouterLink } from "vue-router";
 import HolographicHand from "../components/HolographicHand.vue";
 import ProjectPreview from "../components/ProjectPreview.vue";
 
-function moveLight(event: PointerEvent) {
-	if (event.pointerType !== "mouse") return;
-	const scene = event.currentTarget as HTMLElement;
-	if (scene.closest('[data-motion="paused"]')) return;
-	const rect = scene.getBoundingClientRect();
-	scene.style.setProperty(
-		"--look-x",
-		String((event.clientX - rect.left) / rect.width - 0.5),
-	);
-	scene.style.setProperty(
-		"--look-y",
-		String((event.clientY - rect.top) / rect.height - 0.5),
-	);
-}
-
-function resetLight(event: PointerEvent) {
-	const scene = event.currentTarget as HTMLElement;
-	scene.style.setProperty("--look-x", "0");
-	scene.style.setProperty("--look-y", "0");
-}
+const scene = useTemplateRef<HTMLElement>("scene");
+const { moveLight, resetLight } = useHomeAnimations(scene);
 </script>
 
 <template>
 	<main
+		ref="scene"
 		class="home-universe"
 		@pointermove="moveLight"
 		@pointerleave="resetLight"
@@ -93,8 +78,12 @@ function resetLight(event: PointerEvent) {
 				</RouterLink>
 
 				<div class="hologram" aria-hidden="true">
-					<div class="orbital orbital-outer" />
-					<div class="orbital orbital-inner" />
+					<div class="orbital orbital-outer">
+						<span class="orbital-track" />
+					</div>
+					<div class="orbital orbital-inner">
+						<span class="orbital-track" />
+					</div>
 					<div class="hand-projection"><HolographicHand /></div>
 					<div class="projection-base"><span /><span /><span /></div>
 					<div class="hologram-label">

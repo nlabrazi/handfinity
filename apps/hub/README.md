@@ -39,7 +39,22 @@ et leurs styles initiaux restaurés. Les gestionnaires d'événements qui créen
 des animations ensuite doivent être enregistrés avec `context.add`.
 `useMotionPreferences` partage la pause et la préférence système depuis
 l'application hôte ; il évite de multiplier les écouteurs `matchMedia`.
-Les animations CSS existantes restent en place dans cette première étape.
+
+| Fichier dans `src/` | Responsabilité |
+| --- | --- |
+| `animations/homeAmbience.ts` | Timeline des lumières, particules, main, scans, anneaux et tracés Paint. |
+| `composables/useHomeAnimations.ts` | Pause/reprise de la timeline et parallaxe avec des tweens `quickTo` réutilisés. |
+| `composables/usePageTransition.ts` | Entrée/sortie des pages, annulation et restauration des styles pour `KeepAlive`. |
+| `composables/useGsapContext.ts` | Création et nettoyage du contexte GSAP propre à une vue. |
+| `composables/useMotionPreferences.ts` | Préférence système et choix de pause persisté, partagés par injection Vue. |
+
+Les anciens `@keyframes` de l'accueil ont été retirés. CSS conserve la palette,
+la disposition responsive et les courtes transitions de couleur/bordure au
+survol ; GSAP pilote les mouvements de la scène et les transitions des pages.
+Une pause fige l'ambiance et recentre la parallaxe. La réduction des mouvements
+neutralise aussi les transitions de navigation. Celles-ci attendent la fin du
+patch Vue avant de poursuivre, pour rester compatibles avec `KeepAlive`.
+Chaque sortie de l'accueil détruit ses animations et restaure les styles SVG/DOM.
 
 - Vue Router fournit les routes, les titres et l'historique du navigateur.
   Les vues sont chargées à la demande depuis les exports `paint/view` et
@@ -80,6 +95,10 @@ npm run lint
 npm run format:check
 npm run build
 ```
+
+Les six tests du hub couvrent les transitions interrompues, la pause en cours
+de navigation, les callbacks différés et le nettoyage des tweens. Ils sont
+exécutés avec les autres suites par `npm test` et la CI.
 
 Pour tester dans le navigateur : ouvrir chaque carte, revenir à l'accueil,
 utiliser Précédent/Suivant, puis recharger chaque URL. Dessiner dans Paint,
