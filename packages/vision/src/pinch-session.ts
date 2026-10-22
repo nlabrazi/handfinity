@@ -87,7 +87,7 @@ export async function startPinchSession(
 				const aspectRatio = video.videoWidth / video.videoHeight;
 
 				// V1 : ne pas mélanger les identités de deux mains.
-				const hand = hands.length === 1 ? hands[0] : undefined;
+				const hand = hands.length === 1 ? hands[0]?.landmarks : undefined;
 				const pose: HandPose | null =
 					hand?.[0] && hand[4] && hand[8] && hand[9]
 						? {

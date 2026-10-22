@@ -82,6 +82,34 @@ Dans **Handfinity Paint**, le flux de la webcam et le **Canvas HTML5** sont supe
 - **Analyse vidéo continue** : Le Playground traite les nouvelles images de la caméra et dessine les connexions entre les points de repère pour visualiser les mouvements.
 - **Transitions gestuelles explicites** : Les événements de début, déplacement et fin de pincement évitent de prolonger un trait après relâchement ; la stabilité dépend aussi de la webcam, de l'éclairage et des mouvements.
 
+### Modèle d'observation partagé
+
+`HandTracker.detect(video, timestamp)` retourne un tableau de `HandObservation`
+(vide si aucune main n'est détectée). Les types sont définis dans
+`@handfinity/core` et réexportés par `@handfinity/vision`, qui convertit les
+résultats de MediaPipe :
+
+- `landmarks` : les 21 repères `{ x, y, z }`, dans l'ordre du détecteur
+  (poignet : 0, bout du pouce : 4, bout de l'index : 8, base du majeur : 9).
+  `x` et `y` sont normalisés par les dimensions de l'image source, avant le
+  miroir appliqué à l'affichage. `z` est relatif au poignet, à une échelle proche
+  de `x` ; il ne s'agit pas d'une distance en mètres.
+- `handedness` : `left`, `right` ou `unknown`. La classification porte sur
+  l'image transmise au détecteur ; le miroir CSS de l'aperçu ne la modifie pas.
+- `handednessConfidence` : score de classification gauche/droite entre 0 et 1,
+  ou `null` si la latéralité est absente ou inconnue. Il ne représente pas la
+  confiance globale du suivi ou la précision des repères.
+- `timestamp` : horodatage monotone en millisecondes passé à `detect`, commun
+  aux mains d'une même image. Les applications utilisent `performance.now()`.
+
+Les observations sont des instantanés indépendants des objets MediaPipe,
+exposés en lecture seule dans les types. Leur ordre et leur latéralité ne sont
+pas des identifiants stables entre deux images. Paint et Playground conservent
+pour l'instant leur interaction à une seule main.
+
+Les conventions des repères et des résultats sont décrites dans la
+[documentation MediaPipe Hand Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js#handle_and_display_results).
+
 ### Lancement et distribution des applications
 
 #### En développement :

@@ -5,7 +5,7 @@ import {
 	HAND_CONNECTIONS,
 	startCamera,
 	stopCamera,
-	type HandPoint,
+	type HandObservation,
 	type HandTracker,
 } from "@handfinity/vision";
 import {
@@ -45,7 +45,7 @@ function resetPointer() {
 	pointSmoother.reset();
 }
 
-function drawHands(hands: HandPoint[][]) {
+function drawHands(hands: HandObservation[]) {
 	const canvas = canvasRef.value;
 	const video = videoRef.value;
 	if (!canvas || !video) return;
@@ -63,7 +63,7 @@ function drawHands(hands: HandPoint[][]) {
 
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-	for (const points of hands) {
+	for (const { landmarks: points } of hands) {
 		ctx.strokeStyle = pinchActive.value ? "#4ade80" : "#22d3ee";
 		ctx.lineWidth = 3;
 
@@ -115,7 +115,7 @@ function detectFrame() {
 			handCount.value = hands.length;
 
 			// V1 : une seule main pour éviter de mélanger les gestes.
-			const hand = hands.length === 1 ? hands[0] : undefined;
+			const hand = hands.length === 1 ? hands[0]?.landmarks : undefined;
 
 			const pose: HandPose | null =
 				hand?.[0] && hand[4] && hand[8] && hand[9]

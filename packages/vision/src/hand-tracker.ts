@@ -1,13 +1,9 @@
+import type { Handedness, HandObservation } from "@handfinity/core";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 
-export type HandPoint = {
-	x: number;
-	y: number;
-	z: number;
-};
-
 export type HandTracker = {
-	detect(video: HTMLVideoElement, timestamp: number): HandPoint[][];
+	/** Observations de l'image ; l'ordre du tableau n'identifie pas les mains. */
+	detect(video: HTMLVideoElement, timestamp: number): HandObservation[];
 	close(): void;
 };
 
@@ -32,7 +28,21 @@ export async function createHandTracker(): Promise<HandTracker> {
 
 	return {
 		detect(video, timestamp) {
-			return landmarker.detectForVideo(video, timestamp).landmarks;
+			const result = landmarker.detectForVideo(video, timestamp);
+			return result.landmarks.map((landmarks, index) => {
+				const category = result.handedness[index]?.[0];
+				let handedness: Handedness = "unknown";
+				if (category?.categoryName === "Left") handedness = "left";
+				else if (category?.categoryName === "Right") handedness = "right";
+
+				return {
+					landmarks: landmarks.map(({ x, y, z }) => ({ x, y, z })),
+					handedness,
+					handednessConfidence:
+						handedness === "unknown" ? null : (category?.score ?? null),
+					timestamp,
+				};
+			});
 		},
 		close() {
 			landmarker.close();

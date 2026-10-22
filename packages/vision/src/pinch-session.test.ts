@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HandPoint } from "@handfinity/core";
 import { startCamera, stopCamera } from "./camera";
-import { createHandTracker, type HandPoint } from "./hand-tracker";
+import { createHandTracker, type HandTracker } from "./hand-tracker";
 import { startPinchSession, type PinchCallbacks } from "./pinch-session";
 
 vi.mock("./camera", () => ({ startCamera: vi.fn(), stopCamera: vi.fn() }));
@@ -39,7 +40,7 @@ async function setup() {
 		videoHeight: 720,
 		srcObject: stream,
 	} as HTMLVideoElement;
-	const tracker = { detect: vi.fn<() => HandPoint[][]>(), close: vi.fn() };
+	const tracker = { detect: vi.fn<HandTracker["detect"]>(), close: vi.fn() };
 	vi.mocked(startCamera).mockResolvedValue(stream);
 	vi.mocked(createHandTracker).mockResolvedValue(tracker);
 	const callbacks = {
@@ -56,7 +57,14 @@ async function setup() {
 	) {
 		now = timestamp;
 		if (fresh) video.currentTime = timestamp / 1000 + 1;
-		tracker.detect.mockReturnValue(hands);
+		tracker.detect.mockReturnValue(
+			hands.map((landmarks) => ({
+				landmarks,
+				handedness: "unknown",
+				handednessConfidence: null,
+				timestamp,
+			})),
+		);
 		const callback = nextFrame;
 		nextFrame = undefined;
 		callback?.(timestamp);
