@@ -7,6 +7,12 @@ pouce-index. Depuis la racine du monorepo :
 npm run dev -w paint
 ```
 
+L'application autonome utilise `http://localhost:3001`. Le hub (`npm run dev`)
+intègre le même atelier sur `http://localhost:3000/paint`. Dans le hub, quitter
+l'atelier arrête la caméra tout en conservant le dessin, Undo/Redo et le pinceau
+en mémoire. Un retour ne redémarre pas la webcam ; un rechargement de la page
+efface le dessin, qui peut être sauvegardé avec **Export PNG**.
+
 ## Réglages du pinceau
 
 - **Color** ouvre le sélecteur de couleur. La couleur initiale est le bleu `#38bdf8`.
@@ -97,8 +103,9 @@ Undo / Redo, retour visuel et refactoring.
 
 La disponibilité d'Undo / Redo est calculée au même endroit pour les boutons et
 les commandes. Chaque instance possède son propre dessin et sa propre session.
-La destruction du composable ferme la session, même si son initialisation
-se termine après la fermeture de l'application.
+La destruction du composable ou sa désactivation par `KeepAlive` ferme la session.
+Si l'initialisation est encore en attente, son résultat est invalidé et la
+session est fermée dès qu'elle termine son démarrage.
 
 ## Vérifications
 

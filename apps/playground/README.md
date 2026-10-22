@@ -7,7 +7,9 @@ du monorepo :
 npm run dev -w playground
 ```
 
-L'application est disponible sur `http://localhost:3000`. Cliquer sur
+L'application autonome est disponible sur `http://localhost:3002`. Le hub
+(`npm run dev`) propose le même laboratoire sur `http://localhost:3000/playground`,
+avec un retour vers l'accueil immersif. Cliquer sur
 **Start camera** puis autoriser l'accès à la webcam.
 
 ## Navigation sandbox — étape 1

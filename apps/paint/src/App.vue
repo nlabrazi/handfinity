@@ -4,6 +4,8 @@ import BrushControls from "./components/BrushControls.vue";
 import GestureCursor from "./components/GestureCursor.vue";
 import { usePaint } from "./composables/usePaint";
 
+defineOptions({ name: "PaintWorkspace" });
+
 const videoRef = useTemplateRef<HTMLVideoElement>("videoRef");
 const canvasRef = useTemplateRef<HTMLCanvasElement>("canvasRef");
 const previewCanvasRef = useTemplateRef<HTMLCanvasElement>("previewCanvasRef");

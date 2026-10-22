@@ -1,4 +1,11 @@
-import { computed, onScopeDispose, ref, type Ref } from "vue";
+import {
+	computed,
+	getCurrentInstance,
+	onDeactivated,
+	onScopeDispose,
+	ref,
+	type Ref,
+} from "vue";
 import {
 	startPinchSession,
 	createPointSmoother,
@@ -29,6 +36,7 @@ export function usePaint(elements: PaintElements) {
 	const pointSmoother = createPointSmoother();
 	let session: PinchSession | null = null;
 	let disposed = false;
+	let sessionGeneration = 0;
 
 	const gestureFeedback = computed(() =>
 		getGestureFeedback({
@@ -71,6 +79,7 @@ export function usePaint(elements: PaintElements) {
 	}
 
 	function stop() {
+		sessionGeneration += 1;
 		session?.stop();
 		session = null;
 		drawing.finishStroke();
@@ -92,6 +101,7 @@ export function usePaint(elements: PaintElements) {
 			return;
 		isLoading.value = true;
 		error.value = "";
+		const generation = sessionGeneration;
 		try {
 			const controller = await startPinchSession(video, {
 				onGesture: handleGesture,
@@ -101,7 +111,7 @@ export function usePaint(elements: PaintElements) {
 					error.value = err instanceof Error ? err.message : "Tracking failed";
 				},
 			});
-			if (disposed) {
+			if (disposed || generation !== sessionGeneration) {
 				controller.stop();
 				return;
 			}
@@ -117,6 +127,8 @@ export function usePaint(elements: PaintElements) {
 		}
 	}
 
+	// Le hub conserve le dessin via KeepAlive, mais jamais la caméra en arrière-plan.
+	if (getCurrentInstance()) onDeactivated(stop);
 	onScopeDispose(() => {
 		disposed = true;
 		stop();
