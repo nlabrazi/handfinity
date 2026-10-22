@@ -32,6 +32,15 @@ ne demande pas la webcam et ne charge pas le moteur de vision.
 
 ## Navigation et cycle de vie
 
+Le socle d'animation utilise GSAP dans le workspace `hub` :
+`useGsapContext` crée un contexte limité à la vue après son montage et le
+nettoie au démontage. Les animations créées dans son callback sont supprimées
+et leurs styles initiaux restaurés. Les gestionnaires d'événements qui créent
+des animations ensuite doivent être enregistrés avec `context.add`.
+`useMotionPreferences` partage la pause et la préférence système depuis
+l'application hôte ; il évite de multiplier les écouteurs `matchMedia`.
+Les animations CSS existantes restent en place dans cette première étape.
+
 - Vue Router fournit les routes, les titres et l'historique du navigateur.
   Les vues sont chargées à la demande depuis les exports `paint/view` et
   `playground/view` des workspaces existants.

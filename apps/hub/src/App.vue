@@ -1,32 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useId } from "vue";
+import { useId } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
+import { provideMotionPreferences } from "./composables/useMotionPreferences";
 
 const route = useRoute();
 const brandGradient = useId();
-const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-const reducedMotion = ref(media.matches);
-const paused = ref(false);
-try {
-	paused.value = localStorage.getItem("handfinity-motion-paused") === "true";
-} catch {
-	/* Le réglage reste disponible sans stockage. */
-}
-const motionPaused = computed(() => reducedMotion.value || paused.value);
-function updateMotion(event: MediaQueryListEvent) {
-	reducedMotion.value = event.matches;
-}
-media.addEventListener("change", updateMotion);
-onBeforeUnmount(() => media.removeEventListener("change", updateMotion));
-
-function toggleMotion() {
-	paused.value = !paused.value;
-	try {
-		localStorage.setItem("handfinity-motion-paused", String(paused.value));
-	} catch {
-		/* Le réglage reste valable pour cette visite. */
-	}
-}
+const { reducedMotion, paused, motionPaused, toggleMotion } =
+	provideMotionPreferences();
 
 function focusPage(element: Element) {
 	const heading = element.querySelector("h1");
