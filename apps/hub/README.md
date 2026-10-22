@@ -63,8 +63,9 @@ Chaque sortie de l'accueil détruit ses animations et restaure les styles SVG/DO
   en mémoire lors des déplacements dans le hub. Un rechargement de l'onglet
   efface cet état ; **Export PNG** permet d'enregistrer le dessin.
 - Quitter Paint termine le trait et arrête sa session caméra. Un démarrage
-  encore en attente est invalidé : la session est fermée dès son initialisation
-  terminée. Revenir dans Paint ne redémarre pas la webcam automatiquement.
+  encore en attente est invalidé : la caméra déjà acquise est libérée immédiatement
+  et tout flux ou détecteur reçu ensuite est fermé à son arrivée. Revenir dans
+  Paint ne redémarre pas la webcam automatiquement.
 - Playground est démonté lorsqu'on le quitte et ferme ses ressources.
 - Le focus rejoint le titre après navigation. Une adresse inconnue affiche
   une page proposant de revenir à l'accueil.

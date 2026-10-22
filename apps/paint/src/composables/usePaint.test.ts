@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { effectScope, shallowRef, type EffectScope } from "vue";
-import { startPinchSession, type PinchSession } from "@handfinity/vision";
+import { effectScope, onDeactivated, shallowRef, type EffectScope } from "vue";
+import { createPinchSession, type TrackingSession } from "@handfinity/vision";
 import { usePaint } from "./usePaint";
 
 vi.mock("@handfinity/vision", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@handfinity/vision")>()),
-	startPinchSession: vi.fn(),
+	createPinchSession: vi.fn(),
+}));
+
+vi.mock("vue", async (importOriginal) => ({
+	...(await importOriginal<typeof import("vue")>()),
+	getCurrentInstance: () => ({}),
+	onDeactivated: vi.fn(),
 }));
 
 const scopes: EffectScope[] = [];
@@ -27,6 +33,11 @@ function createCanvas() {
 }
 
 function setup() {
+	const session = {
+		start: vi.fn<TrackingSession["start"]>().mockResolvedValue(undefined),
+		stop: vi.fn(),
+	};
+	vi.mocked(createPinchSession).mockReturnValueOnce(session);
 	const scope = effectScope();
 	scopes.push(scope);
 	const elements = {
@@ -39,20 +50,24 @@ function setup() {
 	};
 	const paint = scope.run(() => usePaint(elements));
 	if (!paint) throw new Error("Paint scope was not created");
-	return { paint, scope, ...elements };
+	const deactivate = vi.mocked(onDeactivated).mock.lastCall?.[0];
+	if (!deactivate) throw new Error("Missing deactivation callback");
+	return { paint, scope, session, deactivate, ...elements };
 }
 
-function pendingSession() {
-	let resolve!: (session: PinchSession) => void;
-	const promise = new Promise<PinchSession>((done) => {
+function pendingStart() {
+	let resolve!: () => void;
+	let reject!: (error: unknown) => void;
+	const promise = new Promise<void>((done, fail) => {
 		resolve = done;
+		reject = fail;
 	});
-	vi.mocked(startPinchSession).mockReturnValueOnce(promise);
-	return resolve;
+	return { promise, resolve, reject };
 }
 
 beforeEach(() => {
-	vi.mocked(startPinchSession).mockReset();
+	vi.clearAllMocks();
+	vi.mocked(createPinchSession).mockReset();
 });
 
 afterEach(() => {
@@ -61,13 +76,14 @@ afterEach(() => {
 
 describe("Paint session lifecycle", () => {
 	it("starts only one session when requested twice during initialization", async () => {
-		const resolve = pendingSession();
-		const { paint, canvasRef, previewCanvasRef } = setup();
+		const { paint, session, canvasRef, previewCanvasRef } = setup();
+		const pending = pendingStart();
+		session.start.mockReturnValueOnce(pending.promise);
 		const starting = paint.toggleCamera();
 		await paint.toggleCamera();
-		expect(startPinchSession).toHaveBeenCalledOnce();
+		expect(session.start).toHaveBeenCalledOnce();
 		expect(paint.isLoading.value).toBe(true);
-		resolve({ stop: vi.fn() });
+		pending.resolve();
 		await starting;
 		expect(paint.isLoading.value).toBe(false);
 		expect(paint.isRunning.value).toBe(true);
@@ -75,27 +91,27 @@ describe("Paint session lifecycle", () => {
 		expect(previewCanvasRef.value.height).toBe(720);
 	});
 
-	it("closes a session that finishes initializing after disposal", async () => {
-		const resolve = pendingSession();
-		const { paint, scope } = setup();
+	it("stops a pending initialization immediately on disposal and ignores its late completion", async () => {
+		const { paint, scope, session } = setup();
+		const pending = pendingStart();
+		session.start.mockReturnValueOnce(pending.promise);
 		const starting = paint.toggleCamera();
 		scope.stop();
-		const stop = vi.fn();
-		resolve({ stop });
-		await starting;
-		expect(stop).toHaveBeenCalledOnce();
-		expect(paint.isRunning.value).toBe(false);
+		expect(session.stop).toHaveBeenCalledOnce();
 		expect(paint.isLoading.value).toBe(false);
+		pending.resolve();
+		await starting;
+		expect(paint.isRunning.value).toBe(false);
+		expect(paint.error.value).toBe("");
 		await paint.toggleCamera();
-		expect(startPinchSession).toHaveBeenCalledOnce();
+		expect(session.start).toHaveBeenCalledOnce();
 	});
 
 	it("commits the active stroke when stopping and preserves it across a restart", async () => {
-		const stop = vi.fn();
-		vi.mocked(startPinchSession).mockResolvedValue({ stop });
-		const { paint, scope } = setup();
+		const { paint, scope, session } = setup();
+		const stop = session.stop;
 		await paint.toggleCamera();
-		const callbacks = vi.mocked(startPinchSession).mock.calls[0]?.[1];
+		const callbacks = vi.mocked(createPinchSession).mock.calls[0]?.[0];
 		if (!callbacks) throw new Error("Missing session callbacks");
 		callbacks.onPointer?.({ x: 0.5, y: 0.4 }, 0);
 		callbacks.onGesture({
@@ -119,11 +135,10 @@ describe("Paint session lifecycle", () => {
 	});
 
 	it("stops on a tracking error and allows a fresh session", async () => {
-		const stop = vi.fn();
-		vi.mocked(startPinchSession).mockResolvedValue({ stop });
-		const { paint } = setup();
+		const { paint, session } = setup();
+		const stop = session.stop;
 		await paint.toggleCamera();
-		const callbacks = vi.mocked(startPinchSession).mock.calls[0]?.[1];
+		const callbacks = vi.mocked(createPinchSession).mock.calls[0]?.[0];
 		if (!callbacks) throw new Error("Missing session callbacks");
 		callbacks.onPointer?.({ x: 0.5, y: 0.4 }, 0);
 		callbacks.onError?.(new Error("Tracking failed"));
@@ -138,17 +153,52 @@ describe("Paint session lifecycle", () => {
 	});
 
 	it("recovers from camera initialization failure without keeping the loading state", async () => {
-		vi.mocked(startPinchSession).mockRejectedValueOnce(
-			new Error("Camera unavailable"),
-		);
-		const { paint } = setup();
+		const { paint, session } = setup();
+		session.start.mockRejectedValueOnce(new Error("Camera unavailable"));
 		await paint.toggleCamera();
 		expect(paint.isLoading.value).toBe(false);
 		expect(paint.isRunning.value).toBe(false);
 		expect(paint.error.value).toBe("Camera unavailable");
-		vi.mocked(startPinchSession).mockResolvedValueOnce({ stop: vi.fn() });
 		await paint.toggleCamera();
 		expect(paint.isRunning.value).toBe(true);
 		expect(paint.error.value).toBe("");
+	});
+
+	it("ignores an old failure after deactivation while a new initialization is pending", async () => {
+		const { paint, session, deactivate } = setup();
+		const oldPending = pendingStart();
+		const newPending = pendingStart();
+		session.start
+			.mockReturnValueOnce(oldPending.promise)
+			.mockReturnValueOnce(newPending.promise);
+		const oldStart = paint.toggleCamera();
+		deactivate();
+		expect(session.stop).toHaveBeenCalledOnce();
+		expect(paint.isLoading.value).toBe(false);
+		const newStart = paint.toggleCamera();
+		oldPending.reject(new Error("Old camera failed"));
+		await oldStart;
+		expect(paint.error.value).toBe("");
+		expect(paint.isLoading.value).toBe(true);
+		expect(session.stop).toHaveBeenCalledOnce();
+		newPending.resolve();
+		await newStart;
+		expect(paint.isRunning.value).toBe(true);
+		expect(paint.isLoading.value).toBe(false);
+		expect(createPinchSession).toHaveBeenCalledOnce();
+	});
+
+	it("ignores a late successful initialization after deactivation and restart", async () => {
+		const { paint, session, deactivate } = setup();
+		const oldPending = pendingStart();
+		session.start.mockReturnValueOnce(oldPending.promise);
+		const oldStart = paint.toggleCamera();
+		deactivate();
+		await paint.toggleCamera();
+		oldPending.resolve();
+		await oldStart;
+		expect(paint.isRunning.value).toBe(true);
+		expect(paint.error.value).toBe("");
+		expect(session.stop).toHaveBeenCalledOnce();
 	});
 });

@@ -68,6 +68,19 @@ Cette première étape porte sur le **survol** : les cartes ne déclenchent aucu
 navigation, y compris lors d'un pincement. La sélection au relâchement puis le
 défilement gestuel feront l'objet des deux prochaines itérations.
 
+## Session partagée avec Paint
+
+`createTrackingSession` dans `@handfinity/vision` possède la caméra, le détecteur,
+la boucle vidéo et le suivi des identités. Playground traite les résultats pour
+ses diagnostics, son pincement et le survol ; il ne gère plus sa propre boucle
+d'acquisition. Une même session peut être redémarrée sans réutiliser les numéros
+de main déjà attribués.
+
+Quitter Playground ou arrêter la caméra arrête sa session. Si le démarrage est
+encore en attente, les ressources disponibles sont libérées immédiatement et
+les résultats tardifs sont ignorés et nettoyés. L'ouverture d'un autre projet
+demande un nouveau démarrage explicite de la caméra.
+
 ## Vérifications
 
 ```bash
@@ -95,6 +108,21 @@ Pour valider le suivi dans le hub :
 6. Ouvrir `http://localhost:3000/paint`, démarrer la caméra et dessiner par pincement.
    Faire entrer une seconde main : le trait doit s'arrêter. Retirer les mains,
    puis dessiner ailleurs : aucun segment ne doit relier les deux traits.
+
+Pour valider le cycle de vie commun :
+
+1. Dans chaque projet, répéter **Start camera** / **Stop camera** trois fois :
+   le suivi doit reprendre normalement et l'usage de la caméra cesser à l'arrêt.
+2. Dessiner dans Paint, passer à Playground, y démarrer la caméra puis revenir
+   dans Paint : le dessin et Undo/Redo doivent être conservés, avec la caméra
+   arrêtée jusqu'au prochain démarrage explicite.
+3. Pour observer un démarrage lent, activer une limitation réseau dans les outils
+   du navigateur et désactiver le cache, puis recharger la page. Démarrer la caméra
+   et quitter le projet pendant **Initializing...**. La caméra déjà acquise doit
+   être libérée ; la fin tardive du chargement ne doit pas la réactiver. Revenir,
+   rétablir le réseau normal et démarrer une nouvelle session.
+4. Refuser l'autorisation caméra, vérifier le message d'erreur et le bouton à nouveau
+   disponible, puis autoriser la caméra dans les réglages du site et réessayer.
 
 Pour un essai avec la webcam, viser successivement les quatre cartes puis les
 espaces entre elles. Déplacer l'index lentement, puis plus rapidement ; masquer

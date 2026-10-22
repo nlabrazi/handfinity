@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HandPoint } from "@handfinity/core";
 import { startCamera, stopCamera } from "./camera";
 import { createHandTracker, type HandTracker } from "./hand-tracker";
-import { startPinchSession, type PinchCallbacks } from "./pinch-session";
+import { createPinchSession, type PinchCallbacks } from "./pinch-session";
 
 vi.mock("./camera", () => ({ startCamera: vi.fn(), stopCamera: vi.fn() }));
 vi.mock("./hand-tracker", () => ({ createHandTracker: vi.fn() }));
@@ -48,7 +48,8 @@ async function setup() {
 		onPointer: vi.fn(),
 		onError: vi.fn(),
 	};
-	const session = await startPinchSession(video, callbacks);
+	const session = createPinchSession(callbacks);
+	await session.start(video);
 
 	function frame(
 		timestamp: number,
@@ -237,5 +238,18 @@ describe("Pinch session", () => {
 		expect(callbacks.onError).toHaveBeenCalledExactlyOnceWith(error);
 		expect(stopCamera).toHaveBeenCalledExactlyOnceWith(stream);
 		expect(tracker.close).toHaveBeenCalledOnce();
+	});
+
+	it("requires a fresh pinch confirmation after restarting the same session", async () => {
+		const { start, frame, callbacks, session, video } = await setup();
+		start();
+		session.stop();
+		await session.start(video);
+		frame(80);
+		expect(callbacks.onGesture).not.toHaveBeenCalled();
+		frame(120);
+		expect(callbacks.onGesture).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ type: "pinch:start", timestamp: 120 }),
+		);
 	});
 });

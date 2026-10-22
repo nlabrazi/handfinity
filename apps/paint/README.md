@@ -92,7 +92,9 @@ Undo / Redo, retour visuel et refactoring.
 | Fichier | Responsabilité |
 | --- | --- |
 | `src/App.vue` | Assemble l'interface et fournit les références de la vidéo et des Canvas avec `useTemplateRef`. |
-| `src/composables/usePaint.ts` | Gère la session caméra, le filtrage du pointeur, les gestes et la libération des ressources. |
+| `src/composables/usePaint.ts` | Pilote la session partagée, le filtrage du pointeur et les gestes ; arrête la session à la désactivation ou à la destruction. |
+| `packages/vision/src/tracking-session.ts` (racine du monorepo) | Mutualise caméra, détection, identités, boucle vidéo et nettoyage avec Playground. |
+| `packages/vision/src/pinch-session.ts` (racine du monorepo) | Adapte les observations de la session commune aux événements de pincement et de pointeur. |
 | `src/composables/useDrawingCanvas.ts` | Gère les traits, leur rendu, l'historique, le redimensionnement et l'export. Les points reçus sont déjà lissés et adaptés au miroir. |
 | `src/components/BrushControls.vue` | Affiche et modifie les réglages du pinceau via deux `v-model`. |
 | `src/components/GestureCursor.vue` | Affiche le curseur selon la position et l'état reçus. |
@@ -104,8 +106,10 @@ Undo / Redo, retour visuel et refactoring.
 La disponibilité d'Undo / Redo est calculée au même endroit pour les boutons et
 les commandes. Chaque instance possède son propre dessin et sa propre session.
 La destruction du composable ou sa désactivation par `KeepAlive` ferme la session.
-Si l'initialisation est encore en attente, son résultat est invalidé et la
-session est fermée dès qu'elle termine son démarrage.
+L'arrêt est disponible pendant l'initialisation : la caméra déjà acquise est
+libérée immédiatement, même si le modèle charge encore. Un flux ou détecteur
+reçu après l'arrêt est libéré à son arrivée. Une ancienne initialisation ne peut
+ni arrêter la session suivante, ni modifier son erreur ou son état de chargement.
 
 ## Vérifications
 
@@ -119,7 +123,9 @@ npm run build
 Les tests couvrent le filtrage, la terminaison des traits, l'historique,
 les transitions du pincement, les interruptions de suivi et le cycle de vie de
 Paint : démarrage concurrent, fermeture pendant l'initialisation, arrêt pendant
-un trait, erreur de suivi et reprise après erreur caméra.
+un trait, erreur de suivi et reprise après erreur caméra. Les tests de vision
+couvrent également l'annulation pendant l'autorisation caméra, la lecture vidéo
+et le chargement du modèle, ainsi que les résultats tardifs après redémarrage.
 La CI exécute les suites de Paint, core et vision.
 
 Pour valider le ressenti avec une webcam : dessiner un point, un petit trait,

@@ -7,10 +7,9 @@ import {
 	type Ref,
 } from "vue";
 import {
-	startPinchSession,
+	createPinchSession,
 	createPointSmoother,
 	type PinchEvent,
-	type PinchSession,
 	type Point,
 } from "@handfinity/vision";
 import { getGestureFeedback } from "../lib/gesture-feedback";
@@ -34,7 +33,14 @@ export function usePaint(elements: PaintElements) {
 		() => isPinching.value || isLoading.value,
 	);
 	const pointSmoother = createPointSmoother();
-	let session: PinchSession | null = null;
+	const session = createPinchSession({
+		onGesture: handleGesture,
+		onPointer: handlePointer,
+		onError: (err) => {
+			stop();
+			error.value = err instanceof Error ? err.message : "Tracking failed";
+		},
+	});
 	let disposed = false;
 	let sessionGeneration = 0;
 
@@ -80,11 +86,11 @@ export function usePaint(elements: PaintElements) {
 
 	function stop() {
 		sessionGeneration += 1;
-		session?.stop();
-		session = null;
+		session.stop();
 		drawing.finishStroke();
 		pointSmoother.reset();
 		isRunning.value = false;
+		isLoading.value = false;
 		isPinching.value = false;
 		hasTrackedHand.value = false;
 		pointer.value = null;
@@ -103,27 +109,17 @@ export function usePaint(elements: PaintElements) {
 		error.value = "";
 		const generation = sessionGeneration;
 		try {
-			const controller = await startPinchSession(video, {
-				onGesture: handleGesture,
-				onPointer: handlePointer,
-				onError: (err) => {
-					stop();
-					error.value = err instanceof Error ? err.message : "Tracking failed";
-				},
-			});
-			if (disposed || generation !== sessionGeneration) {
-				controller.stop();
-				return;
-			}
-			session = controller;
+			await session.start(video);
+			if (disposed || generation !== sessionGeneration) return;
 			cameraAspect.value = `${video.videoWidth} / ${video.videoHeight}`;
 			drawing.resize(video.videoWidth, video.videoHeight);
 			isRunning.value = true;
 		} catch (err) {
+			if (disposed || generation !== sessionGeneration) return;
 			stop();
 			error.value = err instanceof Error ? err.message : "Camera unavailable";
 		} finally {
-			isLoading.value = false;
+			if (generation === sessionGeneration) isLoading.value = false;
 		}
 	}
 

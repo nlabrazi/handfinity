@@ -4,7 +4,14 @@ export { createHandTracker, HAND_CONNECTIONS } from "./hand-tracker";
 
 export type { HandTracker } from "./hand-tracker";
 
-export { startPinchSession } from "./pinch-session";
+export { createTrackingSession } from "./tracking-session";
+export type {
+	TrackingSession,
+	TrackingCallbacks,
+	TrackingSessionFrame,
+} from "./tracking-session";
+
+export { createPinchSession, startPinchSession } from "./pinch-session";
 
 export type {
 	PinchCallbacks,

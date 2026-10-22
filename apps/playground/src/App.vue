@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, shallowRef } from "vue";
 import {
-	createHandTracker,
+	createTrackingSession,
 	HAND_CONNECTIONS,
-	startCamera,
-	stopCamera,
 	type HandObservation,
-	type HandTracker,
+	type TrackingSessionFrame,
 } from "@handfinity/vision";
 import {
-	createHandIdentityTracker,
 	createPinchDetector,
 	createPointSmoother,
 	type HandPose,
@@ -35,15 +32,18 @@ const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
 const trackingTransition = ref("None");
 
-const identities = createHandIdentityTracker();
 const pinch = createPinchDetector();
 const pointSmoother = createPointSmoother();
 let activeHandId: number | null = null;
 
-let stream: MediaStream | null = null;
-let tracker: HandTracker | null = null;
-let frameId = 0;
-let lastVideoTime = -1;
+const session = createTrackingSession({
+	onFrame: handleTrackingFrame,
+	onError(err) {
+		stop();
+		error.value = err instanceof Error ? err.message : "Tracking failed";
+	},
+});
+let sessionGeneration = 0;
 let disposed = false;
 
 function resetPointer() {
@@ -92,7 +92,7 @@ function handColor(id: number) {
 	);
 }
 
-function drawHands(hands: HandObservation[]) {
+function drawHands(hands: readonly HandObservation[]) {
 	const canvas = canvasRef.value;
 	const video = videoRef.value;
 	if (!canvas || !video) return;
@@ -160,84 +160,55 @@ function drawHands(hands: HandObservation[]) {
 	}
 }
 
-function detectFrame() {
-	const video = videoRef.value;
-	if (!video || !tracker) return;
-
-	try {
-		const timestamp = performance.now();
-		if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-			lastVideoTime = video.currentTime;
-
-			const hands = tracker.detect(video, timestamp);
-			const tracking = identities.update(
-				hands,
-				timestamp,
-				video.videoWidth / video.videoHeight,
-			);
-			showTracking(tracking);
-
-			handCount.value = hands.length;
-
-			// Le suivi accepte deux mains ; le curseur reste à une seule main.
-			const tracked =
-				hands.length === 1 && !tracking.ambiguous
-					? tracking.hands.find((item) => item.status === "tracked")
-					: undefined;
-			if (activeHandId !== tracked?.id) endInteraction(timestamp);
-			const hand = tracked?.observation.landmarks;
-
-			const pose: HandPose | null =
-				hand?.[0] && hand[4] && hand[8] && hand[9]
-					? {
-							wrist: hand[0],
-							thumbTip: hand[4],
-							indexTip: hand[8],
-							middleBase: hand[9],
-						}
-					: null;
-
-			if (pose && tracked) {
-				activeHandId = tracked.id;
-				pointer.value = pointSmoother.update(pose.indexTip, timestamp);
-			} else {
-				resetPointer();
-			}
-
-			recordGesture(
-				pinch.update(pose, video.videoWidth / video.videoHeight, timestamp),
-			);
-
-			drawHands(hands);
-		} else {
-			const tracking = identities.advance(timestamp);
-			showTracking(tracking);
-			if (tracking.events.length) {
-				const visible = tracking.hands
-					.filter((hand) => hand.status === "tracked")
-					.map((hand) => hand.observation);
-				handCount.value = visible.length;
-				drawHands(visible);
-			}
+function handleTrackingFrame({
+	observations: hands,
+	tracking,
+	aspectRatio,
+	hasNewFrame,
+}: TrackingSessionFrame) {
+	showTracking(tracking);
+	const timestamp = tracking.timestamp;
+	if (!hasNewFrame) {
+		if (tracking.events.length) {
+			const visible = tracking.hands
+				.filter((hand) => hand.status === "tracked")
+				.map((hand) => hand.observation);
+			handCount.value = visible.length;
+			drawHands(visible);
 		}
-
-		frameId = requestAnimationFrame(detectFrame);
-	} catch (err) {
-		stop();
-		error.value = err instanceof Error ? err.message : "Tracking failed";
+		return;
 	}
+
+	handCount.value = hands.length;
+	// Le suivi accepte deux mains ; le curseur reste à une seule main.
+	const tracked =
+		hands.length === 1 && !tracking.ambiguous
+			? tracking.hands.find((item) => item.status === "tracked")
+			: undefined;
+	if (activeHandId !== tracked?.id) endInteraction(timestamp);
+	const hand = tracked?.observation.landmarks;
+	const pose: HandPose | null =
+		hand?.[0] && hand[4] && hand[8] && hand[9]
+			? {
+					wrist: hand[0],
+					thumbTip: hand[4],
+					indexTip: hand[8],
+					middleBase: hand[9],
+				}
+			: null;
+	if (pose && tracked) {
+		activeHandId = tracked.id;
+		pointer.value = pointSmoother.update(pose.indexTip, timestamp);
+	} else {
+		resetPointer();
+	}
+	recordGesture(pinch.update(pose, aspectRatio, timestamp));
+	drawHands(hands);
 }
 
 function stop() {
-	cancelAnimationFrame(frameId);
-
-	tracker?.close();
-	tracker = null;
-
-	if (stream) stopCamera(stream);
-	stream = null;
-
-	if (videoRef.value) videoRef.value.srcObject = null;
+	sessionGeneration += 1;
+	session.stop();
 
 	const canvas = canvasRef.value;
 	if (canvas) {
@@ -245,9 +216,8 @@ function stop() {
 	}
 
 	isRunning.value = false;
+	isLoading.value = false;
 	handCount.value = 0;
-	lastVideoTime = -1;
-	identities.reset();
 	trackedHands.value = [];
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
@@ -260,7 +230,7 @@ function stop() {
 }
 
 async function toggleCamera() {
-	if (isLoading.value) return;
+	if (disposed || isLoading.value) return;
 
 	if (isRunning.value) {
 		stop();
@@ -273,28 +243,17 @@ async function toggleCamera() {
 	isLoading.value = true;
 	error.value = "";
 
+	const generation = sessionGeneration;
 	try {
-		stream = await startCamera(video);
-
-		if (disposed) {
-			stop();
-			return;
-		}
-
-		tracker = await createHandTracker();
-
-		if (disposed) {
-			stop();
-			return;
-		}
-
+		await session.start(video);
+		if (disposed || generation !== sessionGeneration) return;
 		isRunning.value = true;
-		detectFrame();
 	} catch (err) {
+		if (disposed || generation !== sessionGeneration) return;
 		stop();
 		error.value = err instanceof Error ? err.message : "Camera unavailable";
 	} finally {
-		isLoading.value = false;
+		if (generation === sessionGeneration) isLoading.value = false;
 	}
 }
 

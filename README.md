@@ -129,6 +129,29 @@ Le [Playground](apps/playground/README.md#suivi-de-deux-mains) affiche les numé
 les états et les transitions pour les essais. Paint termine un trait lors d'un
 changement d'identité ; le dessin et le curseur restent limités à une seule main.
 
+### Sessions de suivi communes
+
+Paint et Playground utilisent `createTrackingSession` dans `@handfinity/vision`.
+Chaque instance possède sa caméra, son détecteur, sa boucle vidéo et son suivi
+d'identités. `start(video)` initialise le suivi ; `stop()` est disponible dès la
+création de la session, y compris pendant un démarrage en attente. Une même
+instance peut être arrêtée puis redémarrée.
+
+Le callback `onFrame` reçoit les observations, le suivi des identités, le ratio
+d'image et `hasNewFrame`. Ce dernier distingue une nouvelle image d'une simple
+avancée du temps : l'expiration du suivi continue sans rejouer les gestes ni
+détecter deux fois la même image. `onError` signale une erreur de la boucle après
+nettoyage ; les erreurs d'initialisation rejettent la promesse de `start`.
+
+Playground conserve le rendu et ses diagnostics. `createPinchSession` adapte
+la session commune aux événements de pincement utilisés par Paint ;
+`startPinchSession` reste disponible comme raccourci qui attend le démarrage.
+
+Le projet actif possède sa session et l'arrête lorsqu'on le quitte. La caméra
+n'est pas conservée entre deux routes. Un arrêt libère immédiatement les
+ressources déjà disponibles ; un flux ou détecteur reçu ensuite est libéré à
+son arrivée, sans relancer le suivi ni modifier la session suivante.
+
 ### Lancement et distribution des applications
 
 #### En développement :
