@@ -1,0 +1,152 @@
+import {
+	createPointSmoother,
+	type HandPoseKind,
+	type HandTrackingFrame,
+	type Point,
+	type TrackedHandPose,
+} from "@handfinity/core";
+
+export type HandPointer = {
+	readonly handId: number;
+	/** Coordonnées normalisées de l'image source, avant miroir ou projection. */
+	readonly position: Readonly<Point>;
+	readonly pose: HandPoseKind;
+	readonly active: boolean;
+	readonly isPrimary: boolean;
+	/** Horodatage de la dernière observation utilisée, sans rejouer les images. */
+	readonly timestamp: number;
+};
+
+export type HandPointerFrame = {
+	readonly timestamp: number;
+	readonly pointers: readonly HandPointer[];
+	/** Peut désigner une main temporairement manquante, alors sans pointeur. */
+	readonly primaryHandId: number | null;
+	/** null signifie que le choix est automatique. */
+	readonly preferredHandId: number | null;
+};
+
+type PointerState = {
+	smoother: ReturnType<typeof createPointSmoother>;
+	timestamp: number | null;
+	active: boolean;
+	position: Readonly<Point>;
+};
+
+/** Un filtre par identité ; une seule main principale pour le survol. */
+export function createHandPointerTracker() {
+	const states = new Map<number, PointerState>();
+	let primaryHandId: number | null = null;
+	let preferredHandId: number | null = null;
+	let lastTimestamp: number | null = null;
+
+	function setPrimaryHand(handId: number | null) {
+		if (handId !== null && (!Number.isSafeInteger(handId) || handId < 1)) {
+			throw new RangeError("A hand identity must be a positive integer");
+		}
+		preferredHandId = handId;
+		primaryHandId = handId;
+	}
+
+	function update(
+		tracking: HandTrackingFrame,
+		poses: readonly TrackedHandPose[],
+	): HandPointerFrame {
+		if (
+			!Number.isFinite(tracking.timestamp) ||
+			(lastTimestamp !== null && tracking.timestamp < lastTimestamp)
+		) {
+			throw new RangeError("Pointer timestamps must be finite and monotonic");
+		}
+		lastTimestamp = tracking.timestamp;
+		const ids = new Set(
+			tracking.ambiguous ? [] : tracking.hands.map((hand) => hand.id),
+		);
+		for (const id of states.keys()) if (!ids.has(id)) states.delete(id);
+		if (preferredHandId !== null && !ids.has(preferredHandId))
+			preferredHandId = null;
+		if (primaryHandId !== null && !ids.has(primaryHandId)) primaryHandId = null;
+
+		const pointers: Omit<HandPointer, "isPrimary">[] = [];
+		for (const hand of tracking.ambiguous ? [] : tracking.hands) {
+			const point = hand.observation.landmarks[8];
+			if (
+				hand.status !== "tracked" ||
+				!point ||
+				!Number.isFinite(point.x) ||
+				!Number.isFinite(point.y)
+			) {
+				states.delete(hand.id);
+				continue;
+			}
+			const pose = poses.find(
+				(item) => item.handId === hand.id && item.status === "tracked",
+			);
+			const active =
+				pose?.pose === "pointing" &&
+				pose.measurements !== null &&
+				point.x >= 0 &&
+				point.x <= 1 &&
+				point.y >= 0 &&
+				point.y <= 1;
+			let state = states.get(hand.id);
+			if (!state) {
+				state = {
+					smoother: createPointSmoother(),
+					timestamp: null,
+					active: false,
+					position: { x: point.x, y: point.y },
+				};
+				states.set(hand.id, state);
+			}
+			if (!active || state.active !== active) state.smoother.reset();
+			if (
+				state.timestamp !== hand.observation.timestamp ||
+				state.active !== active
+			) {
+				state.position = active
+					? state.smoother.update(
+							{ x: point.x, y: point.y },
+							hand.observation.timestamp,
+						)
+					: { x: point.x, y: point.y };
+				state.timestamp = hand.observation.timestamp;
+			}
+			state.active = active;
+			pointers.push({
+				handId: hand.id,
+				position: state.position,
+				pose: pose?.pose ?? "unknown",
+				active,
+				timestamp: hand.observation.timestamp,
+			});
+		}
+
+		// Une posture de repos ou une absence brève ne cède pas la main principale.
+		if (primaryHandId === null) {
+			primaryHandId =
+				preferredHandId ??
+				pointers
+					.filter((pointer) => pointer.active)
+					.sort((a, b) => a.handId - b.handId)[0]?.handId ??
+				null;
+		}
+		return {
+			timestamp: tracking.timestamp,
+			pointers: pointers.map((pointer) => ({
+				...pointer,
+				isPrimary: pointer.handId === primaryHandId,
+			})),
+			primaryHandId,
+			preferredHandId,
+		};
+	}
+
+	function reset() {
+		states.clear();
+		primaryHandId = null;
+		preferredHandId = null;
+		lastTimestamp = null;
+	}
+	return { update, setPrimaryHand, reset };
+}

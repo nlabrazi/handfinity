@@ -38,9 +38,10 @@ Ces seuils sont des heuristiques à éprouver avec la webcam : un mouvement trè
 rapide peut entraîner une nouvelle identité, et deux mains indiscernables ne
 peuvent pas être réidentifiées avec certitude après une occultation.
 
-Le curseur et le pincement restent limités à une seule main à cette étape.
-Un changement d'identité réinitialise le curseur et le geste. Paint utilise
-également ce suivi pour terminer le trait avant de recevoir une autre identité.
+Chaque main peut produire un pointeur ; seule la main principale pilote le
+survol des cibles. Le journal du pincement et le dessin dans Paint restent à
+une main. Un changement d'identité réinitialise le filtre de son pointeur ; Paint
+termine le trait avant de recevoir une autre identité.
 
 ## Postures reconnues
 
@@ -72,33 +73,41 @@ une nouvelle confirmation, et l'arrêt caméra vide tous les diagnostics.
 Les postures reposent sur la géométrie estimée par la webcam : garder la main
 entièrement visible et commencer face à la caméra. Les diagnostics des doigts
 permettent de repérer une estimation incertaine avant d'ajuster la posture.
-Le curseur de survol et le pincement à une main restent disponibles pendant les essais.
+Le survol utilise la posture `Pointing` confirmée. Le journal du pincement à une main reste disponible pendant les essais.
 
-## Navigation sandbox — étape 1
+## Pointeurs et survol des cibles
 
-La zone **Navigation sandbox** permet de tester le pointage sur quatre cartes :
-Paint, Playground et deux projets à venir. Elle est affichée à côté des diagnostics
-sur grand écran, et en dessous sur petit écran.
+La zone **Navigation sandbox** présente quatre cartes : Paint, Playground et
+deux projets à venir. Tendre l'index et replier majeur, annulaire et auriculaire
+jusqu'à confirmer `Pointing` pour faire apparaître le pointeur de cette main.
+Une paume ouverte, un pincement ou `Unknown` retire son pointeur après la
+transition de posture. Les pertes de suivi et l'arrêt caméra le retirent immédiatement.
 
-- Déplacer l'index déplace le curseur dans la zone de cartes. Le repère est en
-  miroir, comme l'aperçu caméra.
-- La position est lissée avec `createPointSmoother`, partagé dans
-  `@handfinity/core` et réexporté par `@handfinity/vision` pour Paint.
-  Le filtre conserve sa constante de temps de 30 ms et ses tests existants.
-- La carte située sous le centre du curseur reçoit une bordure lumineuse et un
-  indicateur rempli. Un statut textuel annonce la carte survolée.
-- Les dimensions réelles des cartes servent au calcul du survol, y compris
-  après redimensionnement. Leur position reste stable pendant le survol.
-- Une absence de main, deux mains ou l'arrêt de la caméra retirent le curseur
-  et le survol. Une image vidéo figée retire également le curseur après plus de
-  120 ms sans nouveau point valide. Le filtre repart de la nouvelle position
-  lorsque la main est retrouvée.
-- Le squelette des mains, leur compteur et les transitions de pincement restent
-  disponibles dans le panneau caméra.
+- Chaque pointeur porte le numéro de sa main et possède son propre lissage.
+  Le miroir est appliqué une seule fois lors de la projection dans la zone.
+- Le curseur de la **main principale** a un contour plein. Lui seul met une
+  carte en surbrillance ; le second pointeur a un contour pointillé.
+- En mode **Automatic**, la première main qui confirme le pointage devient
+  principale. Si les deux le confirment ensemble, le plus petit numéro gagne.
+  Cette main garde le contrôle lorsqu'elle change de posture : l'autre main
+  ne récupère pas le survol pendant une simple pause.
+- Le sélecteur **Main hand** permet de choisir explicitement un numéro de main,
+  même si elle est au repos. Revenir à **Automatic** choisit à nouveau parmi
+  les mains actuellement en pointage.
+- Une main principale brièvement manquante réserve son rôle pendant la tolérance
+  du suivi d'identités (120 ms). Son curseur et son survol sont retirés pendant
+  l'absence. Après expiration de l'identité, le choix redevient automatique.
+- Une ambiguïté efface les pointeurs et le choix principal. Chaque retour de
+  pointage, nouvelle identité ou reprise après absence initialise le filtre à
+  la position courante, sans relier les positions de deux mains.
+- Les positions hors image sont ignorées. Les cibles sont mesurées à partir
+  des rectangles affichés, après chaque mise à jour et lors des redimensionnements
+  ou défilements, y compris dans un conteneur imbriqué.
 
-Cette première étape porte sur le **survol** : les cartes ne déclenchent aucune
-navigation, y compris lors d'un pincement. La sélection au relâchement puis le
-défilement gestuel feront l'objet des deux prochaines itérations.
+`@handfinity/interactions` fournit les pointeurs, le choix principal, la
+projection et le calcul des cibles sans dépendre de Vue ou du DOM. Le composant
+lit les dimensions affichées et rend les résultats. Les cartes illustrent le
+survol ; la sélection et l'annulation constituent l'étape suivante.
 
 ## Session partagée avec Paint
 
@@ -181,9 +190,31 @@ Pour valider le cycle de vie commun :
 4. Refuser l'autorisation caméra, vérifier le message d'erreur et le bouton à nouveau
    disponible, puis autoriser la caméra dans les réglages du site et réessayer.
 
-Pour un essai avec la webcam, viser successivement les quatre cartes puis les
-espaces entre elles. Déplacer l'index lentement, puis plus rapidement ; masquer
-la main et la faire réapparaître ailleurs ; présenter deux mains ; arrêter et
-redémarrer la caméra. Vérifier que le curseur et le survol disparaissent et
-reprennent correctement. Essayer également une fenêtre étroite et le défilement
-manuel de la page pour vérifier l'alignement des cibles.
+Pour valider les pointeurs et les cibles :
+
+Le workspace `@handfinity/interactions` doit être installé avec `npm install`.
+Avec Docker, reconstruire et recréer le hub avec
+`docker compose up -d --build --force-recreate hub` : son démarrage exécute
+`npm ci` pour actualiser le volume de dépendances.
+
+1. En mode **Automatic**, confirmer `Pointing` avec une main. Viser les quatre
+   cartes puis les espaces entre elles : le contour plein doit suivre l'index,
+   et seule la carte sous son centre doit être surlignée.
+2. Ouvrir la paume ou pincer : le pointeur et le survol doivent disparaître dès
+   que la nouvelle posture est confirmée. Revenir au pointage ailleurs : le
+   pointeur doit reprendre à cette position.
+3. Présenter une seconde main en pointage, bien séparée de la première : un
+   curseur pointillé doit apparaître. Déplacer cette seconde main sur une autre
+   carte : elle ne doit pas changer la carte survolée par la main principale.
+4. Choisir le numéro de la seconde main dans **Main hand** : son curseur doit
+   devenir plein et piloter le survol. Mettre cette main au repos : le survol
+   disparaît sans passer à l'autre. Revenir à **Automatic** pour refaire le choix.
+5. Retirer la main principale pendant une seconde en gardant l'autre en pointage :
+   le survol doit s'effacer, puis la main restante devenir principale après la
+   perte de l'ancienne identité. Croiser les mains jusqu'à signaler une ambiguïté,
+   puis les séparer : les anciens curseurs ne doivent pas subsister.
+6. Réduire la largeur de la fenêtre et faire défiler la page manuellement : les
+   curseurs doivent rester alignés avec les cartes, et le survol suivre leur
+   disposition. Vérifier aussi les bords et les espaces entre les cartes.
+7. Arrêter la caméra : les curseurs, le survol et le choix manuel doivent être
+   effacés. Vérifier ensuite le dessin par pincement dans Paint.

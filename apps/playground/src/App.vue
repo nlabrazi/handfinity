@@ -9,14 +9,16 @@ import {
 import {
 	createHandPoseTracker,
 	createPinchDetector,
-	createPointSmoother,
 	type HandPose,
 	type HandTrackingFrame,
 	type PinchEvent,
-	type Point,
 	type TrackedHand,
 	type TrackedHandPose,
 } from "@handfinity/core";
+import {
+	createHandPointerTracker,
+	type HandPointerFrame,
+} from "@handfinity/interactions";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import NavigationSandbox from "./components/NavigationSandbox.vue";
 
@@ -30,15 +32,21 @@ const error = ref("");
 
 const pinchActive = ref(false);
 const pinchTransition = ref("Aucun");
-const pointer = ref<Point | null>(null);
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
 const trackingTransition = ref("None");
 const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
+const emptyPointers: HandPointerFrame = {
+	timestamp: 0,
+	pointers: [],
+	primaryHandId: null,
+	preferredHandId: null,
+};
+const pointerFrame = shallowRef(emptyPointers);
 
 const poseTracker = createHandPoseTracker();
+const pointerTracker = createHandPointerTracker();
 const pinch = createPinchDetector();
-const pointSmoother = createPointSmoother();
 let activeHandId: number | null = null;
 
 const session = createTrackingSession({
@@ -50,11 +58,6 @@ const session = createTrackingSession({
 });
 let sessionGeneration = 0;
 let disposed = false;
-
-function resetPointer() {
-	pointer.value = null;
-	pointSmoother.reset();
-}
 
 function recordGesture(event: PinchEvent | null) {
 	if (!event) return;
@@ -68,7 +71,6 @@ function recordGesture(event: PinchEvent | null) {
 function endInteraction(timestamp: number) {
 	recordGesture(pinch.update(null, 1, timestamp));
 	activeHandId = null;
-	resetPointer();
 }
 
 function showTracking(frame: HandTrackingFrame) {
@@ -173,6 +175,7 @@ function handleTrackingFrame({
 }: TrackingSessionFrame) {
 	showTracking(tracking);
 	handPoses.value = poseTracker.update(tracking, aspectRatio);
+	pointerFrame.value = pointerTracker.update(tracking, handPoses.value);
 	const timestamp = tracking.timestamp;
 	if (!hasNewFrame) {
 		if (tracking.events.length) {
@@ -186,7 +189,7 @@ function handleTrackingFrame({
 	}
 
 	handCount.value = hands.length;
-	// Le suivi accepte deux mains ; le curseur reste à une seule main.
+	// Le journal du pincement reste à une main, indépendamment des pointeurs.
 	const tracked =
 		hands.length === 1 && !tracking.ambiguous
 			? tracking.hands.find((item) => item.status === "tracked")
@@ -204,9 +207,6 @@ function handleTrackingFrame({
 			: null;
 	if (pose && tracked) {
 		activeHandId = tracked.id;
-		pointer.value = pointSmoother.update(pose.indexTip, timestamp);
-	} else {
-		resetPointer();
 	}
 	recordGesture(pinch.update(pose, aspectRatio, timestamp));
 	drawHands(hands);
@@ -227,12 +227,13 @@ function stop() {
 	trackedHands.value = [];
 	poseTracker.reset();
 	handPoses.value = [];
+	pointerTracker.reset();
+	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
 	activeHandId = null;
 
 	pinch.reset();
-	resetPointer();
 	pinchActive.value = false;
 	pinchTransition.value = "Aucun";
 }
@@ -371,7 +372,12 @@ onBeforeUnmount(() => {
 					</p>
 				</section>
 
-				<NavigationSandbox :pointer="pointer" :is-running="isRunning" />
+				<NavigationSandbox
+					:frame="pointerFrame"
+					:hands="trackedHands"
+					:is-running="isRunning"
+					@primary-hand-change="pointerTracker.setPrimaryHand"
+				/>
 			</div>
 		</div>
 	</main>

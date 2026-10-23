@@ -26,7 +26,7 @@
   - **Hub** : Accueil animé sur `/`, avec une main holographique, des aperçus des projets et des emplacements « À venir ». Paint et Playground ont leurs propres routes : `/paint` et `/playground`.
   - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement. Une [zone de navigation expérimentale](apps/playground/README.md) permet de survoler quatre cartes avec un curseur lissé.
   - **Handfinity Paint** : Dessin sans contact sur un Canvas à partir des mouvements de l'index et du pouce.
-  - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`) et de la vision (`@handfinity/vision`) dans les futures applications.
+  - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`), de la vision (`@handfinity/vision`) et des pointeurs/cibles (`@handfinity/interactions`) dans les futures applications.
 - 👓 **Interaction gestuelle sans contact** : Détection du pincement (*pinch*) pour démarrer, poursuivre et arrêter un tracé, sans souris ni écran tactile.
 - ⚡ **Stack moderne** : Vue 3, Vite, TypeScript, Tailwind CSS v4 et npm Workspaces avec Node.js 24.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères des mains dans le Playground et superposition du dessin sur la vidéo dans Paint.
@@ -55,7 +55,7 @@ En complément des interfaces de démonstration, Handfinity repose sur un **mote
 - 🖱️ **Suivi des mains en temps réel** : Détection des repères articulaires avec **MediaPipe Hand Landmarker**, accessibles sous forme de coordonnées pour les applications.
 - 🎯 **Détection du pincement (*Pinch*)** : Analyse de la proximité du pouce et de l'index pour déclencher des événements gestuels structurés.
 - 📌 **Traitement d'une main en V1** : Le Playground ne déclenche le geste que lorsqu'une seule main est détectée, pour éviter les interactions ambiguës.
-- 🌐 **Packages partagés** : `@handfinity/core` contient la logique de détection ; `@handfinity/vision` regroupe le suivi des mains, la caméra et les sessions de geste.
+- 🌐 **Packages partagés** : `@handfinity/core` contient la logique de détection ; `@handfinity/vision` regroupe le suivi des mains, la caméra et les sessions de geste ; `@handfinity/interactions` fournit les pointeurs et le calcul des cibles.
 - ⚡ **Actualisation continue** : Analyse des images vidéo via `requestAnimationFrame`, avec mise à jour des repères et états dans l'interface.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt de la caméra, fermeture du tracker et remise à zéro des états lorsque la session se termine.
 - ⌨️ **Événements & Commandes** :
@@ -158,6 +158,33 @@ l'arrêt de la session.
 Le panneau **Hand poses** du Playground présente les postures confirmées et
 candidates, l'estimation des doigts et le ratio de pincement. Ces diagnostics
 permettent de valider la reconnaissance avant de l'utiliser dans les interactions.
+
+### Pointeurs et cibles d'interaction
+
+Le package interne `@handfinity/interactions` dépend de `core` et s'exécute sans
+Vue ni DOM. `createHandPointerTracker().update(trackingFrame, poses)` produit les
+positions normalisées des index, leur posture, leur état actif et la main principale.
+Seul un pointage confirmé dans l'image active le pointeur. Le lissage est isolé
+par identité et réinitialisé après un repos ou une absence ; une image déjà
+traitée n'est pas filtrée une seconde fois.
+
+La première main en pointage devient principale et garde ce rôle tant que son
+identité existe. `setPrimaryHand(id)` permet un choix explicite ; `null` relance
+le choix automatique. Une absence brève réserve le rôle sans conserver le
+survol. Une identité perdue ou ambiguë libère également le choix principal.
+
+`projectHandPoint` projette une position dans un rectangle, avec miroir explicite
+et rejet des points hors image. `hitTestTargets` retrouve la cible contenant le
+point : les cibles désactivées sont ignorées, les bords droite/bas sont exclus
+et les chevauchements utilisent une priorité déclarée, puis l'ordre des cibles.
+L'application fournit des points et rectangles dans le même repère ; Playground
+utilise les coordonnées client et mesure les cartes affichées, y compris après
+un redimensionnement ou un défilement.
+
+Dans le [Playground](apps/playground/README.md#pointeurs-et-survol-des-cibles),
+les deux mains peuvent afficher un curseur. Le contour plein désigne la main
+principale qui pilote le survol ; le contour pointillé désigne la seconde main.
+Le sélecteur **Main hand** permet de changer de main principale.
 
 ### Sessions de suivi communes
 

@@ -3,16 +3,29 @@ import {
 	computed,
 	onBeforeUnmount,
 	onMounted,
-	ref,
+	shallowRef,
 	useTemplateRef,
 	watch,
 } from "vue";
-import type { Point } from "@handfinity/core";
+import type { TrackedHand } from "@handfinity/core";
+import {
+	hitTestTargets,
+	projectHandPoint,
+	type HandPointerFrame,
+	type InteractionRect,
+	type InteractionTarget,
+} from "@handfinity/interactions";
 
-const props = defineProps<{ pointer: Point | null; isRunning: boolean }>();
+const props = defineProps<{
+	frame: HandPointerFrame;
+	hands: readonly TrackedHand[];
+	isRunning: boolean;
+}>();
+const emit = defineEmits<{ "primary-hand-change": [handId: number | null] }>();
 const boardRef = useTemplateRef<HTMLDivElement>("board");
 const cardsRef = useTemplateRef<HTMLLIElement[]>("cards");
-const hoveredId = ref<string | null>(null);
+const surface = shallowRef<InteractionRect | null>(null);
+const targets = shallowRef<readonly InteractionTarget[]>([]);
 let observer: ResizeObserver | null = null;
 
 const projects = [
@@ -46,14 +59,35 @@ const projects = [
 	},
 ];
 
-// Même repère normalisé que la caméra ; appliquer le miroir à l'affichage.
-const boardPointer = computed(() =>
-	props.pointer
-		? {
-				x: Math.max(0, Math.min(1, 1 - props.pointer.x)),
-				y: Math.max(0, Math.min(1, props.pointer.y)),
-			}
-		: null,
+// Pointeurs et cibles utilisent les coordonnées client ; le miroir est appliqué ici.
+const boardPointers = computed(() => {
+	const bounds = surface.value;
+	if (!props.isRunning || !bounds) return [];
+	return props.frame.pointers
+		.filter((pointer) => pointer.active)
+		.flatMap((pointer) => {
+			const point = projectHandPoint(pointer.position, bounds, {
+				mirrorX: true,
+			});
+			return point
+				? [
+						{
+							...pointer,
+							clientPosition: point,
+							left: ((point.x - bounds.left) / bounds.width) * 100,
+							top: ((point.y - bounds.top) / bounds.height) * 100,
+						},
+					]
+				: [];
+		});
+});
+const primaryPointer = computed(() =>
+	boardPointers.value.find((pointer) => pointer.isPrimary),
+);
+const hoveredId = computed(
+	() =>
+		hitTestTargets(primaryPointer.value?.clientPosition ?? null, targets.value)
+			?.id ?? null,
 );
 const hoveredProject = computed(() =>
 	projects.find((project) => project.id === hoveredId.value),
@@ -61,35 +95,51 @@ const hoveredProject = computed(() =>
 const status = computed(() => {
 	if (!props.isRunning)
 		return "Start the camera to try hovering with your hand.";
-	if (!boardPointer.value) return "Keep one hand visible to move the cursor.";
+	if (props.frame.primaryHandId === null)
+		return "Point with your index to choose the main hand.";
+	if (!primaryPointer.value)
+		return `Hand #${props.frame.primaryHandId} keeps control. Point again or choose another hand.`;
 	return hoveredProject.value
-		? `Hovering: ${hoveredProject.value.title}`
-		: "Move the cursor onto a card.";
+		? `Hand #${props.frame.primaryHandId} · Hovering: ${hoveredProject.value.title}`
+		: `Hand #${props.frame.primaryHandId} · Move the cursor onto a card.`;
 });
 
-function updateHover() {
-	hoveredId.value = null;
-	const point = boardPointer.value;
-	const board = boardRef.value;
-	if (!point || !board) return;
-	const bounds = board.getBoundingClientRect();
-	const x = bounds.left + point.x * bounds.width;
-	const y = bounds.top + point.y * bounds.height;
-	// Mesurer les cibles affichées pour suivre aussi les changements de disposition.
-	const target = cardsRef.value?.find((card) => {
-		const rect = card.getBoundingClientRect();
-		return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
-	});
-	hoveredId.value = target?.dataset.project ?? null;
+function rectOf(element: HTMLElement): InteractionRect {
+	const { left, top, width, height } = element.getBoundingClientRect();
+	return { left, top, width, height };
 }
 
-watch(boardPointer, updateHover, { flush: "post" });
+function refreshTargets() {
+	const board = boardRef.value;
+	surface.value = board ? rectOf(board) : null;
+	targets.value = (cardsRef.value ?? []).flatMap((card) => {
+		const id = card.dataset.project;
+		return id ? [{ id, rect: rectOf(card) }] : [];
+	});
+}
+
+function choosePrimaryHand(event: Event) {
+	const value = (event.target as HTMLSelectElement).value;
+	emit("primary-hand-change", value === "auto" ? null : Number(value));
+}
+
+watch(() => props.frame, refreshTargets, { flush: "post" });
 onMounted(() => {
-	observer = new ResizeObserver(updateHover);
+	observer = new ResizeObserver(refreshTargets);
 	if (boardRef.value) observer.observe(boardRef.value);
-	updateHover();
+	for (const card of cardsRef.value ?? []) observer.observe(card);
+	window.addEventListener("resize", refreshTargets);
+	window.addEventListener("scroll", refreshTargets, {
+		capture: true,
+		passive: true,
+	});
+	refreshTargets();
 });
-onBeforeUnmount(() => observer?.disconnect());
+onBeforeUnmount(() => {
+	observer?.disconnect();
+	window.removeEventListener("resize", refreshTargets);
+	window.removeEventListener("scroll", refreshTargets, true);
+});
 </script>
 
 <template>
@@ -102,9 +152,36 @@ onBeforeUnmount(() => observer?.disconnect());
 				Navigation sandbox
 			</h2>
 			<p class="mt-1 text-sm text-slate-400">
-				Move your index finger to highlight a card.
+				Point with your index finger to highlight a card with the main hand.
 			</p>
 		</header>
+
+		<div class="space-y-2 rounded-xl bg-slate-900 p-4 text-sm">
+			<label for="primary-hand" class="block font-medium">Main hand</label>
+			<select
+				id="primary-hand"
+				:value="frame.preferredHandId ?? 'auto'"
+				:disabled="!isRunning || !hands.length"
+				@change="choosePrimaryHand"
+				class="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white disabled:opacity-50"
+			>
+				<option value="auto">
+					Automatic{{
+						frame.primaryHandId !== null
+							? ` (main: #${frame.primaryHandId})`
+							: ""
+					}}
+				</option>
+				<option v-for="hand in hands" :key="hand.id" :value="hand.id">
+					Hand #{{ hand.id }} · {{ hand.observation.handedness }} ·
+					{{ hand.status }}
+				</option>
+			</select>
+			<p class="text-slate-400">
+				The main hand keeps control while tracked. Choose another hand to
+				switch. Only its solid cursor highlights cards.
+			</p>
+		</div>
 
 		<div
 			ref="board"
@@ -153,13 +230,17 @@ onBeforeUnmount(() => observer?.disconnect());
 				</li>
 			</ul>
 			<div
-				v-if="boardPointer"
+				v-for="pointer in boardPointers"
+				:key="pointer.handId"
 				data-navigation-cursor
+				:data-hand-id="pointer.handId"
+				:data-primary="pointer.isPrimary"
 				aria-hidden="true"
-				class="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-slate-950/80 ring-4 ring-sky-400/40"
-				:style="{ left: `${boardPointer.x * 100}%`, top: `${boardPointer.y * 100}%` }"
+				class="pointer-events-none absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 bg-slate-950/90 text-[10px] font-semibold"
+				:class="pointer.isPrimary ? 'border-white text-white ring-4 ring-sky-400/40' : 'border-dashed border-amber-300 text-amber-300 opacity-60'"
+				:style="{ left: `${pointer.left}%`, top: `${pointer.top}%` }"
 			>
-				<span class="size-1.5 rounded-full bg-sky-300" />
+				#{{ pointer.handId }}
 			</div>
 		</div>
 

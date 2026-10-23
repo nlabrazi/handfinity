@@ -11,6 +11,7 @@ COPY apps/playground/package.json ./apps/playground/
 COPY apps/paint/package.json ./apps/paint/
 COPY apps/hub/package.json ./apps/hub/
 COPY packages/core/package.json ./packages/core/
+COPY packages/interactions/package.json ./packages/interactions/
 COPY packages/vision/package.json ./packages/vision/
 
 RUN npm ci
