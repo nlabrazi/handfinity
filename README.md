@@ -129,6 +129,36 @@ Le [Playground](apps/playground/README.md#suivi-de-deux-mains) affiche les numé
 les états et les transitions pour les essais. Paint termine un trait lors d'un
 changement d'identité ; le dessin et le curseur restent limités à une seule main.
 
+### Postures des mains
+
+`createHandPoseTracker`, exporté par `@handfinity/core`, reçoit les résultats du
+suivi d'identités via `update(trackingFrame, aspectRatio)`. Il produit une posture
+par main, avec sa candidate, son état de confirmation et les mesures des doigts :
+
+- `pointing` : index tendu, majeur, annulaire et auriculaire repliés. Le pouce
+  peut rester libre, tant qu'il ne forme pas un pincement.
+- `open-palm` : les cinq doigts sont tendus, avec le pouce éloigné de la paume.
+- `pinch` : pouce et index rapprochés ; cette posture est prioritaire. Le
+  détecteur existant conserve ses seuils distincts d'entrée et de sortie et ses
+  confirmations de 40 ms à la fermeture et 60 ms au relâchement.
+- `unknown` : aucune des configurations reconnues n'est confirmée.
+
+Pointage et paume ouverte demandent 80 ms d'observations cohérentes. Les angles
+des doigts utilisent les repères `{ x, y, z }` corrigés du format vidéo ; le
+pincement conserve sa mesure 2D relative à la taille de la paume. Ces heuristiques
+doivent être éprouvées avec la webcam, notamment lorsque la main est inclinée
+ou partiellement cachée.
+
+Chaque identité possède son propre état. Une absence interrompt immédiatement
+la posture et sa confirmation ; une reprise demande une nouvelle confirmation.
+Les images répétées ne confirment aucune posture, et une identité perdue ou
+ambiguë perd également son état de reconnaissance. `reset()` efface les états à
+l'arrêt de la session.
+
+Le panneau **Hand poses** du Playground présente les postures confirmées et
+candidates, l'estimation des doigts et le ratio de pincement. Ces diagnostics
+permettent de valider la reconnaissance avant de l'utiliser dans les interactions.
+
 ### Sessions de suivi communes
 
 Paint et Playground utilisent `createTrackingSession` dans `@handfinity/vision`.

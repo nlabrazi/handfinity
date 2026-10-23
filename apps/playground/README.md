@@ -42,6 +42,38 @@ Le curseur et le pincement restent limités à une seule main à cette étape.
 Un changement d'identité réinitialise le curseur et le geste. Paint utilise
 également ce suivi pour terminer le trait avant de recevoir une autre identité.
 
+## Postures reconnues
+
+Le panneau **Hand poses** affiche un diagnostic pour chaque identité, y compris
+lorsque deux mains distinctes sont présentes :
+
+- **Confirmed** : la posture stabilisée, parmi `Pointing`, `Open palm`, `Pinch`
+  et `Unknown`.
+- **Candidate** : la configuration actuellement estimée. `confirming` indique
+  une transition en attente de confirmation.
+- Les cinq doigts sont estimés `extended` (tendus), `folded` (repliés) ou
+  `uncertain` (indéterminés). Les couleurs accompagnent les libellés.
+- **Pinch ratio** : la distance pouce/index divisée par la taille de la paume.
+  Ce ratio est une mesure géométrique, pas un score de confiance.
+
+Pour `Pointing`, tendre l'index en repliant les trois autres doigts ; le pouce
+reste libre. Pour `Open palm`, tendre les cinq doigts et écarter le pouce de la
+paume. Pour `Pinch`, rapprocher les bouts du pouce et de l'index ; le pincement
+est prioritaire sur les autres configurations. Un poing ou une configuration
+non reconnue revient à `Unknown` si elle ne forme pas un pincement.
+
+Le pointage et la paume ouverte demandent 80 ms de stabilité. Le pincement
+réutilise les confirmations de 40 ms à la fermeture et de 60 ms au relâchement,
+avec des seuils distincts pour limiter les oscillations. La posture confirmée
+peut donc rester affichée brièvement pendant une transition. Une main manquante
+ou des repères invalides effacent immédiatement sa posture. Une reprise demande
+une nouvelle confirmation, et l'arrêt caméra vide tous les diagnostics.
+
+Les postures reposent sur la géométrie estimée par la webcam : garder la main
+entièrement visible et commencer face à la caméra. Les diagnostics des doigts
+permettent de repérer une estimation incertaine avant d'ajuster la posture.
+Le curseur de survol et le pincement à une main restent disponibles pendant les essais.
+
 ## Navigation sandbox — étape 1
 
 La zone **Navigation sandbox** permet de tester le pointage sur quatre cartes :
@@ -89,6 +121,31 @@ npm run lint
 npm run format:check
 npm run build
 ```
+
+Pour valider les postures :
+
+1. Ouvrir `http://localhost:3000/playground` après `npm run dev`, puis activer
+   la caméra. Tendre l'index avec les trois autres doigts repliés et maintenir
+   une demi-seconde : **Confirmed** doit afficher `Pointing`.
+2. Ouvrir les cinq doigts avec le pouce dégagé : `Open palm` doit être confirmé.
+   Fermer la main en gardant le pouce à distance du bout de l'index : `Unknown`
+   doit apparaître après la transition.
+3. Pincer pouce et index puis relâcher : `Pinch` doit être confirmé puis quitter
+   cet état. Faire varier lentement l'écartement près du contact ; le diagnostic
+   ne doit pas osciller à chaque petite variation.
+4. Présenter deux mains séparées, l'une en pointage et l'autre ouverte. Chaque
+   numéro doit afficher sa propre posture. Retirer une main puis la ramener :
+   sa posture doit se confirmer à nouveau sans perturber celle de l'autre.
+5. Essayer la main gauche puis la droite, tourner progressivement la main dans
+   le plan de l'image et modifier sa distance à la caméra. En cas de résultat
+   inattendu, relever le numéro, **Candidate**, les états des doigts et le ratio.
+6. Arrêter la caméra puis la redémarrer : aucune posture précédente ne doit
+   rester confirmée. Vérifier également le dessin par pincement dans Paint.
+
+Les tests automatisés vérifient précisément les durées, les brèves variations,
+les images répétées, les identités indépendantes, les pertes et ambiguïtés ainsi
+que les transformations géométriques sur des repères synthétiques. Les essais
+ci-dessus servent à évaluer les estimations réelles de la webcam.
 
 Pour valider le suivi dans le hub :
 

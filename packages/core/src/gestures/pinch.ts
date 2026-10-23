@@ -1,3 +1,10 @@
+import {
+	PINCH_START_THRESHOLD as START_THRESHOLD,
+	PINCH_END_THRESHOLD as END_THRESHOLD,
+	PINCH_START_HOLD_MS as START_HOLD_MS,
+	PINCH_END_HOLD_MS as END_HOLD_MS,
+} from "./pinch-config";
+
 export type Point = {
 	x: number;
 	y: number;
@@ -21,11 +28,6 @@ export type PinchEvent = PinchSample &
 		| { type: "pinch:start" | "pinch:move" }
 		| { type: "pinch:end"; reason: "released" | "tracking-lost" }
 	);
-
-const START_THRESHOLD = 0.32;
-const END_THRESHOLD = 0.46;
-const START_HOLD_MS = 40;
-const END_HOLD_MS = 60;
 
 function distance(a: Point, b: Point, aspectRatio: number): number {
 	return Math.hypot((a.x - b.x) * aspectRatio, a.y - b.y);

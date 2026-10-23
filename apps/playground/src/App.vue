@@ -7,6 +7,7 @@ import {
 	type TrackingSessionFrame,
 } from "@handfinity/vision";
 import {
+	createHandPoseTracker,
 	createPinchDetector,
 	createPointSmoother,
 	type HandPose,
@@ -14,7 +15,9 @@ import {
 	type PinchEvent,
 	type Point,
 	type TrackedHand,
+	type TrackedHandPose,
 } from "@handfinity/core";
+import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import NavigationSandbox from "./components/NavigationSandbox.vue";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
@@ -31,7 +34,9 @@ const pointer = ref<Point | null>(null);
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
 const trackingTransition = ref("None");
+const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
 
+const poseTracker = createHandPoseTracker();
 const pinch = createPinchDetector();
 const pointSmoother = createPointSmoother();
 let activeHandId: number | null = null;
@@ -167,6 +172,7 @@ function handleTrackingFrame({
 	hasNewFrame,
 }: TrackingSessionFrame) {
 	showTracking(tracking);
+	handPoses.value = poseTracker.update(tracking, aspectRatio);
 	const timestamp = tracking.timestamp;
 	if (!hasNewFrame) {
 		if (tracking.events.length) {
@@ -219,6 +225,8 @@ function stop() {
 	isLoading.value = false;
 	handCount.value = 0;
 	trackedHands.value = [];
+	poseTracker.reset();
+	handPoses.value = [];
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
 	activeHandId = null;
@@ -339,6 +347,8 @@ onBeforeUnmount(() => {
 							Last tracking event: {{ trackingTransition }}
 						</p>
 					</div>
+
+					<HandPoseDiagnostics :hands="handPoses" />
 
 					<div class="flex flex-wrap items-center gap-4 text-sm">
 						<span
