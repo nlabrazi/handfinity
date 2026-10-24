@@ -375,6 +375,7 @@ onBeforeUnmount(() => {
 				<NavigationSandbox
 					:frame="pointerFrame"
 					:hands="trackedHands"
+					:poses="handPoses"
 					:is-running="isRunning"
 					@primary-hand-change="pointerTracker.setPrimaryHand"
 				/>

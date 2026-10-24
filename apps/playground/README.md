@@ -80,8 +80,10 @@ Le survol utilise la posture `Pointing` confirmée. Le journal du pincement à u
 La zone **Navigation sandbox** présente quatre cartes : Paint, Playground et
 deux projets à venir. Tendre l'index et replier majeur, annulaire et auriculaire
 jusqu'à confirmer `Pointing` pour faire apparaître le pointeur de cette main.
-Une paume ouverte, un pincement ou `Unknown` retire son pointeur après la
-transition de posture. Les pertes de suivi et l'arrêt caméra le retirent immédiatement.
+En dehors d'une sélection préparée, ouvrir les cinq doigts, pincer ou passer
+à `Unknown` retire son pointeur après la transition de posture. Pendant une
+préparation, le curseur principal reste visible en ambre pour suivre la cible.
+Les pertes de suivi et l'arrêt caméra le retirent immédiatement.
 
 - Chaque pointeur porte le numéro de sa main et possède son propre lissage.
   Le miroir est appliqué une seule fois lors de la projection dans la zone.
@@ -105,15 +107,49 @@ transition de posture. Les pertes de suivi et l'arrêt caméra le retirent immé
   ou défilements, y compris dans un conteneur imbriqué.
 
 `@handfinity/interactions` fournit les pointeurs, le choix principal, la
-projection et le calcul des cibles sans dépendre de Vue ou du DOM. Le composant
-lit les dimensions affichées et rend les résultats. Les cartes illustrent le
-survol ; la sélection et l'annulation constituent l'étape suivante.
+projection, le calcul des cibles et la sélection sans dépendre de Vue ou du DOM.
+Le composant lit les dimensions affichées et rend les résultats. Paint et
+Playground sont disponibles pour les essais ; les deux cartes **Coming soon**
+sont atténuées et désactivées.
+
+## Sélection et annulation
+
+La zone permet de confirmer une carte, avec un résultat visible et un compteur.
+La carte reste dans le laboratoire ; la navigation sera intégrée à l'accueil
+lors d'une étape ultérieure.
+
+1. **Viser** : tendre l'index en repliant majeur, annulaire et auriculaire,
+   avec le pouce séparé de l'index. Amener le centre du curseur plein sur Paint
+   ou Playground : la carte devient bleue.
+2. **Préparer** : toucher le bout de l'index avec celui du pouce et maintenir
+   ce pincement en restant sur la carte. Elle devient ambre et affiche **Prepared**.
+   Le compteur **Confirmed selections** ne change pas.
+3. **Confirmer** : séparer le pouce de l'index, tendre l'index et garder les
+   trois autres doigts repliés, sans quitter la carte. Elle devient verte et
+   affiche **Selected** ; le compteur augmente de un.
+4. **Annuler avant confirmation** : ouvrir les cinq doigts ou déplacer le
+   curseur hors de la carte préparée. Le message affiche **Cancelled** et
+   le compteur reste inchangé. Revenir au pointage pour recommencer.
+
+Une préparation appartient à une cible et à une main précises. Elle ne se
+transfère pas à une autre carte ou à l'autre main. Une perte de suivi, une
+ambiguïté, un changement de main principale, une cible devenue indisponible
+ou une posture de relâchement non reconnue annule aussi la préparation.
+Arrêter la caméra annule l'action et efface les résultats et le compteur ;
+le redémarrage demande de viser à nouveau. Un pincement déjà maintenu à
+l'arrivée n'active aucune sélection.
+
+Les transitions `selection:prepare`, `selection:confirm` et `selection:cancel`
+sont émises une seule fois par changement d'état. La confirmation attend
+une nouvelle image et un retour au pointage stabilisé, y compris après les
+états intermédiaires du relâchement. Le résultat vert précédent s'efface à
+la préparation suivante ; le compteur conserve les confirmations de la session.
 
 ## Session partagée avec Paint
 
 `createTrackingSession` dans `@handfinity/vision` possède la caméra, le détecteur,
 la boucle vidéo et le suivi des identités. Playground traite les résultats pour
-ses diagnostics, son pincement et le survol ; il ne gère plus sa propre boucle
+ses diagnostics, son pincement, le survol et la sélection ; il ne gère plus sa propre boucle
 d'acquisition. Une même session peut être redémarrée sans réutiliser les numéros
 de main déjà attribués.
 
@@ -197,12 +233,14 @@ Avec Docker, reconstruire et recréer le hub avec
 `docker compose up -d --build --force-recreate hub` : son démarrage exécute
 `npm ci` pour actualiser le volume de dépendances.
 
-1. En mode **Automatic**, confirmer `Pointing` avec une main. Viser les quatre
-   cartes puis les espaces entre elles : le contour plein doit suivre l'index,
-   et seule la carte sous son centre doit être surlignée.
-2. Ouvrir la paume ou pincer : le pointeur et le survol doivent disparaître dès
+1. En mode **Automatic**, confirmer `Pointing` avec une main. Viser Paint et
+   Playground puis les espaces entre elles : le contour plein doit suivre
+   l'index, et seule la carte disponible sous son centre doit être surlignée.
+   Les cartes **Coming soon** restent désactivées.
+2. Ouvrir les cinq doigts : le pointeur et le survol doivent disparaître dès
    que la nouvelle posture est confirmée. Revenir au pointage ailleurs : le
-   pointeur doit reprendre à cette position.
+   pointeur doit reprendre à cette position. Un pincement conserve seulement
+   le curseur principal en ambre lorsqu'une sélection est préparée.
 3. Présenter une seconde main en pointage, bien séparée de la première : un
    curseur pointillé doit apparaître. Déplacer cette seconde main sur une autre
    carte : elle ne doit pas changer la carte survolée par la main principale.
@@ -218,3 +256,34 @@ Avec Docker, reconstruire et recréer le hub avec
    disposition. Vérifier aussi les bords et les espaces entre les cartes.
 7. Arrêter la caméra : les curseurs, le survol et le choix manuel doivent être
    effacés. Vérifier ensuite le dessin par pincement dans Paint.
+
+Pour valider la sélection et l'annulation :
+
+1. Dans **Navigation sandbox**, viser Paint avec l'index tendu, le pouce séparé
+   de l'index et les trois autres doigts repliés. Attendre une seconde : la carte
+   devient bleue, sans augmenter **Confirmed selections**. Cela vérifie que
+   le simple survol ne sélectionne rien.
+2. Toucher pouce et index et maintenir deux secondes, en restant au centre de
+   Paint : la carte devient ambre avec **Prepared**, le compteur reste inchangé.
+   Cela vérifie qu'un pincement prépare sans confirmer ni répéter l'action.
+3. Séparer pouce et index, tendre l'index et garder les trois autres doigts
+   repliés. La carte devient verte avec **Selected**, le compteur augmente de un.
+   Garder cette posture : le compteur ne doit plus augmenter.
+4. Viser puis préparer à nouveau. Ouvrir les cinq doigts : **Cancelled** doit
+   apparaître sans augmenter le compteur. Cela vérifie l'annulation explicite.
+5. Préparer à nouveau puis déplacer le curseur hors de la carte, en gardant
+   le pincement. **Cancelled** doit apparaître ; passer sur l'autre carte puis
+   relâcher ne doit rien confirmer. Cela vérifie que la préparation reste liée
+   à sa cible d'origine.
+6. Préparer puis retirer la main de l'image. La préparation doit être annulée
+   immédiatement. Revenir en pinçant puis relâcher : aucune confirmation ne
+   doit apparaître avant un nouveau cycle pointage, pincement, pointage.
+7. Avec deux mains bien séparées, préparer avec la principale, puis changer
+   **Main hand** : l'action doit être annulée. La seconde main ne doit pas
+   pouvoir terminer la sélection préparée par la première.
+8. Préparer puis cliquer sur **Stop camera** : aucune carte préparée ou verte
+   ne doit subsister et le compteur doit revenir à zéro. Redémarrer la caméra
+   en maintenant un pincement : aucune action ne doit se préparer seule.
+9. Viser puis pincer sur une carte **Coming soon** : elle ne doit ni se préparer
+   ni se confirmer. Vérifier ensuite un trait par pincement dans Paint pour
+   contrôler que le dessin fonctionne toujours.
