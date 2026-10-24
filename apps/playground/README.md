@@ -12,6 +12,12 @@ L'application autonome est disponible sur `http://localhost:3002`. Le hub
 avec un retour vers l'accueil immersif. Cliquer sur
 **Start camera** puis autoriser l'accès à la webcam.
 
+Les boutons **Grab & drag** (affiché par défaut) et **Selection** choisissent
+l'exercice. Changer d'exercice interrompt l'action en cours et remet à zéro
+les résultats de cet exercice lorsqu'on y revient. La session caméra et le
+choix de la main principale continuent ; un pincement maintenu pendant le
+changement ne commence pas une nouvelle action sans pointage préalable.
+
 ## Suivi de deux mains
 
 Le panneau **Hand identities** et les numéros près des poignets permettent
@@ -77,7 +83,7 @@ Le survol utilise la posture `Pointing` confirmée. Le journal du pincement à u
 
 ## Pointeurs et survol des cibles
 
-La zone **Navigation sandbox** présente quatre cartes : Paint, Playground et
+Le bouton **Selection** ouvre la zone **Navigation sandbox**, avec Paint, Playground et
 deux projets à venir. Tendre l'index et replier majeur, annulaire et auriculaire
 jusqu'à confirmer `Pointing` pour faire apparaître le pointeur de cette main.
 En dehors d'une sélection préparée, ouvrir les cinq doigts, pincer ou passer
@@ -114,7 +120,7 @@ sont atténuées et désactivées.
 
 ## Sélection et annulation
 
-La zone permet de confirmer une carte, avec un résultat visible et un compteur.
+Dans l'exercice **Selection**, la zone permet de confirmer une carte, avec un résultat visible et un compteur.
 La carte reste dans le laboratoire ; la navigation sera intégrée à l'accueil
 lors d'une étape ultérieure.
 
@@ -145,11 +151,45 @@ une nouvelle image et un retour au pointage stabilisé, y compris après les
 états intermédiaires du relâchement. Le résultat vert précédent s'efface à
 la préparation suivante ; le compteur conserve les confirmations de la session.
 
+## Saisie et déplacement
+
+L'exercice **Grab & drag** présente deux tuiles, **Tile A** et **Tile B** :
+
+1. Tendre l'index, replier majeur, annulaire et auriculaire et garder le pouce
+   séparé de l'index. Viser une tuile avec le centre du curseur plein : son
+   contour devient bleu.
+2. Toucher les bouts du pouce et de l'index pour saisir la tuile. Elle devient
+   ambre avec **Dragging**, sans se recentrer brusquement sur le curseur.
+3. Maintenir le pincement et déplacer la main : la tuile suit le curseur,
+   y compris lorsqu'il quitte le rectangle où elle se trouvait au départ.
+   Elle reste entièrement dans la zone et passe devant l'autre tuile.
+4. Séparer pouce et index : la tuile reste à sa dernière position tenue,
+   devient verte avec **Dropped**, et **Completed drops** augmente de un.
+   Ouvrir les cinq doigts produit également un dépôt dans cet exercice.
+
+Le mouvement se fige pendant la confirmation du relâchement, pour éviter de
+déplacer la tuile avec l'ouverture des doigts. Les pertes de suivi, les mains
+ambiguës, les mesures invalides, un changement de main principale ou un pointeur
+hors image interrompent la capture sans ajouter de dépôt. La tuile reste à sa
+dernière position valide ; revenir avec un pincement maintenu ne reprend pas
+la saisie. Revenir au pointage, puis pincer pour recommencer.
+
+**Stop camera** interrompt la saisie et conserve les positions et le compteur
+de dépôts. **Reset tiles** interrompt aussi l'action, replace les deux tuiles à
+leur position initiale et remet le compteur à zéro. Changer d'exercice efface
+cette démonstration ; elle repart de zéro lorsqu'on revient sur **Grab & drag**.
+
+Les cibles et les positions utilisent un repère logique de 0 à 1 rendu en
+pourcentages CSS. Le redimensionnement et le défilement ne demandent donc pas
+de recalculer des rectangles DOM pour cet exercice. L'ordre des tuiles définit
+à la fois leur superposition visuelle et leur priorité de détection. Seule la
+main principale peut capturer ; le pointeur secondaire reste pointillé.
+
 ## Session partagée avec Paint
 
 `createTrackingSession` dans `@handfinity/vision` possède la caméra, le détecteur,
 la boucle vidéo et le suivi des identités. Playground traite les résultats pour
-ses diagnostics, son pincement, le survol et la sélection ; il ne gère plus sa propre boucle
+ses diagnostics, son pincement, le survol, la sélection et le déplacement ; il ne gère plus sa propre boucle
 d'acquisition. Une même session peut être redémarrée sans réutiliser les numéros
 de main déjà attribués.
 
@@ -233,7 +273,7 @@ Avec Docker, reconstruire et recréer le hub avec
 `docker compose up -d --build --force-recreate hub` : son démarrage exécute
 `npm ci` pour actualiser le volume de dépendances.
 
-1. En mode **Automatic**, confirmer `Pointing` avec une main. Viser Paint et
+1. Choisir **Selection**. En mode **Automatic**, confirmer `Pointing` avec une main. Viser Paint et
    Playground puis les espaces entre elles : le contour plein doit suivre
    l'index, et seule la carte disponible sous son centre doit être surlignée.
    Les cartes **Coming soon** restent désactivées.
@@ -259,7 +299,7 @@ Avec Docker, reconstruire et recréer le hub avec
 
 Pour valider la sélection et l'annulation :
 
-1. Dans **Navigation sandbox**, viser Paint avec l'index tendu, le pouce séparé
+1. Choisir **Selection**, puis dans **Navigation sandbox**, viser Paint avec l'index tendu, le pouce séparé
    de l'index et les trois autres doigts repliés. Attendre une seconde : la carte
    devient bleue, sans augmenter **Confirmed selections**. Cela vérifie que
    le simple survol ne sélectionne rien.
@@ -287,3 +327,33 @@ Pour valider la sélection et l'annulation :
 9. Viser puis pincer sur une carte **Coming soon** : elle ne doit ni se préparer
    ni se confirmer. Vérifier ensuite un trait par pincement dans Paint pour
    contrôler que le dessin fonctionne toujours.
+
+Pour valider la saisie et le déplacement :
+
+1. Ouvrir `/playground`, choisir **Grab & drag** et démarrer la caméra. Tendre
+   l'index, replier les trois autres doigts et viser **Tile A**, pouce séparé
+   de l'index : contour bleu, sans déplacement. Cela vérifie le pointage préalable.
+2. Toucher pouce et index au centre de la tuile, puis maintenir le pincement
+   en déplaçant lentement la main : tuile ambre **Dragging**, qui suit la main
+   sans saut au démarrage. Continuer hors de son rectangle d'origine, puis
+   passer au-dessus de **Tile B** : seule **Tile A** doit se déplacer.
+3. Séparer pouce et index et continuer à déplacer la main : la tuile doit rester
+   à sa dernière position tenue, avec **Dropped** et un seul dépôt ajouté au
+   compteur. Cela vérifie le relâchement et l'absence de déclenchements répétés.
+4. Viser et saisir à nouveau, puis ouvrir les cinq doigts : la tuile doit aussi
+   être déposée. Ici, l'ouverture des doigts termine le déplacement normalement.
+5. Saisir puis atteindre les quatre bords de la zone : la tuile doit rester
+   entièrement dedans. Revenir vers le centre doit permettre de la déplacer
+   normalement. Redimensionner la fenêtre après dépôt et vérifier l'alignement.
+6. Pendant une saisie, retirer la main de l'image : **Interrupted**, tuile immobile
+   et compteur inchangé. Revenir en maintenant le pincement : aucune reprise
+   automatique. Il faut viser puis pincer à nouveau pour déplacer.
+7. Présenter deux mains séparées : le curseur pointillé ne doit pas saisir.
+   Pendant une saisie avec la principale, changer **Main hand** : interruption
+   sans dépôt et sans transfert de la tuile à la seconde main.
+8. Pendant une saisie, cliquer sur **Stop camera**, puis redémarrer en pinçant :
+   la tuile conserve sa position, aucun dépôt ni reprise automatique. Cliquer
+   sur **Reset tiles** : les positions initiales et le compteur zéro reviennent.
+9. Pendant une saisie, passer à **Selection**, puis revenir en gardant le
+   pincement : aucune capture ne doit subsister. Vérifier ensuite le cycle
+   bleu → ambre → vert dans **Selection**, puis un trait par pincement dans Paint.

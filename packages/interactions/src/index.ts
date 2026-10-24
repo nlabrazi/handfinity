@@ -9,3 +9,5 @@ export type {
 	SelectionFrame,
 	SelectionInput,
 } from "./selection";
+export { createDragController } from "./drag";
+export type { DragCancelReason, DragEvent, DragFrame, DragInput } from "./drag";

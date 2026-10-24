@@ -21,6 +21,7 @@ import {
 } from "@handfinity/interactions";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import NavigationSandbox from "./components/NavigationSandbox.vue";
+import DragSandbox from "./components/DragSandbox.vue";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -43,6 +44,7 @@ const emptyPointers: HandPointerFrame = {
 	preferredHandId: null,
 };
 const pointerFrame = shallowRef(emptyPointers);
+const exercise = ref<"selection" | "drag">("drag");
 
 const poseTracker = createHandPoseTracker();
 const pointerTracker = createHandPointerTracker();
@@ -372,13 +374,45 @@ onBeforeUnmount(() => {
 					</p>
 				</section>
 
-				<NavigationSandbox
-					:frame="pointerFrame"
-					:hands="trackedHands"
-					:poses="handPoses"
-					:is-running="isRunning"
-					@primary-hand-change="pointerTracker.setPrimaryHand"
-				/>
+				<div class="min-w-0 space-y-5">
+					<fieldset class="flex flex-wrap gap-2">
+						<legend class="sr-only">Interaction exercise</legend>
+						<button
+							type="button"
+							:aria-pressed="exercise === 'drag'"
+							@click="exercise = 'drag'"
+							class="rounded-lg border px-4 py-2 text-sm font-medium"
+							:class="exercise === 'drag' ? 'border-sky-300 bg-sky-400/15 text-sky-200' : 'border-slate-700 text-slate-400 hover:bg-slate-800'"
+						>
+							Grab &amp; drag
+						</button>
+						<button
+							type="button"
+							:aria-pressed="exercise === 'selection'"
+							@click="exercise = 'selection'"
+							class="rounded-lg border px-4 py-2 text-sm font-medium"
+							:class="exercise === 'selection' ? 'border-sky-300 bg-sky-400/15 text-sky-200' : 'border-slate-700 text-slate-400 hover:bg-slate-800'"
+						>
+							Selection
+						</button>
+					</fieldset>
+					<DragSandbox
+						v-if="exercise === 'drag'"
+						:frame="pointerFrame"
+						:hands="trackedHands"
+						:poses="handPoses"
+						:is-running="isRunning"
+						@primary-hand-change="pointerTracker.setPrimaryHand"
+					/>
+					<NavigationSandbox
+						v-else
+						:frame="pointerFrame"
+						:hands="trackedHands"
+						:poses="handPoses"
+						:is-running="isRunning"
+						@primary-hand-change="pointerTracker.setPrimaryHand"
+					/>
+				</div>
 			</div>
 		</div>
 	</main>

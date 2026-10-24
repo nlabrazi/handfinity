@@ -24,9 +24,9 @@
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur via les API Web, sans serveur de capture ni équipement spécialisé.
 - 🎮 **Un accueil et deux expériences** :
   - **Hub** : Accueil animé sur `/`, avec une main holographique, des aperçus des projets et des emplacements « À venir ». Paint et Playground ont leurs propres routes : `/paint` et `/playground`.
-  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement. Une [zone de navigation expérimentale](apps/playground/README.md) permet de viser les cartes Paint et Playground, de préparer une sélection par pincement, puis de la confirmer ou de l'annuler.
+  - **Vision Playground** : Visualisation en temps réel des mains, des points de repère et des transitions du geste de pincement. Deux [exercices d'interaction](apps/playground/README.md) permettent de sélectionner les cartes Paint et Playground ou de saisir et déplacer des tuiles par pincement.
   - **Handfinity Paint** : Dessin sans contact sur un Canvas à partir des mouvements de l'index et du pouce.
-  - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`), de la vision (`@handfinity/vision`) et des pointeurs, cibles et sélections (`@handfinity/interactions`) dans les futures applications.
+  - **Packages partagés** : Réutilisation de la logique gestuelle (`@handfinity/core`), de la vision (`@handfinity/vision`) et des pointeurs, cibles, sélections et déplacements (`@handfinity/interactions`) dans les futures applications.
 - 👓 **Interaction gestuelle sans contact** : Détection du pincement (*pinch*) pour démarrer, poursuivre et arrêter un tracé, sans souris ni écran tactile.
 - ⚡ **Stack moderne** : Vue 3, Vite, TypeScript, Tailwind CSS v4 et npm Workspaces avec Node.js 24.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères des mains dans le Playground et superposition du dessin sur la vidéo dans Paint.
@@ -55,7 +55,7 @@ En complément des interfaces de démonstration, Handfinity repose sur un **mote
 - 🖱️ **Suivi des mains en temps réel** : Détection des repères articulaires avec **MediaPipe Hand Landmarker**, accessibles sous forme de coordonnées pour les applications.
 - 🎯 **Détection du pincement (*Pinch*)** : Analyse de la proximité du pouce et de l'index pour déclencher des événements gestuels structurés.
 - 📌 **Main principale explicite** : Deux mains peuvent être suivies dans Playground ; seule la main principale pilote le survol et la sélection. Le journal du pincement et Paint restent limités à une seule main.
-- 🌐 **Packages partagés** : `@handfinity/core` contient la logique de détection ; `@handfinity/vision` regroupe le suivi des mains, la caméra et les sessions de geste ; `@handfinity/interactions` fournit les pointeurs, le calcul des cibles et la sélection annulable.
+- 🌐 **Packages partagés** : `@handfinity/core` contient la logique de détection ; `@handfinity/vision` regroupe le suivi des mains, la caméra et les sessions de geste ; `@handfinity/interactions` fournit les pointeurs, le calcul des cibles, la sélection et le déplacement par saisie.
 - ⚡ **Actualisation continue** : Analyse des images vidéo via `requestAnimationFrame`, avec mise à jour des repères et états dans l'interface.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt de la caméra, fermeture du tracker et remise à zéro des états lorsque la session se termine.
 - ⌨️ **Événements & Commandes** :
@@ -211,6 +211,34 @@ préparation en ambre, la confirmation en vert et un compteur de sélections.
 Paint et Playground sont sélectionnables ; les deux projets à venir sont
 désactivés. Cette démonstration confirme une carte dans la zone d'essai ;
 la navigation vers le projet sera ajoutée lors de l'intégration dans l'accueil.
+
+### Saisie et déplacement
+
+`createDragController`, dans `@handfinity/interactions`, reçoit les pointeurs,
+la posture de la main principale, sa position projetée, les cibles et les limites
+de la surface dans un même repère. La posture complète permet de distinguer un
+relâchement valide d'une mesure de main devenue inexploitable.
+
+Après un pointage confirmé sur une cible, un pincement confirmé la capture
+(`drag:start`). Les déplacements suivants produisent `drag:move` avec la position
+du coin supérieur gauche. L'écart entre l'index et ce coin reste fixe, la cible
+reste dans les limites fournies, et la capture ne passe pas à une autre cible
+lorsque les rectangles se chevauchent. L'application applique les positions
+retournées à ses objets et fournit leurs rectangles actualisés au moteur.
+
+La cible se fige dès le début de l'ouverture des doigts. La fin confirmée du
+pincement produit un seul `drag:end` à la dernière position tenue, sans attendre
+un retour au pointage. Ouvrir les cinq doigts dépose aussi la cible dans cet
+exercice. Une perte ou ambiguïté de suivi, une mesure invalide, un changement de
+main principale, un pointeur hors surface ou une cible indisponible produit
+`drag:cancel`. L'application conserve alors la dernière position valide, sans
+compter de dépôt. Un nouveau pointage est nécessaire avant une autre saisie.
+
+`cancel(reason)` interrompt explicitement la capture et `reset()` efface aussi
+son horloge et son échantillon précédent. Les images répétées ne rejouent ni
+mouvement ni dépôt. Le [Playground](apps/playground/README.md#saisie-et-déplacement)
+propose **Grab & drag** par défaut et un bouton **Selection** pour retrouver
+l'exercice précédent. Un seul exercice traite les gestes à la fois.
 
 ### Sessions de suivi communes
 
