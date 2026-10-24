@@ -33,7 +33,7 @@ type PointerState = {
 	position: Readonly<Point>;
 };
 
-/** Un filtre par identité ; une seule main principale pour le survol. */
+/** Un filtre par identité ; une seule main principale dans les diagnostics. */
 export function createHandPointerTracker() {
 	const states = new Map<number, PointerState>();
 	let primaryHandId: number | null = null;

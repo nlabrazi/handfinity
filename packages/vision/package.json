@@ -1,18 +1,14 @@
 {
 	"name": "@handfinity/vision",
 	"version": "1.0.0",
-	"private": "true",
+	"private": true,
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"description": "",
-	"main": "index.js",
 	"scripts": {
 		"test": "vitest run"
 	},
-	"keywords": [],
-	"author": "",
 	"license": "ISC",
 	"dependencies": {
 		"@handfinity/core": "1.0.0",

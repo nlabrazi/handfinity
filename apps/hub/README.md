@@ -1,108 +1,77 @@
-# Handfinity — Accueil immersif
+# Handfinity — Accueil
 
-Le hub est le point d'entrée commun. Depuis la racine du monorepo :
+L'accueil présente l'objectif de contrôle du PC et l'état actuel du projet.
+Il donne accès au Playground sans ouvrir la caméra ni charger le détecteur
+sur la page d'accueil.
+
+Depuis la racine :
 
 ```bash
 npm run dev
 ```
 
-| Adresse locale | Écran |
+| Adresse | Page |
 | --- | --- |
-| `http://localhost:3000/` | Accueil et choix d'une expérience |
-| `http://localhost:3000/paint` | Atelier Paint |
-| `http://localhost:3000/playground` | Laboratoire et zone de navigation expérimentale |
+| `http://localhost:3000/` | Présentation de Handfinity |
+| `http://localhost:3000/playground` | Laboratoire de diagnostic |
 
-Les cartes de l'accueil s'ouvrent au clic, au toucher ou avec Entrée au clavier.
-Les emplacements « À venir » ne sont pas interactifs. Le pointage gestuel reste
-dans Playground ; la validation et le défilement gestuels ne sont pas encore
-branchés sur l'accueil.
+Les liens s'utilisent à la souris, au toucher ou au clavier. Une adresse
+inconnue affiche la page 404. Le contrôle gestuel du PC n'est pas implémenté.
 
-## Ambiance
+## Présentation et navigation
 
-La direction visuelle reprend `public/screenshot.png` : fond bleu nuit, lumières
-cyan et violettes, panneaux translucides et touches rose-orangé pour Paint.
-La scène combine une main holographique en SVG, des anneaux, une grille en
-perspective, des courbes lumineuses et des aperçus animés des projets. Le pointeur de la souris déplace
-légèrement la projection et la lumière. Les cibles restent fixes.
+L'identité visuelle conserve la main holographique, les lumières, les anneaux
+et l'aperçu du suivi des mains. Le bouton de pause suspend l'ambiance et la
+parallaxe. La préférence système de réduction des mouvements est prioritaire.
 
-Le bouton **Pause de l'ambiance** suspend les animations et la parallaxe ; le
-réglage est conservé localement quand le navigateur autorise le stockage.
-La préférence système `prefers-reduced-motion` est prioritaire. L'accueil
-ne demande pas la webcam et ne charge pas le moteur de vision.
+Vue Router charge le laboratoire à la demande via `playground/view`. Les
+transitions GSAP sont limitées à leurs vues et nettoyées à leur démontage.
+Le focus rejoint le titre après une transition. Aucun écran n'est conservé
+en cache : quitter le laboratoire ferme sa session caméra ; y revenir demande
+un nouveau démarrage explicite.
 
-## Navigation et cycle de vie
-
-Le socle d'animation utilise GSAP dans le workspace `hub` :
-`useGsapContext` crée un contexte limité à la vue après son montage et le
-nettoie au démontage. Les animations créées dans son callback sont supprimées
-et leurs styles initiaux restaurés. Les gestionnaires d'événements qui créent
-des animations ensuite doivent être enregistrés avec `context.add`.
-`useMotionPreferences` partage la pause et la préférence système depuis
-l'application hôte ; il évite de multiplier les écouteurs `matchMedia`.
-
-| Fichier dans `src/` | Responsabilité |
+| Élément | Responsabilité |
 | --- | --- |
-| `animations/homeAmbience.ts` | Timeline des lumières, particules, main, scans, anneaux et tracés Paint. |
-| `composables/useHomeAnimations.ts` | Pause/reprise de la timeline et parallaxe avec des tweens `quickTo` réutilisés. |
-| `composables/usePageTransition.ts` | Entrée/sortie des pages, annulation et restauration des styles pour `KeepAlive`. |
-| `composables/useGsapContext.ts` | Création et nettoyage du contexte GSAP propre à une vue. |
-| `composables/useMotionPreferences.ts` | Préférence système et choix de pause persisté, partagés par injection Vue. |
+| `views/HomeView.vue` | Présentation et lien vers le laboratoire |
+| `components/HolographicHand.vue` | Main décorative |
+| `components/TrackingPreview.vue` | Aperçu décoratif du suivi |
+| `animations/homeAmbience.ts` | Animations de l'accueil |
+| `composables/useHomeAnimations.ts` | Pause et parallaxe |
+| `composables/usePageTransition.ts` | Transitions et leur nettoyage |
+| `composables/useGsapContext.ts` | Contexte GSAP limité à une vue |
+| `composables/useMotionPreferences.ts` | Pause et réduction des mouvements |
 
-Les anciens `@keyframes` de l'accueil ont été retirés. CSS conserve la palette,
-la disposition responsive et les courtes transitions de couleur/bordure au
-survol ; GSAP pilote les mouvements de la scène et les transitions des pages.
-Une pause fige l'ambiance et recentre la parallaxe. La réduction des mouvements
-neutralise aussi les transitions de navigation. Celles-ci attendent la fin du
-patch Vue avant de poursuivre, pour rester compatibles avec `KeepAlive`.
-Chaque sortie de l'accueil détruit ses animations et restaure les styles SVG/DOM.
-
-- Vue Router fournit les routes, les titres et l'historique du navigateur.
-  Les vues sont chargées à la demande depuis les exports `paint/view` et
-  `playground/view` des workspaces existants.
-- `KeepAlive` conserve uniquement Paint : dessin, historique et pinceau restent
-  en mémoire lors des déplacements dans le hub. Un rechargement de l'onglet
-  efface cet état ; **Export PNG** permet d'enregistrer le dessin.
-- Quitter Paint termine le trait et arrête sa session caméra. Un démarrage
-  encore en attente est invalidé : la caméra déjà acquise est libérée immédiatement
-  et tout flux ou détecteur reçu ensuite est fermé à son arrivée. Revenir dans
-  Paint ne redémarre pas la webcam automatiquement.
-- Playground est démonté lorsqu'on le quitte et ferme ses ressources.
-- Le focus rejoint le titre après navigation. Une adresse inconnue affiche
-  une page proposant de revenir à l'accueil.
-
-Les applications restent utilisables séparément : `npm run dev -w paint` sur
-le port **3001**, `npm run dev -w playground` sur le port **3002**.
-
-## Build et hébergement
+## Compilation et hébergement
 
 ```bash
 npm run build -w hub
 ```
 
-Le build `apps/hub/dist/` contient les trois écrans. Il n'est pas nécessaire de
-servir les builds autonomes de Paint et Playground à côté du hub.
-
-Le serveur doit renvoyer `index.html` pour les routes de l'application afin que
-les liens directs et les rechargements de `/paint` et `/playground` fonctionnent.
-Le `nginx.conf` à la racine contient ce fallback. Le Dockerfile cible le hub
-par défaut ; `--build-arg APP=paint` ou `APP=playground` conserve la possibilité
-de construire une application autonome.
+`apps/hub/dist/` contient les deux pages. Il n'est pas nécessaire de servir le
+build autonome du laboratoire à côté. L'hébergement doit renvoyer `index.html`
+pour les routes ; `nginx.conf` fournit ce fallback. Le Dockerfile compile `hub`
+par défaut. HTTPS reste nécessaire pour la webcam hors localhost.
 
 ## Vérifications
 
+Les tests du cycle de vie couvrent les transitions interrompues, la pause,
+les callbacks différés et la restauration des styles.
+
 ```bash
-npm test
-npm run lint
-npm run format:check
-npm run build
+npm test -w hub
+npm run build -w hub
 ```
 
-Les six tests du hub couvrent les transitions interrompues, la pause en cours
-de navigation, les callbacks différés et le nettoyage des tweens. Ils sont
-exécutés avec les autres suites par `npm test` et la CI.
+Dans le navigateur :
 
-Pour tester dans le navigateur : ouvrir chaque carte, revenir à l'accueil,
-utiliser Précédent/Suivant, puis recharger chaque URL. Dessiner dans Paint,
-changer de page et revenir : vérifier le dessin, Undo/Redo et la caméra arrêtée.
-Essayer aussi de quitter pendant le démarrage caméra. Vérifier les liens au
-clavier, la pause des animations, la réduction des mouvements et un écran étroit.
+1. Ouvrir l'accueil : vérifier le texte de cadrage, la main et le lien Playground.
+   La caméra doit rester arrêtée.
+2. Ouvrir le laboratoire puis revenir, utiliser Précédent/Suivant et recharger
+   directement `/playground` : la navigation doit fonctionner.
+3. Démarrer la caméra dans le laboratoire puis revenir à l'accueil : le suivi
+   doit s'arrêter. Revenir au laboratoire : la caméra ne doit pas repartir seule.
+4. Quitter le laboratoire pendant **Initializing...** : aucune fin tardive
+   d'initialisation ne doit réactiver la caméra.
+5. Vérifier la navigation au clavier, la pause de l'ambiance, la réduction des
+   mouvements et les affichages étroits.
+6. Ouvrir une adresse inconnue : vérifier la page 404 et le retour à l'accueil.

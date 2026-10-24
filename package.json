@@ -1,10 +1,10 @@
 {
 	"name": "handfinity",
 	"version": "1.0.0",
-	"description": "",
+	"description": "Handfinity : interface gestuelle pour remplacer progressivement la souris et le clavier sur PC.",
 	"scripts": {
 		"dev": "npm run dev -w hub",
-		"build": "npm run build -w playground && npm run build -w paint && npm run build -w hub",
+		"build": "npm run build -w playground && npm run build -w hub",
 		"test": "npm test --workspaces --if-present",
 		"check": "biome check .",
 		"format": "biome format --write .",

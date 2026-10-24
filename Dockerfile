@@ -8,7 +8,6 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY apps/playground/package.json ./apps/playground/
-COPY apps/paint/package.json ./apps/paint/
 COPY apps/hub/package.json ./apps/hub/
 COPY packages/core/package.json ./packages/core/
 COPY packages/interactions/package.json ./packages/interactions/
@@ -25,7 +24,7 @@ ENV NODE_ENV=development
 RUN chown -R node:node /app
 USER node
 
-EXPOSE 3000 3001 3002
+EXPOSE 3000 3002
 
 # Build : sélection du sous-projet
 FROM base AS build

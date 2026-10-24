@@ -3,7 +3,7 @@ import { useTemplateRef } from "vue";
 import { useHomeAnimations } from "../composables/useHomeAnimations";
 import { RouterLink } from "vue-router";
 import HolographicHand from "../components/HolographicHand.vue";
-import ProjectPreview from "../components/ProjectPreview.vue";
+import TrackingPreview from "../components/TrackingPreview.vue";
 
 const scene = useTemplateRef<HTMLElement>("scene");
 const { moveLight, resetLight } = useHomeAnimations(scene);
@@ -39,44 +39,20 @@ const { moveLight, resetLight } = useHomeAnimations(scene);
 				<div>
 					<p class="eyebrow welcome-label">
 						<span aria-hidden="true" />
-						L’ESPACE PREND VIE
+						HANDFINITY / INTERFACE GESTUELLE
 					</p>
-					<h1>Que souhaitez-vous<br><em>faire ?</em></h1>
+					<h1>Vos mains.<br><em>Votre interface.</em></h1>
 				</div>
 				<p class="welcome-note">
-					Un mouvement. <br>Un monde de possibilités.<br>
-					<span>Choisissez votre prochaine expérience.</span>
+					Objectif : utiliser votre PC<br>avec les mains.
+					<span
+						>Le suivi gestuel est disponible dans le laboratoire.<br>Le contrôle
+						du PC reste à construire.</span
+					>
 				</p>
 			</header>
 
-			<section
-				class="project-constellation"
-				aria-label="Choisir une expérience"
-			>
-				<RouterLink
-					to="/paint"
-					class="project-portal portal-paint"
-					aria-label="Ouvrir Paint"
-				>
-					<div class="portal-topline">
-						<span>01 / CRÉATION</span
-						><span class="availability"
-							><i aria-hidden="true" />
-							Disponible</span
-						>
-					</div>
-					<ProjectPreview project="paint" />
-					<div class="portal-copy">
-						<p class="portal-kicker">IMAGINEZ. TRACEZ. RECOMMENCEZ.</p>
-						<h2>Paint<span aria-hidden="true">.</span></h2>
-						<p>Vos idées prennent forme.<br>Dessinez directement dans l’air.</p>
-					</div>
-					<div class="portal-action">
-						<span>Entrer dans l’atelier</span
-						><span class="portal-arrow" aria-hidden="true">↗</span>
-					</div>
-				</RouterLink>
-
+			<section class="home-overview" aria-label="Découvrir le laboratoire">
 				<div class="hologram" aria-hidden="true">
 					<div class="orbital orbital-outer">
 						<span class="orbital-track" />
@@ -95,23 +71,23 @@ const { moveLight, resetLight } = useHomeAnimations(scene);
 
 				<RouterLink
 					to="/playground"
-					class="project-portal portal-playground"
+					class="laboratory-link"
 					aria-label="Ouvrir Playground"
 				>
 					<div class="portal-topline">
-						<span>02 / EXPLORATION</span
+						<span>PLAYGROUND / DIAGNOSTICS</span
 						><span class="availability"
 							><i aria-hidden="true" />
 							Disponible</span
 						>
 					</div>
-					<ProjectPreview project="playground" />
+					<TrackingPreview />
 					<div class="portal-copy">
-						<p class="portal-kicker">CHAQUE GESTE EST UN DÉBUT.</p>
+						<p class="portal-kicker">OBSERVER. COMPRENDRE. VÉRIFIER.</p>
 						<h2>Playground<span aria-hidden="true">.</span></h2>
 						<p>
-							Explorez le langage de vos mains.<br>Observez, bougez,
-							expérimentez.
+							Observez vos mains, les postures reconnues et le pointeur. Activez
+							la caméra à votre demande.
 						</p>
 					</div>
 					<div class="portal-action">
@@ -119,29 +95,6 @@ const { moveLight, resetLight } = useHomeAnimations(scene);
 						><span class="portal-arrow" aria-hidden="true">↗</span>
 					</div>
 				</RouterLink>
-			</section>
-
-			<section class="future-spaces" aria-labelledby="future-title">
-				<div class="future-heading">
-					<span class="eyebrow">ET ENSUITE ?</span>
-					<h2 id="future-title">L’univers s’agrandit.</h2>
-				</div>
-				<div class="future-project">
-					<span class="future-number" aria-hidden="true">03</span>
-					<div>
-						<h3>Un nouvel horizon</h3>
-						<p>La prochaine expérience se prépare.</p>
-					</div>
-					<span class="coming-soon">À venir</span>
-				</div>
-				<div class="future-project">
-					<span class="future-number" aria-hidden="true">04</span>
-					<div>
-						<h3>L’inconnu vous attend</h3>
-						<p>Encore tout à imaginer.</p>
-					</div>
-					<span class="coming-soon">À venir</span>
-				</div>
 			</section>
 
 			<footer class="universe-footer">

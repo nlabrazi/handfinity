@@ -48,13 +48,7 @@ export function createHomeAmbience() {
 		{ y: 55, opacity: 0.8 },
 		4,
 	);
-	oscillate(
-		".hand-beacons, .paint-tip",
-		{ opacity: 0.35 },
-		{ opacity: 0.9 },
-		3,
-	);
-	oscillate(".paint-sparks", { opacity: 0.35 }, { opacity: 0.9 }, 4);
+	oscillate(".hand-beacons", { opacity: 0.35 }, { opacity: 0.9 }, 3);
 
 	timeline.to(
 		".orbital-track",
@@ -79,20 +73,5 @@ export function createHomeAmbience() {
 		0,
 	);
 
-	const paint = gsap.timeline({ repeat: -1, defaults: { ease: "sine.inOut" } });
-	paint
-		.fromTo(
-			".paint-line",
-			{ strokeDashoffset: 0, opacity: 0.8 },
-			{
-				strokeDashoffset: 850,
-				opacity: 0.2,
-				duration: 1.8,
-			},
-		)
-		.to(".paint-line", { strokeDashoffset: 0, opacity: 1, duration: 4.44 })
-		.to(".paint-line", { opacity: 1, duration: 3.96 })
-		.to(".paint-line", { opacity: 0.8, duration: 1.8 });
-	timeline.add(paint, 0);
 	return timeline;
 }

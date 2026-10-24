@@ -1,204 +1,69 @@
-# Handfinity — Vision Playground
+# Handfinity — Playground
 
-Laboratoire de suivi des mains et d'interactions gestuelles. Depuis la racine
-du monorepo :
+Le Playground sert à observer les mains, les postures reconnues et les pointeurs
+produits par le socle partagé. Il affiche les diagnostics dans la vidéo :
+**il ne contrôle pas encore la souris ou le clavier du PC.**
+
+Depuis la racine :
 
 ```bash
+npm run dev
+# http://localhost:3000/playground
+
+# Ou le laboratoire autonome :
 npm run dev -w playground
+# http://localhost:3002
 ```
 
-L'application autonome est disponible sur `http://localhost:3002`. Le hub
-(`npm run dev`) propose le même laboratoire sur `http://localhost:3000/playground`,
-avec un retour vers l'accueil immersif. Cliquer sur
-**Start camera** puis autoriser l'accès à la webcam.
+Cliquer sur **Start camera** puis autoriser la webcam. L'aperçu est en miroir.
+**Stop camera** et la sortie de la page libèrent la caméra et le détecteur.
 
-Les boutons **Grab & drag** (affiché par défaut) et **Selection** choisissent
-l'exercice. Changer d'exercice interrompt l'action en cours et remet à zéro
-les résultats de cet exercice lorsqu'on y revient. La session caméra et le
-choix de la main principale continuent ; un pincement maintenu pendant le
-changement ne commence pas une nouvelle action sans pointage préalable.
+## Diagnostics
 
-## Suivi de deux mains
+- **Hand identities** : numéros, latéralité, état `tracked` ou `missing`,
+  dernière apparition/perte et indication d'ambiguïté. Les numéros sont des
+  identités locales au suivi, sans reconnaissance persistante des mains.
+- **Hand poses** : postures confirmées et candidates, état de confirmation,
+  estimation de chaque doigt et ratio de pincement.
+- **Hand pointers** : numéro principal ou secondaire, état `active` ou `resting`
+  et coordonnées normalisées de l'index avant miroir.
+- **Main hand** : choix automatique ou manuel d'une identité. Le curseur plein
+  désigne la main principale et le pointillé la seconde main.
 
-Le panneau **Hand identities** et les numéros près des poignets permettent
-d'observer les identités produites par `createHandIdentityTracker` dans `core`.
-La couleur accompagne le numéro ; elle ne désigne pas une main gauche ou droite.
+Pour activer un pointeur : tendre l'index, replier majeur, annulaire et
+auriculaire et garder le pouce séparé du bout de l'index. Un pincement ou une
+ouverture des cinq doigts retire le curseur après la transition de posture.
+Les identités et leurs diagnostics restent visibles tant que les mains sont suivies.
 
-- Deux mains séparées conservent leur numéro pendant les déplacements ordinaires,
-  même lorsque l'ordre des résultats du détecteur change.
-- Une main absente devient `missing`. Son identité peut être retrouvée à proximité
-  pendant 120 ms ; au-delà, elle expire (`timeout`). Une image figée provoque
-  également cette expiration. Une nouvelle apparition reçoit un nouveau numéro.
-- Des paumes trop proches ou plusieurs associations presque équivalentes
-  déclenchent `Ambiguous positions`. Les anciennes identités prennent fin et
-  de nouveaux numéros sont attribués quand les observations sont à nouveau distinctes.
-- **Last tracking event** indique les apparitions et les pertes : `timeout`,
-  `ambiguous`, ou `replaced` lorsqu'une main visible remplace une piste manquante.
-- L'arrêt caméra efface le suivi. Les numéros ne sont pas réutilisés pendant
-  la vie du tracker ; ils ne constituent pas une reconnaissance persistante
-  d'une personne ou de sa main.
+Le pointage et l'ouverture des cinq doigts demandent 80 ms de stabilité. Le
+pincement utilise des confirmations de 40 ms à la fermeture et 60 ms au
+relâchement. Les mesures sont géométriques ; elles dépendent de la visibilité
+des doigts et ne constituent pas une confiance globale de reconnaissance.
 
-Le suivi compare les centres des paumes et leur taille, en tenant compte du
-format vidéo. La latéralité fiable sert seulement d'indice complémentaire.
-Ces seuils sont des heuristiques à éprouver avec la webcam : un mouvement très
-rapide peut entraîner une nouvelle identité, et deux mains indiscernables ne
-peuvent pas être réidentifiées avec certitude après une occultation.
+La première main en pointage devient principale ; à égalité, le plus petit
+numéro gagne. Elle garde son rôle pendant le repos et une absence brève tant
+que son identité existe. Une perte définitive relance le choix automatique.
+Une ambiguïté termine les identités concernées et efface le choix principal.
+Ces règles décrivent le diagnostic actuel ; les règles de contrôle du PC
+seront définies et vérifiées dans le futur moteur commun.
 
-Chaque main peut produire un pointeur ; seule la main principale pilote le
-survol des cibles. Le journal du pincement et le dessin dans Paint restent à
-une main. Un changement d'identité réinitialise le filtre de son pointeur ; Paint
-termine le trait avant de recevoir une autre identité.
+## Cycle de vie
 
-## Postures reconnues
+`createTrackingSession` possède la caméra, le détecteur, la boucle vidéo et le
+suivi des identités. Seules les nouvelles images alimentent la détection.
+L'expiration des identités continue sans nouvelle image tant que la boucle tourne.
 
-Le panneau **Hand poses** affiche un diagnostic pour chaque identité, y compris
-lorsque deux mains distinctes sont présentes :
+Le composant principal assemble encore le suivi des postures et des pointeurs
+et se charge du rendu. La centralisation de cette chaîne, la production des
+commandes et leur simulation sont prévues dans la [roadmap](../../docs/roadmap.md).
+Aucune seconde reconnaissance propre au laboratoire ne devra être ajoutée.
 
-- **Confirmed** : la posture stabilisée, parmi `Pointing`, `Open palm`, `Pinch`
-  et `Unknown`.
-- **Candidate** : la configuration actuellement estimée. `confirming` indique
-  une transition en attente de confirmation.
-- Les cinq doigts sont estimés `extended` (tendus), `folded` (repliés) ou
-  `uncertain` (indéterminés). Les couleurs accompagnent les libellés.
-- **Pinch ratio** : la distance pouce/index divisée par la taille de la paume.
-  Ce ratio est une mesure géométrique, pas un score de confiance.
+Un arrêt pendant l'initialisation libère les ressources déjà disponibles.
+Une caméra ou un détecteur reçu tardivement est libéré sans relancer la session.
+La même session peut être arrêtée puis redémarrée. Quitter la route détruit le
+laboratoire ; le retour demande un nouveau démarrage explicite.
 
-Pour `Pointing`, tendre l'index en repliant les trois autres doigts ; le pouce
-reste libre. Pour `Open palm`, tendre les cinq doigts et écarter le pouce de la
-paume. Pour `Pinch`, rapprocher les bouts du pouce et de l'index ; le pincement
-est prioritaire sur les autres configurations. Un poing ou une configuration
-non reconnue revient à `Unknown` si elle ne forme pas un pincement.
-
-Le pointage et la paume ouverte demandent 80 ms de stabilité. Le pincement
-réutilise les confirmations de 40 ms à la fermeture et de 60 ms au relâchement,
-avec des seuils distincts pour limiter les oscillations. La posture confirmée
-peut donc rester affichée brièvement pendant une transition. Une main manquante
-ou des repères invalides effacent immédiatement sa posture. Une reprise demande
-une nouvelle confirmation, et l'arrêt caméra vide tous les diagnostics.
-
-Les postures reposent sur la géométrie estimée par la webcam : garder la main
-entièrement visible et commencer face à la caméra. Les diagnostics des doigts
-permettent de repérer une estimation incertaine avant d'ajuster la posture.
-Le survol utilise la posture `Pointing` confirmée. Le journal du pincement à une main reste disponible pendant les essais.
-
-## Pointeurs et survol des cibles
-
-Le bouton **Selection** ouvre la zone **Navigation sandbox**, avec Paint, Playground et
-deux projets à venir. Tendre l'index et replier majeur, annulaire et auriculaire
-jusqu'à confirmer `Pointing` pour faire apparaître le pointeur de cette main.
-En dehors d'une sélection préparée, ouvrir les cinq doigts, pincer ou passer
-à `Unknown` retire son pointeur après la transition de posture. Pendant une
-préparation, le curseur principal reste visible en ambre pour suivre la cible.
-Les pertes de suivi et l'arrêt caméra le retirent immédiatement.
-
-- Chaque pointeur porte le numéro de sa main et possède son propre lissage.
-  Le miroir est appliqué une seule fois lors de la projection dans la zone.
-- Le curseur de la **main principale** a un contour plein. Lui seul met une
-  carte en surbrillance ; le second pointeur a un contour pointillé.
-- En mode **Automatic**, la première main qui confirme le pointage devient
-  principale. Si les deux le confirment ensemble, le plus petit numéro gagne.
-  Cette main garde le contrôle lorsqu'elle change de posture : l'autre main
-  ne récupère pas le survol pendant une simple pause.
-- Le sélecteur **Main hand** permet de choisir explicitement un numéro de main,
-  même si elle est au repos. Revenir à **Automatic** choisit à nouveau parmi
-  les mains actuellement en pointage.
-- Une main principale brièvement manquante réserve son rôle pendant la tolérance
-  du suivi d'identités (120 ms). Son curseur et son survol sont retirés pendant
-  l'absence. Après expiration de l'identité, le choix redevient automatique.
-- Une ambiguïté efface les pointeurs et le choix principal. Chaque retour de
-  pointage, nouvelle identité ou reprise après absence initialise le filtre à
-  la position courante, sans relier les positions de deux mains.
-- Les positions hors image sont ignorées. Les cibles sont mesurées à partir
-  des rectangles affichés, après chaque mise à jour et lors des redimensionnements
-  ou défilements, y compris dans un conteneur imbriqué.
-
-`@handfinity/interactions` fournit les pointeurs, le choix principal, la
-projection, le calcul des cibles et la sélection sans dépendre de Vue ou du DOM.
-Le composant lit les dimensions affichées et rend les résultats. Paint et
-Playground sont disponibles pour les essais ; les deux cartes **Coming soon**
-sont atténuées et désactivées.
-
-## Sélection et annulation
-
-Dans l'exercice **Selection**, la zone permet de confirmer une carte, avec un résultat visible et un compteur.
-La carte reste dans le laboratoire ; la navigation sera intégrée à l'accueil
-lors d'une étape ultérieure.
-
-1. **Viser** : tendre l'index en repliant majeur, annulaire et auriculaire,
-   avec le pouce séparé de l'index. Amener le centre du curseur plein sur Paint
-   ou Playground : la carte devient bleue.
-2. **Préparer** : toucher le bout de l'index avec celui du pouce et maintenir
-   ce pincement en restant sur la carte. Elle devient ambre et affiche **Prepared**.
-   Le compteur **Confirmed selections** ne change pas.
-3. **Confirmer** : séparer le pouce de l'index, tendre l'index et garder les
-   trois autres doigts repliés, sans quitter la carte. Elle devient verte et
-   affiche **Selected** ; le compteur augmente de un.
-4. **Annuler avant confirmation** : ouvrir les cinq doigts ou déplacer le
-   curseur hors de la carte préparée. Le message affiche **Cancelled** et
-   le compteur reste inchangé. Revenir au pointage pour recommencer.
-
-Une préparation appartient à une cible et à une main précises. Elle ne se
-transfère pas à une autre carte ou à l'autre main. Une perte de suivi, une
-ambiguïté, un changement de main principale, une cible devenue indisponible
-ou une posture de relâchement non reconnue annule aussi la préparation.
-Arrêter la caméra annule l'action et efface les résultats et le compteur ;
-le redémarrage demande de viser à nouveau. Un pincement déjà maintenu à
-l'arrivée n'active aucune sélection.
-
-Les transitions `selection:prepare`, `selection:confirm` et `selection:cancel`
-sont émises une seule fois par changement d'état. La confirmation attend
-une nouvelle image et un retour au pointage stabilisé, y compris après les
-états intermédiaires du relâchement. Le résultat vert précédent s'efface à
-la préparation suivante ; le compteur conserve les confirmations de la session.
-
-## Saisie et déplacement
-
-L'exercice **Grab & drag** présente deux tuiles, **Tile A** et **Tile B** :
-
-1. Tendre l'index, replier majeur, annulaire et auriculaire et garder le pouce
-   séparé de l'index. Viser une tuile avec le centre du curseur plein : son
-   contour devient bleu.
-2. Toucher les bouts du pouce et de l'index pour saisir la tuile. Elle devient
-   ambre avec **Dragging**, sans se recentrer brusquement sur le curseur.
-3. Maintenir le pincement et déplacer la main : la tuile suit le curseur,
-   y compris lorsqu'il quitte le rectangle où elle se trouvait au départ.
-   Elle reste entièrement dans la zone et passe devant l'autre tuile.
-4. Séparer pouce et index : la tuile reste à sa dernière position tenue,
-   devient verte avec **Dropped**, et **Completed drops** augmente de un.
-   Ouvrir les cinq doigts produit également un dépôt dans cet exercice.
-
-Le mouvement se fige pendant la confirmation du relâchement, pour éviter de
-déplacer la tuile avec l'ouverture des doigts. Les pertes de suivi, les mains
-ambiguës, les mesures invalides, un changement de main principale ou un pointeur
-hors image interrompent la capture sans ajouter de dépôt. La tuile reste à sa
-dernière position valide ; revenir avec un pincement maintenu ne reprend pas
-la saisie. Revenir au pointage, puis pincer pour recommencer.
-
-**Stop camera** interrompt la saisie et conserve les positions et le compteur
-de dépôts. **Reset tiles** interrompt aussi l'action, replace les deux tuiles à
-leur position initiale et remet le compteur à zéro. Changer d'exercice efface
-cette démonstration ; elle repart de zéro lorsqu'on revient sur **Grab & drag**.
-
-Les cibles et les positions utilisent un repère logique de 0 à 1 rendu en
-pourcentages CSS. Le redimensionnement et le défilement ne demandent donc pas
-de recalculer des rectangles DOM pour cet exercice. L'ordre des tuiles définit
-à la fois leur superposition visuelle et leur priorité de détection. Seule la
-main principale peut capturer ; le pointeur secondaire reste pointillé.
-
-## Session partagée avec Paint
-
-`createTrackingSession` dans `@handfinity/vision` possède la caméra, le détecteur,
-la boucle vidéo et le suivi des identités. Playground traite les résultats pour
-ses diagnostics, son pincement, le survol, la sélection et le déplacement ; il ne gère plus sa propre boucle
-d'acquisition. Une même session peut être redémarrée sans réutiliser les numéros
-de main déjà attribués.
-
-Quitter Playground ou arrêter la caméra arrête sa session. Si le démarrage est
-encore en attente, les ressources disponibles sont libérées immédiatement et
-les résultats tardifs sont ignorés et nettoyés. L'ouverture d'un autre projet
-demande un nouveau démarrage explicite de la caméra.
-
-## Vérifications
+## Vérifications automatiques
 
 ```bash
 npm test
@@ -207,153 +72,29 @@ npm run format:check
 npm run build
 ```
 
-Pour valider les postures :
+Les tests du socle vérifient identités, ambiguïtés, durées de confirmation,
+images répétées, lissage indépendant, choix principal et nettoyage des sessions.
 
-1. Ouvrir `http://localhost:3000/playground` après `npm run dev`, puis activer
-   la caméra. Tendre l'index avec les trois autres doigts repliés et maintenir
-   une demi-seconde : **Confirmed** doit afficher `Pointing`.
-2. Ouvrir les cinq doigts avec le pouce dégagé : `Open palm` doit être confirmé.
-   Fermer la main en gardant le pouce à distance du bout de l'index : `Unknown`
-   doit apparaître après la transition.
-3. Pincer pouce et index puis relâcher : `Pinch` doit être confirmé puis quitter
-   cet état. Faire varier lentement l'écartement près du contact ; le diagnostic
-   ne doit pas osciller à chaque petite variation.
-4. Présenter deux mains séparées, l'une en pointage et l'autre ouverte. Chaque
-   numéro doit afficher sa propre posture. Retirer une main puis la ramener :
-   sa posture doit se confirmer à nouveau sans perturber celle de l'autre.
-5. Essayer la main gauche puis la droite, tourner progressivement la main dans
-   le plan de l'image et modifier sa distance à la caméra. En cas de résultat
-   inattendu, relever le numéro, **Candidate**, les états des doigts et le ratio.
-6. Arrêter la caméra puis la redémarrer : aucune posture précédente ne doit
-   rester confirmée. Vérifier également le dessin par pincement dans Paint.
+## Vérifications manuelles
 
-Les tests automatisés vérifient précisément les durées, les brèves variations,
-les images répétées, les identités indépendantes, les pertes et ambiguïtés ainsi
-que les transformations géométriques sur des repères synthétiques. Les essais
-ci-dessus servent à évaluer les estimations réelles de la webcam.
-
-Pour valider le suivi dans le hub :
-
-1. Lancer `npm run dev`, ouvrir `http://localhost:3000/playground`, puis cliquer
-   sur **Start camera** et autoriser la webcam.
-2. Présenter une main, puis la seconde en les gardant séparées. Déplacer chacune
-   lentement : les numéros doivent rester attachés aux mêmes mains ; l'arrivée
-   de la seconde ne doit pas renuméroter la première.
-3. Retirer une main pendant environ une seconde : seul son numéro doit disparaître,
-   avec une perte `timeout`. La ramener : elle doit recevoir un nouveau numéro.
-   La fenêtre de récupération de 120 ms est vérifiée précisément par les tests unitaires.
-4. Rapprocher les paumes jusqu'à les superposer. Lorsque le suivi signale une
-   ambiguïté, les anciens numéros doivent disparaître. Séparer les mains pour
-   retrouver deux nouvelles identités.
-5. Arrêter la caméra : les numéros, le curseur, le compteur et le pincement doivent
-   être effacés. Redémarrer et vérifier que les numéros repartent avec de nouvelles valeurs.
-6. Ouvrir `http://localhost:3000/paint`, démarrer la caméra et dessiner par pincement.
-   Faire entrer une seconde main : le trait doit s'arrêter. Retirer les mains,
-   puis dessiner ailleurs : aucun segment ne doit relier les deux traits.
-
-Pour valider le cycle de vie commun :
-
-1. Dans chaque projet, répéter **Start camera** / **Stop camera** trois fois :
-   le suivi doit reprendre normalement et l'usage de la caméra cesser à l'arrêt.
-2. Dessiner dans Paint, passer à Playground, y démarrer la caméra puis revenir
-   dans Paint : le dessin et Undo/Redo doivent être conservés, avec la caméra
-   arrêtée jusqu'au prochain démarrage explicite.
-3. Pour observer un démarrage lent, activer une limitation réseau dans les outils
-   du navigateur et désactiver le cache, puis recharger la page. Démarrer la caméra
-   et quitter le projet pendant **Initializing...**. La caméra déjà acquise doit
-   être libérée ; la fin tardive du chargement ne doit pas la réactiver. Revenir,
-   rétablir le réseau normal et démarrer une nouvelle session.
-4. Refuser l'autorisation caméra, vérifier le message d'erreur et le bouton à nouveau
-   disponible, puis autoriser la caméra dans les réglages du site et réessayer.
-
-Pour valider les pointeurs et les cibles :
-
-Le workspace `@handfinity/interactions` doit être installé avec `npm install`.
-Avec Docker, reconstruire et recréer le hub avec
-`docker compose up -d --build --force-recreate hub` : son démarrage exécute
-`npm ci` pour actualiser le volume de dépendances.
-
-1. Choisir **Selection**. En mode **Automatic**, confirmer `Pointing` avec une main. Viser Paint et
-   Playground puis les espaces entre elles : le contour plein doit suivre
-   l'index, et seule la carte disponible sous son centre doit être surlignée.
-   Les cartes **Coming soon** restent désactivées.
-2. Ouvrir les cinq doigts : le pointeur et le survol doivent disparaître dès
-   que la nouvelle posture est confirmée. Revenir au pointage ailleurs : le
-   pointeur doit reprendre à cette position. Un pincement conserve seulement
-   le curseur principal en ambre lorsqu'une sélection est préparée.
-3. Présenter une seconde main en pointage, bien séparée de la première : un
-   curseur pointillé doit apparaître. Déplacer cette seconde main sur une autre
-   carte : elle ne doit pas changer la carte survolée par la main principale.
-4. Choisir le numéro de la seconde main dans **Main hand** : son curseur doit
-   devenir plein et piloter le survol. Mettre cette main au repos : le survol
-   disparaît sans passer à l'autre. Revenir à **Automatic** pour refaire le choix.
-5. Retirer la main principale pendant une seconde en gardant l'autre en pointage :
-   le survol doit s'effacer, puis la main restante devenir principale après la
-   perte de l'ancienne identité. Croiser les mains jusqu'à signaler une ambiguïté,
-   puis les séparer : les anciens curseurs ne doivent pas subsister.
-6. Réduire la largeur de la fenêtre et faire défiler la page manuellement : les
-   curseurs doivent rester alignés avec les cartes, et le survol suivre leur
-   disposition. Vérifier aussi les bords et les espaces entre les cartes.
-7. Arrêter la caméra : les curseurs, le survol et le choix manuel doivent être
-   effacés. Vérifier ensuite le dessin par pincement dans Paint.
-
-Pour valider la sélection et l'annulation :
-
-1. Choisir **Selection**, puis dans **Navigation sandbox**, viser Paint avec l'index tendu, le pouce séparé
-   de l'index et les trois autres doigts repliés. Attendre une seconde : la carte
-   devient bleue, sans augmenter **Confirmed selections**. Cela vérifie que
-   le simple survol ne sélectionne rien.
-2. Toucher pouce et index et maintenir deux secondes, en restant au centre de
-   Paint : la carte devient ambre avec **Prepared**, le compteur reste inchangé.
-   Cela vérifie qu'un pincement prépare sans confirmer ni répéter l'action.
-3. Séparer pouce et index, tendre l'index et garder les trois autres doigts
-   repliés. La carte devient verte avec **Selected**, le compteur augmente de un.
-   Garder cette posture : le compteur ne doit plus augmenter.
-4. Viser puis préparer à nouveau. Ouvrir les cinq doigts : **Cancelled** doit
-   apparaître sans augmenter le compteur. Cela vérifie l'annulation explicite.
-5. Préparer à nouveau puis déplacer le curseur hors de la carte, en gardant
-   le pincement. **Cancelled** doit apparaître ; passer sur l'autre carte puis
-   relâcher ne doit rien confirmer. Cela vérifie que la préparation reste liée
-   à sa cible d'origine.
-6. Préparer puis retirer la main de l'image. La préparation doit être annulée
-   immédiatement. Revenir en pinçant puis relâcher : aucune confirmation ne
-   doit apparaître avant un nouveau cycle pointage, pincement, pointage.
-7. Avec deux mains bien séparées, préparer avec la principale, puis changer
-   **Main hand** : l'action doit être annulée. La seconde main ne doit pas
-   pouvoir terminer la sélection préparée par la première.
-8. Préparer puis cliquer sur **Stop camera** : aucune carte préparée ou verte
-   ne doit subsister et le compteur doit revenir à zéro. Redémarrer la caméra
-   en maintenant un pincement : aucune action ne doit se préparer seule.
-9. Viser puis pincer sur une carte **Coming soon** : elle ne doit ni se préparer
-   ni se confirmer. Vérifier ensuite un trait par pincement dans Paint pour
-   contrôler que le dessin fonctionne toujours.
-
-Pour valider la saisie et le déplacement :
-
-1. Ouvrir `/playground`, choisir **Grab & drag** et démarrer la caméra. Tendre
-   l'index, replier les trois autres doigts et viser **Tile A**, pouce séparé
-   de l'index : contour bleu, sans déplacement. Cela vérifie le pointage préalable.
-2. Toucher pouce et index au centre de la tuile, puis maintenir le pincement
-   en déplaçant lentement la main : tuile ambre **Dragging**, qui suit la main
-   sans saut au démarrage. Continuer hors de son rectangle d'origine, puis
-   passer au-dessus de **Tile B** : seule **Tile A** doit se déplacer.
-3. Séparer pouce et index et continuer à déplacer la main : la tuile doit rester
-   à sa dernière position tenue, avec **Dropped** et un seul dépôt ajouté au
-   compteur. Cela vérifie le relâchement et l'absence de déclenchements répétés.
-4. Viser et saisir à nouveau, puis ouvrir les cinq doigts : la tuile doit aussi
-   être déposée. Ici, l'ouverture des doigts termine le déplacement normalement.
-5. Saisir puis atteindre les quatre bords de la zone : la tuile doit rester
-   entièrement dedans. Revenir vers le centre doit permettre de la déplacer
-   normalement. Redimensionner la fenêtre après dépôt et vérifier l'alignement.
-6. Pendant une saisie, retirer la main de l'image : **Interrupted**, tuile immobile
-   et compteur inchangé. Revenir en maintenant le pincement : aucune reprise
-   automatique. Il faut viser puis pincer à nouveau pour déplacer.
-7. Présenter deux mains séparées : le curseur pointillé ne doit pas saisir.
-   Pendant une saisie avec la principale, changer **Main hand** : interruption
-   sans dépôt et sans transfert de la tuile à la seconde main.
-8. Pendant une saisie, cliquer sur **Stop camera**, puis redémarrer en pinçant :
-   la tuile conserve sa position, aucun dépôt ni reprise automatique. Cliquer
-   sur **Reset tiles** : les positions initiales et le compteur zéro reviennent.
-9. Pendant une saisie, passer à **Selection**, puis revenir en gardant le
-   pincement : aucune capture ne doit subsister. Vérifier ensuite le cycle
-   bleu → ambre → vert dans **Selection**, puis un trait par pincement dans Paint.
+1. Démarrer la caméra. Tendre l'index, replier les trois autres doigts et garder
+   le pouce séparé : **Confirmed: Pointing**, état du pointeur **active**, cercle
+   plein près de l'index. Cela vérifie l'activation du pointeur partagé.
+2. Déplacer lentement la main : le cercle doit suivre l'index et les coordonnées
+   **Source x/y** doivent évoluer. Le cercle doit rester aligné avec la vidéo,
+   y compris lorsque celle-ci présente des bandes noires.
+3. Ouvrir les cinq doigts : **Open palm**, pointeur **resting**, cercle retiré.
+   Pincer pouce et index : **Pinch**, sans curseur actif. Revenir à l'index tendu
+   avec les trois autres doigts repliés pour retrouver le pointeur.
+4. Présenter deux mains séparées en pointage : numéros distincts, cercle plein
+   et cercle pointillé. Choisir l'autre numéro dans **Main hand** : les rôles
+   doivent s'inverser. Mettre la principale au repos : son rôle reste réservé.
+5. Retirer une main environ une seconde puis la ramener : perte de son identité,
+   puis nouveau numéro. Rapprocher les mains jusqu'à une ambiguïté puis les
+   séparer : les anciens numéros et pointeurs ne doivent pas subsister.
+6. Répéter trois démarrages/arrêts : diagnostics et vidéo nettoyés à chaque arrêt,
+   sans réutiliser les anciens états de posture ou positions lissées.
+7. Depuis l'accueil intégré, quitter pendant le suivi puis pendant un démarrage
+   ralenti : la caméra doit se libérer et rester arrêtée au retour.
+8. Refuser l'autorisation caméra : un message d'erreur doit apparaître. Rétablir
+   l'autorisation dans le navigateur puis vérifier qu'un démarrage est possible.

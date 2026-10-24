@@ -11,7 +11,6 @@
 	},
 	"dependencies": {
 		"gsap": "^3.15.0",
-		"paint": "0.0.0",
 		"playground": "0.0.0",
 		"vue": "^3.5.42",
 		"vue-router": "^5.4.0"

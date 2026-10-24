@@ -21,8 +21,8 @@ export function usePageTransition(paused: Readonly<Ref<boolean>>) {
 			done();
 		};
 		if (paused.value) {
-			// Laisser Vue terminer son patch avant de poursuivre le mode out-in
-			// avec KeepAlive, même sans animation visuelle.
+			// Laisser Vue terminer son patch avant de poursuivre le mode out-in,
+			// même sans animation visuelle.
 			active.set(element, { finish });
 			nextTick(() => {
 				if (active.get(element)?.finish === finish) finish();

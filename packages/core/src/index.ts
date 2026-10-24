@@ -1,4 +1,3 @@
-export { createPinchDetector } from "./gestures/pinch";
 export { createPointSmoother } from "./pointer/point-smoother";
 export { createHandIdentityTracker } from "./tracking/hand-identity-tracker";
 export { createHandPoseTracker } from "./poses/hand-pose-tracker";
@@ -22,8 +21,4 @@ export type {
 	HandPoint,
 } from "./hand-observation";
 
-export type {
-	Point,
-	HandPose,
-	PinchEvent,
-} from "./gestures/pinch";
+export type { Point } from "./gestures/pinch";

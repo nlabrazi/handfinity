@@ -6,7 +6,6 @@ import type {
 } from "@handfinity/core";
 import { describe, expect, it } from "vitest";
 import { createHandPointerTracker } from "./hand-pointers";
-import { hitTestTargets, projectHandPoint } from "./targets";
 
 function hand(
 	id: number,
@@ -137,7 +136,7 @@ describe("Hand pointers and main hand", () => {
 		).toBe(2);
 	});
 
-	it("retains ownership while the main hand rests, without letting the secondary hover", () => {
+	it("retains ownership while the main hand rests", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
 		const result = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
@@ -295,35 +294,5 @@ describe("Hand pointers and main hand", () => {
 		expect(
 			tracker.update(frame(80, [hand(1, 80)]), [pose(1)]).primaryHandId,
 		).toBe(1);
-	});
-
-	it("changes the hovered target only through the active main pointer", () => {
-		const tracker = createHandPointerTracker();
-		const surface = { left: 0, top: 0, width: 400, height: 300 };
-		const targets = [
-			{ id: "left", rect: { ...surface, width: 200 } },
-			{ id: "right", rect: { ...surface, left: 200, width: 200 } },
-		];
-		function hovered(timestamp: number, mainPose: HandPoseKind = "pointing") {
-			const result = tracker.update(
-				frame(timestamp, [hand(1, timestamp), hand(2, timestamp, 0.8)]),
-				[pose(1, mainPose), pose(2)],
-			);
-			const pointer = result.pointers.find(
-				(item) => item.active && item.isPrimary,
-			);
-			return (
-				hitTestTargets(
-					pointer
-						? projectHandPoint(pointer.position, surface, { mirrorX: true })
-						: null,
-					targets,
-				)?.id ?? null
-			);
-		}
-		expect(hovered(0)).toBe("right");
-		expect(hovered(40, "open-palm")).toBeNull();
-		tracker.setPrimaryHand(2);
-		expect(hovered(80)).toBe("left");
 	});
 });

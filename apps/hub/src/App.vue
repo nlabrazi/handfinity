@@ -53,9 +53,6 @@ function focusPage(element: Element) {
 			</RouterLink>
 			<nav class="hub-nav" aria-label="Navigation principale">
 				<RouterLink to="/" exact-active-class="is-current">Accueil</RouterLink>
-				<RouterLink to="/paint" exact-active-class="is-current"
-					>Paint</RouterLink
-				>
 				<RouterLink to="/playground" exact-active-class="is-current"
 					>Playground</RouterLink
 				>
@@ -78,17 +75,12 @@ function focusPage(element: Element) {
 			</button>
 		</header>
 
-		<div
-			v-if="route.name === 'paint' || route.name === 'playground'"
-			class="workspace-bar"
-		>
+		<div v-if="route.name === 'playground'" class="workspace-bar">
 			<RouterLink to="/" class="back-link"
 				><span aria-hidden="true">←</span>
-				Retour aux expériences</RouterLink
+				Retour à l’accueil</RouterLink
 			>
-			<span class="eyebrow">{{
-				route.name === "paint" ? "01 / CRÉATION" : "02 / EXPLORATION"
-			}}</span>
+			<span class="eyebrow">LABORATOIRE / DIAGNOSTICS</span>
 		</div>
 
 		<div id="experience" tabindex="-1">
@@ -102,9 +94,7 @@ function focusPage(element: Element) {
 					@leave-cancelled="pageTransition.cancel"
 					@after-enter="focusPage"
 				>
-					<KeepAlive include="PaintWorkspace">
-						<component :is="Component" :key="currentRoute.name" />
-					</KeepAlive>
+					<component :is="Component" :key="currentRoute.name" />
 				</Transition>
 			</RouterView>
 		</div>

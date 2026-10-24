@@ -46,7 +46,7 @@ describe("page transition lifecycle", () => {
 		expect(done).not.toHaveBeenCalled();
 	});
 
-	it("restores the element after completion so cached views can reappear", () => {
+	it("restores the element's original styles after completion", () => {
 		const { transition, element, target } = setup();
 		const done = vi.fn();
 		transition.leave(element, done);
