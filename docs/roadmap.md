@@ -4,12 +4,41 @@ Objectif prioritaire : remplacer progressivement la souris et le clavier sur
 PC. Windows est la première cible proposée, à confirmer avec l'environnement
 de validation. Le smartphone et les lunettes AR seront étudiés après cette phase.
 
-Chaque étape représente un commit cohérent, ou plusieurs si les essais imposent
-un découpage plus fin. Les tests adaptés et les consignes de vérification font
-partie de chaque changement. Les gestes exacts et la technologie bureau restent
-à éprouver avant leur adoption.
+Les numéros ci-dessous désignent les étapes du plan. Pour la suite, chaque étape
+doit être livrée en petits commits cohérents : une fonctionnalité par commit,
+voire plusieurs commits si elle est trop importante. Aucune autorisation de
+travailler en autonomie ne permet de fusionner plusieurs étapes en un gros lot.
+
+L'utilisateur valide les changements et réalise lui-même `git add` et
+`git commit`. Livrer un lot à la fois, puis attendre sa validation. Si plusieurs
+lots sont explicitement demandés ensemble, conserver des changements séparément
+revus et applicables. Les tests adaptés et une courte liste « quoi tester,
+comment et pourquoi » accompagnent chaque livraison.
+
+Le template du README doit être conservé : badges, illustration, hiérarchie,
+ordre des sections, séparateurs et tableaux. Mettre à jour son contenu sans
+le réorganiser. Les gestes exacts et la technologie bureau restent à éprouver.
+
+## Historique récent réellement livré
+
+Les intitulés de certains commits commencent par `docs` alors qu'ils contiennent
+également du code. Le périmètre ci-dessous est fondé sur leur contenu Git.
+
+| Commit | Périmètre livré | État après recadrage |
+| --- | --- | --- |
+| `ae6ac83` | Modèle d'observation partagé | Conservé |
+| `42edba7` | Suivi de deux identités | Conservé |
+| `29838c8` | Sessions caméra et suivi communes | Session commune conservée ; adaptateur dédié retiré |
+| `b26772d` | Reconnaissance des postures | Conservée |
+| `f493bca` | Pointeurs et détection des cibles | Pointeurs conservés ; contrôleurs de cibles retirés |
+| `cb5f96f` | Sélection et annulation dans les démonstrations | Retirées du projet actif |
+| `35413b6` | Saisie et déplacement des tuiles | Retirés du projet actif |
+| `7f6d27b` | Ensemble du recadrage et des suppressions, étapes 1 à 5 | Réalisé dans un seul commit |
 
 ## Recadrage et suppressions — réalisé
+
+**Les cinq périmètres suivants ont été regroupés dans `7f6d27b`. Les titres
+indiquent le découpage qui était prévu ; ils ne sont pas cinq commits existants.**
 
 1. **`docs(project): recenter Handfinity on desktop input control`** — Objectif,
    responsabilités, capacités actuelles et nouvelle roadmap documentés.
@@ -24,7 +53,9 @@ partie de chaque changement. Les gestes exacts et la technologie bureau restent
    commandes, Docker et CI alignés sur les deux interfaces conservées.
 
 L'historique Git conserve les étapes précédentes. Les anciennes expériences
-ne font plus partie de la roadmap active.
+ne font plus partie de la roadmap active. La correction du template du README
+et la préparation de la passation sont des changements documentaires distincts
+du travail fonctionnel à reprendre à l'étape 6.
 
 ## Moteur commun et premier contrôle PC — à réaliser
 
@@ -96,3 +127,6 @@ sans conserver des contrôleurs sans consommateur dans l'attente de leur usage.
 Les tests du point 25 complètent ceux de chaque fonctionnalité. Les essais sur
 le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
+
+La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
+périmètre de l'étape 6 pour reprendre dans une nouvelle discussion.
