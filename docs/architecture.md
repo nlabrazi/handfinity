@@ -18,11 +18,12 @@ le développement de l'application locale.
 | --- | --- | --- |
 | Observation et coordonnées | `packages/core/src/hand-observation.ts` | Vision, suivi et postures |
 | Association des identités | `packages/core/src/tracking/` | Session de suivi |
-| Mesure des doigts et stabilisation des postures | `packages/core/src/poses/` | Playground |
+| Mesure des doigts et stabilisation des postures | `packages/core/src/poses/` | Moteur commun |
 | Détection du pincement | `packages/core/src/gestures/` | Reconnaissance des postures |
 | Lissage des points | `packages/core/src/pointer/` | Suivi des pointeurs |
 | Caméra, MediaPipe et cycle de vie | `packages/vision/src/` | Playground |
 | Pointeurs et main principale | `packages/interactions/src/` | Diagnostics du Playground |
+| Orchestration postures → pointeurs | `packages/interactions/src/gesture-engine.ts` | Playground |
 | Présentation et navigation | `apps/hub/` | Accueil et route du laboratoire |
 | Rendu et diagnostics | `apps/playground/` | Essais de reconnaissance |
 
@@ -47,6 +48,8 @@ contrôleur sans consommateur pour un éventuel usage futur.
   conserve ses confirmations de 40 ms à la fermeture et 60 ms au relâchement.
 - `createHandPointerTracker` : position de l'index, état actif en pointage,
   lissage par identité et choix automatique ou manuel de la main principale.
+- `createGestureEngine` : enchaînement postures → pointeurs à partir du suivi
+  fourni, choix principal et remise à zéro communs, sans Vue ni caméra.
 - `createTrackingSession` : démarrage, arrêt, libération des ressources et
   traitement des nouvelles images, avec expiration des identités même sans
   nouvelle image tant que la boucle s'exécute.
@@ -67,9 +70,19 @@ Commandes indépendantes de l'interface
           └── Exécuteur système       → Application PC
 ```
 
-La centralisation complète et les exécuteurs ne sont pas encore implémentés.
-Actuellement, la session de vision possède le suivi des identités et le
-composant principal du Playground assemble postures, pointeurs et rendu.
+La session de vision possède l'unique suivi des identités. Le moteur commun
+`createGestureEngine` dans `@handfinity/interactions` reçoit ce suivi via
+`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers }`.
+Il orchestre les trackers existants dans cet ordre, transmet le choix principal
+via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
+Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
+
+Le Playground consomme chaque résultat de la session, y compris sans nouvelle
+image pour traiter les expirations. Les trackers dédupliquent les observations
+avec leur horodatage ; le moteur n'ajoute aucune confirmation ni aucun lissage
+sur une image répétée. Vue conserve le rendu et les diagnostics et réinitialise
+le moteur à l'arrêt. Les commandes, les états de contrôle et les exécuteurs ne
+sont pas encore implémentés.
 
 Les règles d'interprétation doivent être partagées : seuils, confirmations,
 choix de main, activation, pause, gestes et transitions. Une interface ne doit

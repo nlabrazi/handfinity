@@ -61,6 +61,9 @@ du travail fonctionnel à reprendre à l'étape 6.
 
 6. **`refactor(engine): centralize the gesture processing pipeline`** — Centraliser
    l'interprétation et faire consommer cette chaîne commune par le Playground.
+   Implémentation préparée, à valider : `createGestureEngine` dans `interactions`
+   assemble postures et pointeurs, transmet le choix principal et regroupe les
+   remises à zéro. La session de vision conserve l'unique suivi d'identités.
 7. **`feat(input): expose shared pointer commands`** — Produire les commandes de
    déplacement ; les journaliser et les exécuter en simulation dans le Playground.
 8. **`chore(desktop): bootstrap the Windows application`** — Ajouter l'application

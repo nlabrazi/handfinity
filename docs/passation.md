@@ -41,23 +41,24 @@ confirmer avant l'étape 8. Aucun choix Electron, Tauri ou autre n'est arrêté.
 
 Dépôt : `/home/kaox/code/bricolage/handfinity`.
 
-Le dernier commit constaté avant cette correction documentaire est :
+Le dernier commit constaté à la reprise de l'étape 6 est :
 
 ```text
-7f6d27b chore: update docker configuration and remove screenshot
+47e94db docs: update README with project overview, roadmap, and passation documentation
 ```
 
-Il contient en réalité l'ensemble des étapes de recadrage 1 à 5. Le lot livré
-avait regroupé ces étapes malgré le découpage demandé. Ne pas prétendre que
+Le commit précédent `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
+Le lot livré avait regroupé ces étapes malgré le découpage demandé. Ne pas prétendre que
 cinq commits distincts ont été faits et ne pas réécrire cet historique sans
 demande explicite. La [roadmap](roadmap.md) contient les commits antérieurs utiles
-et la liste des étapes 6 à 27 encore à réaliser.
+et le plan des étapes 6 à 27.
 
-La correction documentaire qui accompagne cette passation restaure le README
+Le commit `47e94db` restaure le README
 depuis son template au commit `35413b6`, avec le contenu actuel et une capture
-de l'accueil actuel. Elle n'ajoute aucune fonctionnalité. À la reprise, vérifier
-`git status --short` et `git log` pour savoir si l'utilisateur a déjà commité
-cette correction et la passation.
+de l'accueil actuel. Il n'ajoute aucune fonctionnalité. Le dépôt était propre
+sur `staging` avant les modifications de l'étape 6. Ces modifications sont
+laissées à l'utilisateur pour validation et commit. À chaque reprise, vérifier
+`git status --short` et `git log` pour connaître l'état réel.
 
 ## Existant conservé
 
@@ -67,7 +68,7 @@ cette correction et la passation.
 | `apps/playground` | Aperçu caméra, identités, postures, pointeurs et choix de main |
 | `packages/core` | Observations, identités, postures, pincement interne et lissage |
 | `packages/vision` | Caméra, MediaPipe, boucle de suivi et nettoyage des ressources |
-| `packages/interactions` | Pointeurs et choix de la main principale |
+| `packages/interactions` | Moteur commun des postures, pointeurs et choix de la main principale |
 
 Paint, ses adaptateurs dédiés, les exercices de cartes/tuiles, leurs contrôleurs
 et leurs tests spécifiques ont été supprimés. Les fichiers de démarrage
@@ -77,34 +78,38 @@ Les scripts, le lockfile et Docker ne référencent plus ces éléments. Nginx e
 la production web restent utiles aux deux interfaces conservées. Jenkins
 utilise les commandes du dépôt ; aucune CI Windows n'est encore présente.
 
-La session de vision possède actuellement le tracker d'identités. Dans
-`apps/playground/src/App.vue`, `handleTrackingFrame` assemble encore
-`createHandPoseTracker` et `createHandPointerTracker`, puis rend les diagnostics.
-Cette orchestration est le prochain périmètre de refactoring.
+La session de vision conserve l'unique tracker d'identités.
+`createGestureEngine` dans `packages/interactions/src/gesture-engine.ts`
+assemble `createHandPoseTracker` puis `createHandPointerTracker` sans Vue ni
+caméra. Dans `apps/playground/src/App.vue`, `handleTrackingFrame` consomme le
+résultat du moteur et affiche les diagnostics.
 
 **Aucune application bureau, commande système, simulation de commande PC,
 commande de clavier ou bibliothèque publiée n'est implémentée.**
 
-## Prochaine étape : 6 uniquement
+## Étape 6 — implémentée, à valider
 
 ```text
 refactor(engine): centralize the gesture processing pipeline
 ```
 
-But : centraliser l'interprétation et faire consommer cette chaîne commune
-par le Playground. Préserver les comportements observables actuels.
+Le moteur expose `update(trackingFrame, aspectRatio)` →
+`{ tracking, poses, pointers }`, `setPrimaryHand(id)` et `reset()`.
+Le Playground n'assemble plus les deux trackers et leur remise à zéro ; il
+conserve ses états d'interface et le rendu. Aucun seuil ni comportement de
+reconnaissance n'est modifié.
 
-1. Lire le [cadrage](architecture.md), la [roadmap](roadmap.md), le composant
-   principal du Playground et les trackers existants avant de modifier le code.
-2. Définir un périmètre réduit de chaîne partagée. Éviter un second tracker
-   d'identités en parallèle de celui déjà possédé par la session de vision.
-   Éviter aussi une dépendance circulaire entre `core` et `interactions`.
-3. Centraliser l'orchestration nécessaire et ses remises à zéro, puis brancher
-   le Playground dessus. Le rendu et l'affichage des diagnostics restent dans Vue.
-4. Tester les transitions réelles de la chaîne, les images répétées, les pertes,
-   changements de main et redémarrages, selon le périmètre effectivement modifié.
-5. Vérifier la caméra, les postures, le choix principal et les pointeurs dans
-   le laboratoire. Livrer le bilan et attendre la validation.
+Chaque résultat du suivi alimente le moteur, même sans nouvelle image :
+`advance()` peut expirer une identité. Les horodatages des observations
+empêchent les trackers de confirmer une posture ou de lisser à nouveau une
+image répétée. Une image figée conserve le diagnostic précédent jusqu'à
+l'expiration existante de 120 ms.
+
+Les tests d'intégration utilisent les vrais trackers pour couvrir les
+transitions de postures, images répétées, pertes, choix de main, ambiguïtés
+et remises à zéro. Les vérifications webcam restent à réaliser par l'utilisateur
+selon le [guide du Playground](../apps/playground/README.md#vérifications-manuelles).
+Attendre sa validation avant l'étape suivante.
 
 Les commandes de pointeur et leur simulation appartiennent à l'étape 7.
 L'application bureau commence à l'étape 8. Ne pas les inclure dans l'étape 6
@@ -130,6 +135,10 @@ formatage, deux builds web, installation propre Docker et image de production
 Nginx vérifiés. Chrome a aussi testé les pages aux formats bureau/mobile,
 la navigation et le cycle caméra avec une caméra simulée. L'utilisateur a
 ensuite validé le recadrage. Ces résultats ne prouvent aucun contrôle natif.
+
+Validation automatisée de l'étape 6 : **146 tests passent**, dont 7 nouveaux
+cas d'intégration du moteur ; lint, formatage et builds des deux interfaces
+réussis. La validation manuelle avec webcam reste en attente.
 
 ```bash
 npm test

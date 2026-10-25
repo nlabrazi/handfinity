@@ -44,8 +44,8 @@ La première main en pointage devient principale ; à égalité, le plus petit
 numéro gagne. Elle garde son rôle pendant le repos et une absence brève tant
 que son identité existe. Une perte définitive relance le choix automatique.
 Une ambiguïté termine les identités concernées et efface le choix principal.
-Ces règles décrivent le diagnostic actuel ; les règles de contrôle du PC
-seront définies et vérifiées dans le futur moteur commun.
+Ces règles décrivent le diagnostic actuel du moteur commun ; les règles de
+contrôle du PC restent à définir et à vérifier.
 
 ## Cycle de vie
 
@@ -53,10 +53,17 @@ seront définies et vérifiées dans le futur moteur commun.
 suivi des identités. Seules les nouvelles images alimentent la détection.
 L'expiration des identités continue sans nouvelle image tant que la boucle tourne.
 
-Le composant principal assemble encore le suivi des postures et des pointeurs
-et se charge du rendu. La centralisation de cette chaîne, la production des
-commandes et leur simulation sont prévues dans la [roadmap](../../docs/roadmap.md).
-Aucune seconde reconnaissance propre au laboratoire ne devra être ajoutée.
+`createGestureEngine` dans `@handfinity/interactions` assemble les postures et
+les pointeurs, sans Vue ni caméra. Le composant principal lui transmet le suivi
+et le ratio vidéo avec `update(tracking, aspectRatio)`, puis affiche les résultats
+`tracking`, `poses` et `pointers`. Il transmet aussi le choix principal via
+`setPrimaryHand(id)` et réinitialise l'interprétation avec `reset()` à l'arrêt.
+Le moteur ne crée pas de second suivi d'identités.
+
+Chaque résultat de la session est traité, même sans nouvelle image : une image
+répétée ne confirme pas de posture et n'est pas filtrée à nouveau, mais les
+identités peuvent expirer. La production des commandes et leur simulation
+restent prévues dans la [roadmap](../../docs/roadmap.md).
 
 Un arrêt pendant l'initialisation libère les ressources déjà disponibles.
 Une caméra ou un détecteur reçu tardivement est libéré sans relancer la session.
@@ -74,6 +81,8 @@ npm run build
 
 Les tests du socle vérifient identités, ambiguïtés, durées de confirmation,
 images répétées, lissage indépendant, choix principal et nettoyage des sessions.
+Les tests d'intégration du moteur utilisent les vrais trackers pour vérifier
+leur enchaînement et la remise à zéro commune.
 
 ## Vérifications manuelles
 

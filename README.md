@@ -27,7 +27,7 @@
 - 🎮 **Un accueil et un laboratoire** :
   - **Accueil** : Présentation de Handfinity et accès au laboratoire sur `/playground`, avec une identité visuelle animée.
   - **Vision Playground** : Diagnostic des identités, des postures et des pointeurs, avec aperçu vidéo en miroir.
-  - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour les pointeurs et la main principale.
+  - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour le moteur commun des postures, des pointeurs et de la main principale.
 - 👓 **Objectif d'interaction sans contact** : Pointer, cliquer, déplacer, défiler et invoquer un clavier pour écrire dans l'application utilisée.
 - ⚡ **Stack actuelle** : Vue 3, Vite, TypeScript, Tailwind CSS v4 et npm Workspaces avec Node.js 24. La technologie de l'application bureau reste à choisir.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
@@ -58,10 +58,10 @@ Le socle actuel repose sur MediaPipe et trois packages internes :
 - 🖱️ **Suivi de deux mains** : Détection des repères et association d'identités locales à la session.
 - 🎯 **Postures stabilisées** : Pointage, ouverture des cinq doigts, pincement et posture inconnue.
 - 📌 **Main principale explicite** : Choix automatique ou manuel d'une identité dans les diagnostics du pointeur.
-- 🌐 **Packages partagés** : `core` définit les modèles et la reconnaissance ; `vision` possède la session caméra et la détection ; `interactions` produit les pointeurs et leur rôle.
+- 🌐 **Packages partagés** : `core` définit les modèles et la reconnaissance ; `vision` possède la session caméra, la détection et les identités ; `interactions` assemble les postures et les pointeurs dans le moteur commun.
 - ⚡ **Actualisation continue** : Analyse des nouvelles images ; les images répétées ne confirment pas de nouvelle posture et ne sont pas lissées à nouveau.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt, fermeture du détecteur et nettoyage des états.
-- ⌨️ **Commandes PC à construire** : La production des commandes et leurs exécuteurs simulé et système sont prévus dans la roadmap. La chaîne complète d'interprétation reste à centraliser.
+- ⌨️ **Commandes PC à construire** : La chaîne postures → pointeurs est centralisée ; la production des commandes et leurs exécuteurs simulé et système restent prévus dans la roadmap.
 
 ### 🏆 Vision Playground & Diagnostics
 
@@ -158,7 +158,7 @@ permettent de valider la reconnaissance avant de l'utiliser dans les interaction
 ### Pointeurs et main principale
 
 Le package interne `@handfinity/interactions` dépend de `core` et s'exécute sans
-Vue ni DOM. `createHandPointerTracker().update(trackingFrame, poses)` produit les
+Vue ni DOM. Le moteur commun utilise `createHandPointerTracker` pour produire les
 positions normalisées des index, leur posture, leur état actif et la main principale.
 Seul un pointage confirmé dans l'image active le pointeur. Le lissage est isolé
 par identité et réinitialisé après un repos ou une absence ; une image déjà
@@ -172,12 +172,19 @@ pour la main manquante. Une identité perdue ou ambiguë libère le choix princi
 Le [Playground](apps/playground/README.md#diagnostics) affiche ces pointeurs dans
 la vidéo. Les coordonnées **Source x/y** du panneau restent celles de l'image
 avant miroir. Les règles décrites ici sont celles du diagnostic actuel ; les
-états de contrôle du PC seront définis dans le moteur commun.
+états de contrôle du PC restent à ajouter au moteur commun.
 
 ### Commandes PC et moteur commun — à construire
 
-Le même moteur devra interpréter les gestes dans le Playground et dans
-l'application PC. Seule l'exécution des commandes dépendra de l'environnement :
+`createGestureEngine`, exporté par `@handfinity/interactions`, centralise déjà
+la chaîne postures → pointeurs consommée par le Playground.
+`update(trackingFrame, aspectRatio)` retourne `{ tracking, poses, pointers }` ;
+`setPrimaryHand(id)` transmet le choix principal et `reset()` efface ensemble
+postures, lissage et choix de main. Les identités restent fournies par la session
+de vision, sans second suivi dans le moteur.
+
+La future application PC utilisera cette même interprétation. Les commandes
+et leurs exécuteurs restent à construire :
 
 ```text
 Observations → Interprétation commune → Commandes
@@ -211,9 +218,10 @@ d'initialisation rejettent la promesse de `start`.
 
 Quitter le laboratoire arrête sa session. Un arrêt libère immédiatement les
 ressources disponibles ; un flux ou détecteur reçu ensuite est libéré à son
-arrivée, sans relancer le suivi ni modifier la session suivante. Le composant du
-Playground assemble encore les postures, les pointeurs et le rendu ; cette
-orchestration est le prochain refactoring prévu.
+arrivée, sans relancer le suivi ni modifier la session suivante. Le Playground
+transmet chaque résultat de suivi au moteur commun, même sans nouvelle image,
+puis affiche ses diagnostics. Il réinitialise le moteur à l'arrêt et garde
+uniquement le rendu et les états d'interface dans Vue.
 
 ### Lancement et distribution des applications
 
@@ -260,7 +268,8 @@ La commande compile les interfaces Vue avec Vite :
   - [x] Nettoyage des dépendances, exports, assets et configurations associés
   - [x] Responsabilités et limites actuelles documentées
 - [ ] **Moteur commun et premier contrôle du PC — étapes 6 à 10**
-  - [ ] Centralisation de l'interprétation et commandes de pointeur partagées
+  - [x] Centralisation de la chaîne postures → pointeurs consommée par le Playground
+  - [ ] Commandes de pointeur partagées et simulation
   - [ ] Application bureau, suivi en arrière-plan et véritable curseur
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [ ] Pause, reprise, choix de main et calibration

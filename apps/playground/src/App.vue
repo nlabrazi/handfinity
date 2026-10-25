@@ -5,15 +5,14 @@ import {
 	HAND_CONNECTIONS,
 	type TrackingSessionFrame,
 } from "@handfinity/vision";
-import {
-	createHandPoseTracker,
-	type HandObservation,
-	type HandTrackingFrame,
-	type TrackedHand,
-	type TrackedHandPose,
+import type {
+	HandObservation,
+	HandTrackingFrame,
+	TrackedHand,
+	TrackedHandPose,
 } from "@handfinity/core";
 import {
-	createHandPointerTracker,
+	createGestureEngine,
 	type HandPointerFrame,
 } from "@handfinity/interactions";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
@@ -38,8 +37,7 @@ const emptyPointers: HandPointerFrame = {
 };
 const pointerFrame = shallowRef(emptyPointers);
 
-const poseTracker = createHandPoseTracker();
-const pointerTracker = createHandPointerTracker();
+const engine = createGestureEngine();
 
 const session = createTrackingSession({
 	onFrame: handleTrackingFrame,
@@ -165,10 +163,11 @@ function drawHands(hands: readonly HandObservation[]) {
 }
 
 function handleTrackingFrame({ tracking, aspectRatio }: TrackingSessionFrame) {
-	showTracking(tracking);
-	handPoses.value = poseTracker.update(tracking, aspectRatio);
-	pointerFrame.value = pointerTracker.update(tracking, handPoses.value);
-	const visible = tracking.hands
+	const frame = engine.update(tracking, aspectRatio);
+	showTracking(frame.tracking);
+	handPoses.value = frame.poses;
+	pointerFrame.value = frame.pointers;
+	const visible = frame.tracking.hands
 		.filter((hand) => hand.status === "tracked")
 		.map((hand) => hand.observation);
 	handCount.value = visible.length;
@@ -177,7 +176,7 @@ function handleTrackingFrame({ tracking, aspectRatio }: TrackingSessionFrame) {
 
 function choosePrimaryHand(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
-	pointerTracker.setPrimaryHand(value === "auto" ? null : Number(value));
+	engine.setPrimaryHand(value === "auto" ? null : Number(value));
 }
 
 function stop() {
@@ -193,9 +192,8 @@ function stop() {
 	isLoading.value = false;
 	handCount.value = 0;
 	trackedHands.value = [];
-	poseTracker.reset();
+	engine.reset();
 	handPoses.value = [];
-	pointerTracker.reset();
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
