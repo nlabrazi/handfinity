@@ -1,10 +1,4 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef } from "vue";
-import {
-	createTrackingSession,
-	HAND_CONNECTIONS,
-	type TrackingSessionFrame,
-} from "@handfinity/vision";
 import type {
 	HandObservation,
 	HandTrackingFrame,
@@ -15,9 +9,18 @@ import {
 	createGestureEngine,
 	type HandPointerFrame,
 } from "@handfinity/interactions";
+import {
+	createTrackingSession,
+	HAND_CONNECTIONS,
+	type TrackingSessionFrame,
+	type TrackingSessionOptions,
+} from "@handfinity/vision";
+import { onBeforeUnmount, ref, shallowRef } from "vue";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
 import { createPointerSimulation } from "./pointer-simulation";
+
+const props = defineProps<{ trackingOptions?: TrackingSessionOptions }>();
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -25,6 +28,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const isRunning = ref(false);
 const isLoading = ref(false);
 const handCount = ref(0);
+const processedFrames = ref(0);
 const error = ref("");
 
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
@@ -43,13 +47,16 @@ const engine = createGestureEngine();
 const simulator = createPointerSimulation();
 const pointerSimulation = shallowRef(simulator.reset());
 
-const session = createTrackingSession({
-	onFrame: handleTrackingFrame,
-	onError(err) {
-		stop();
-		error.value = err instanceof Error ? err.message : "Tracking failed";
+const session = createTrackingSession(
+	{
+		onFrame: handleTrackingFrame,
+		onError(err) {
+			stop();
+			error.value = err instanceof Error ? err.message : "Tracking failed";
+		},
 	},
-});
+	props.trackingOptions,
+);
 let sessionGeneration = 0;
 let disposed = false;
 
@@ -166,8 +173,13 @@ function drawHands(hands: readonly HandObservation[]) {
 	}
 }
 
-function handleTrackingFrame({ tracking, aspectRatio }: TrackingSessionFrame) {
+function handleTrackingFrame({
+	tracking,
+	aspectRatio,
+	hasNewFrame,
+}: TrackingSessionFrame) {
 	const frame = engine.update(tracking, aspectRatio);
+	if (hasNewFrame) processedFrames.value += 1;
 	showTracking(frame.tracking);
 	handPoses.value = frame.poses;
 	pointerFrame.value = frame.pointers;
@@ -196,6 +208,7 @@ function stop() {
 	isRunning.value = false;
 	isLoading.value = false;
 	handCount.value = 0;
+	processedFrames.value = 0;
 	trackedHands.value = [];
 	engine.reset();
 	pointerSimulation.value = simulator.reset();
@@ -296,6 +309,9 @@ onBeforeUnmount(() => {
 						</button>
 						<span class="text-sm text-slate-400"
 							>Hands detected: {{ handCount }}</span
+						>
+						<span data-processed-frames class="text-sm text-slate-400"
+							>Images processed: {{ processedFrames }}</span
 						>
 					</div>
 					<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>

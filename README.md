@@ -205,7 +205,7 @@ Observations → Interprétation commune → Commandes
 
 La simulation permet de diagnostiquer les commandes effectivement produites.
 L'exécuteur système reste à construire et devra être validé sur le système cible, notamment pour le
-fonctionnement en arrière-plan, les entrées maintenues et la destination de la
+traitement des entrées maintenues et la destination de la
 saisie. Ces fonctionnalités ne sont pas encore présentes.
 
 Windows 11 x64 et Electron sont retenus pour la première application bureau.
@@ -215,6 +215,13 @@ aux futures versions Windows et Linux ; leurs exécuteurs système seront adapt�
 séparément. Le [cadrage](docs/architecture.md) et la [roadmap](docs/roadmap.md)
 détaillent ce périmètre.
 
+Après **Start camera**, la fenêtre bureau maintient le suivi lorsqu'elle perd
+le focus ou est réduite. **Images processed** compte les nouvelles images
+analysées puis transmises au moteur, même sans main détectée. **Stop camera**
+remet ce compteur à zéro et libère la caméra ; fermer l'application arrête le
+suivi. Les essais avec la vraie webcam restent nécessaires ; le navigateur web
+conserve sa gestion habituelle des onglets en arrière-plan.
+
 ### Sessions de suivi communes
 
 Le Playground utilise `createTrackingSession` dans `@handfinity/vision`.
@@ -222,6 +229,11 @@ Chaque instance possède sa caméra, son détecteur, sa boucle vidéo et son sui
 d'identités. `start(video)` initialise le suivi ; `stop()` est disponible dès la
 création de la session, y compris pendant un démarrage en attente. Une même
 instance peut être arrêtée puis redémarrée.
+
+L'option facultative `scheduling: "timer"` permet au bureau de programmer chaque
+passage avec un délai de `1000 / 30` ms après le traitement précédent. Sans
+option, le web utilise `requestAnimationFrame`. Le traitement des images, les
+identités et le nettoyage restent dans la même session.
 
 Le callback `onFrame` reçoit les observations, le suivi des identités, le ratio
 d'image et `hasNewFrame`. Ce dernier distingue une nouvelle image d'une simple
@@ -295,7 +307,8 @@ la distribution reste prévu à l'étape 27.
   - [x] Centralisation de la chaîne postures → pointeurs consommée par le Playground
   - [x] Commandes de déplacement partagées et simulation dans le Playground
   - [x] Socle de l'application Electron Windows réutilisant le Playground
-  - [ ] Suivi en arrière-plan et véritable curseur
+  - [ ] Suivi en arrière-plan implémenté, à valider avec la vraie webcam
+  - [ ] Véritable curseur Windows
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [ ] Pause, reprise, choix de main et calibration
   - [ ] Clic principal, déplacement avec maintien, clic secondaire et défilement

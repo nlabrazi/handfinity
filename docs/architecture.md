@@ -127,11 +127,43 @@ second miroir. Il conserve la dernière position sans commande, borne son
 journal à huit entrées, compte les commandes reçues et efface ces états à
 l'arrêt. Les états de contrôle et l'exécuteur système restent à construire.
 
-Le bootstrap ne règle pas encore le suivi hors premier plan. La chaîne
-actuelle reste fondée sur une vidéo HTML et `requestAnimationFrame` ; son
-fonctionnement lorsque la fenêtre est réduite ou qu'une autre application
-est utilisée sera vérifié à l'étape 9. Les entrées système commencent à
-l'étape 10 et l'installeur de distribution reste prévu à l'étape 27.
+L'étape 9 règle `backgroundThrottling: false` dès la création de la fenêtre
+Electron pour désactiver la limitation des timers en arrière-plan. Ce réglage
+seul n'a pas suffi : lors de l'essai Windows réduit, la boucle d'animation
+ne traitait qu'environ une image par seconde.
+
+Le renderer bureau transmet donc `trackingOptions: { scheduling: "timer" }`
+à la vue partagée. Celle-ci appelle `createTrackingSession` avec ces options :
+`scheduling: "timer"` réarme `window.setTimeout` après chaque traitement, avec
+un délai de `1000 / 30` ms. La cadence maximale visée est de 30 itérations par
+seconde ; le coût du traitement s'ajoute au délai et aucune cadence n'est
+garantie. La boucle reste ainsi indépendante de `requestAnimationFrame`.
+Sans option, la session web conserve sa cadence par frames d'animation.
+
+La session conserve sa vidéo HTML, une seule boucle et son unique suivi
+d'identités ; la vue alimente toujours le même moteur commun. L'arrêt annule
+le callback avec `clearTimeout` ou
+`cancelAnimationFrame` selon la cadence choisie, puis libère les ressources.
+Les protections du renderer et les permissions restent inchangées ; aucun
+pont IPC ni seconde chaîne d'interprétation n'est ajouté.
+
+Le diagnostic **Images processed** augmente uniquement lorsqu'une nouvelle image
+a été traitée par la vision puis le moteur, y compris lorsqu'aucune main n'est
+détectée. Une itération sans nouvelle image ne l'incrémente pas. Il revient à
+zéro à l'arrêt. Le compteur de commandes ne suffit pas à observer la continuité :
+une image valide sans pointage ne produit aucun déplacement.
+
+Les essais natifs Windows avec caméra simulée ont vérifié la continuité :
+388 images traitées pendant 30 secondes de réduction, avec progression des
+images décodées et changement des pixels vidéo. L'arrêt, la reprise et la
+fermeture du processus ont aussi été vérifiés. Le parcours avec une vraie
+webcam, dont la perte et le retour d'une main, reste à valider.
+Avec ce réglage Electron, `visibilityState` reste
+`visible` même lorsque la fenêtre est réduite : les essais doivent vérifier son
+état Windows réel et la progression des images traitées. La réduction conserve
+le suivi ; **Stop camera** libère les ressources et la fermeture quitte
+l'application. Les entrées système commencent à l'étape 10 et l'installeur de
+distribution reste prévu à l'étape 27.
 
 Les règles d'interprétation doivent être partagées : seuils, confirmations,
 choix de main, activation, pause, gestes et transitions. Une interface ne doit
@@ -153,8 +185,9 @@ validation de leur exécution réelle sur le système cible.
    chargement MediaPipe, accès webcam, arrêt et fermeture. Electron est retenu ;
    le build et les tests unitaires seuls ne prouvent pas ce parcours Windows.
 2. Suivi continu quand l'utilisateur change d'application ou réduit la fenêtre.
-   La session actuelle dépend d'une vidéo HTML et de `requestAnimationFrame` ;
-   son adaptation doit être testée dans l'environnement bureau retenu.
+   Le réglage Electron de l'étape 9 et le compteur d'images traitées sont présents ;
+   vérifier la continuité, les pertes et retours de mains, la restauration et
+   le nettoyage sous Windows, notamment avec la vraie webcam.
 3. Correspondance entre la zone de mouvement des mains et l'écran, miroir,
    sensibilité et calibration.
 4. Gestes volontaires d'activation, de pause, de clic secondaire, de défilement

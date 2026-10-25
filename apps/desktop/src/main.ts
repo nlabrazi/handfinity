@@ -71,6 +71,8 @@ async function start() {
 			autoHideMenuBar: true,
 			webPreferences: {
 				session: appSession,
+				// La vidéo et les timers de suivi doivent continuer fenêtre réduite.
+				backgroundThrottling: false,
 				nodeIntegration: false,
 				contextIsolation: true,
 				sandbox: true,

@@ -52,10 +52,10 @@ ne sont pas ajoutées à l'étape 8.
 
 Dépôt : `/home/kaox/code/bricolage/handfinity`.
 
-Le dernier commit constaté à la reprise de l'étape 8 est :
+Le dernier commit constaté lors de cette passation est :
 
 ```text
-d18d337 docs: update README and documentation to reflect current state and new pointer command types
+9c0de98 feat: add desktop application with Electron and update documentation
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -67,9 +67,11 @@ et le plan des étapes 6 à 27.
 Le commit `47e94db` restaure le template du README depuis `35413b6` et prépare
 la passation. Malgré son titre `docs`, `352f8e4` contient aussi le moteur commun
 de l'étape 6. `d18d337` contient les commandes et la simulation de l'étape 7,
-testées, revues et validées par l'utilisateur. Le dépôt était propre sur
-`staging` avant les modifications de l'étape 8, qui lui sont laissées pour
-validation et commit. À chaque reprise, vérifier `git status --short` et
+testées, revues et validées par l'utilisateur. `9c0de98` contient le socle
+Electron de l'étape 8, accepté et commité par l'utilisateur. Le dépôt était
+propre sur `staging` avant cette mise à jour documentaire de passation.
+Le push du dernier commit et les essais avec la vraie webcam n'ont pas été
+confirmés dans l'échange. À chaque reprise, vérifier `git status --short` et
 `git log` pour connaître l'état réel.
 
 ## Existant conservé
@@ -107,7 +109,7 @@ pont IPC sans usage actuel.
 **Aucune exécution système, commande de boutons, de défilement, de clavier ou
 bibliothèque publiée n'est implémentée.**
 
-## Étape 8 — implémentée, à valider
+## Étape 8 — livrée dans `9c0de98`
 
 ```text
 chore(desktop): bootstrap the Windows application
@@ -141,13 +143,58 @@ une nouvelle action **Start camera**. Les essais sont décrits dans le
 [guide Desktop](../apps/desktop/README.md#vérifications-manuelles).
 
 Le suivi hors premier plan appartient à l'étape 9, l'exécuteur système à
-l'étape 10 et l'installeur distribuable à l'étape 27. Attendre la validation
-de l'étape 8 par l'utilisateur avant de poursuivre.
+l'étape 10 et l'installeur distribuable à l'étape 27. L'utilisateur a accepté
+et commité l'étape 8. L'étape 9 est maintenant implémentée dans les changements
+non commités ; elle attend encore sa validation avec la vraie webcam.
+
+## Étape 9 — implémentée, à valider
+
+```text
+feat(desktop): keep hand tracking active in the background
+```
+
+But : après une action explicite **Start camera**, la caméra et le moteur
+doivent continuer à traiter les nouvelles images lorsque l'utilisateur passe
+dans une autre application ou réduit la fenêtre Handfinity sous Windows.
+
+`apps/desktop/src/main.ts` règle `backgroundThrottling: false` dès la création
+de la fenêtre. Ce réglage seul a laissé `requestAnimationFrame` à environ une
+itération par seconde pendant un essai avec la fenêtre Windows réduite.
+Le renderer bureau configure donc la vue partagée avec
+`trackingOptions: { scheduling: "timer" }`.
+
+`createTrackingSession(callbacks, options?)` conserve une seule boucle et un
+seul suivi d'identités. L'option `scheduling: "timer"` programme le passage
+suivant avec `setTimeout` après chaque traitement, avec un délai de `1000 / 30`
+ms ; le temps d'analyse s'ajoute à ce délai. Le web conserve par défaut
+`requestAnimationFrame`. L'arrêt annule le callback du scheduler choisi ;
+la déduplication, les expirations et le nettoyage restent communs.
+
+**Images processed** augmente uniquement après l'analyse d'une nouvelle image
+et son passage dans le moteur, y compris sans main détectée. Le compteur de
+commandes ne prouve pas à lui seul la continuité du suivi. L'arrêt remet les
+deux compteurs à zéro et libère les ressources. La fermeture quitte réellement
+l'application, sans zone de notification ni démarrage automatique.
+
+Les tests et builds sont décrits plus bas. Les essais avec la vraie webcam
+doivent encore couvrir perte de focus, réduction, restauration, perte et retour
+d'une main, puis arrêt et fermeture. Le [guide Desktop](../apps/desktop/README.md#vérifications-manuelles)
+décrit le parcours. Une caméra simulée et des tests unitaires ne prouvent pas
+à eux seuls le fonctionnement de la vraie webcam.
+
+Les commandes restent simulées. L'exécution du vrai curseur appartient à
+l'étape 10 : ne pas ajouter d'entrée système, de clic, de pause gestuelle,
+de calibration, de clavier, d'intégration Linux/Android ou d'installeur dans
+ce lot. Attendre la validation de l'étape 9 et son commit par l'utilisateur
+avant de commencer l'étape 10.
 
 ## Plan de progression
 
-- **6–7** : interprétation commune, puis commandes de pointeur et simulation.
-- **8–10** : application PC, suivi hors premier plan et véritable curseur.
+- **1–5 — réalisé** : recadrage, suppression des expériences et nettoyage.
+- **6–7 — réalisé** : interprétation commune, commandes de pointeur et simulation.
+- **8 — réalisé** : socle Electron Windows réutilisant le moteur et l'interface.
+- **9 — implémentée, à valider** : suivi hors premier plan et compteur d'images.
+- **10 — à faire après validation** : véritable curseur Windows.
 - **11–18** : pause, main principale, calibration, boutons, défilement et réglages.
 - **19–24** : clavier superposé, invocation, touches, saisie, édition et raccourcis.
 - **25–27** : parcours complets, CI Windows et distribution.
@@ -186,8 +233,32 @@ libérées à l'arrêt, refus du microphone, navigation et fenêtres externes bl
 confinement des fichiers, redémarrage et fermeture pendant le suivi vérifiés.
 Aucune erreur JavaScript non interceptée. Les chemins de fichiers ont également
 été vérifiés avec Node Windows. Ces essais ne remplacent pas la validation avec
-la vraie webcam de l'utilisateur ; aucun contrôle système ni suivi continu hors
-premier plan n'est encore validé.
+la vraie webcam de l'utilisateur. À l'issue de l'étape 8, aucun contrôle système
+ni suivi continu hors premier plan n'était validé.
+
+Validation automatisée de l'étape 9 : **225 tests passent**, lint, formatage et
+builds web/bureau réussis. Les mêmes scénarios de session sont exécutés avec les
+deux cadences : arrêt, redémarrage, déduplication, expiration, perte et retour
+d'une main, callbacks périmés et ressources retardées. Les tests du bootstrap
+vérifient aussi le réglage initial d'arrière-plan et les protections.
+
+Le contrôle supplémentaire `npm run check` signale huit erreurs de tri
+d'importations préexistantes dans des fichiers non modifiés de `hub`, `core`
+et `interactions`. Le contrôle Biome complet des sept fichiers de code modifiés
+passe ; aucun nettoyage hors périmètre n'a été ajouté.
+
+Un scénario natif Electron Windows, lancé depuis WSL2 avec une caméra simulée,
+a vérifié la perte de focus, la réduction, la restauration, la pause/reprise de
+la source, l'arrêt, le redémarrage puis la fermeture réelle du processus.
+Pendant 30 secondes de réduction, **388 nouvelles images ont été traitées** ;
+les prélèvements toutes les deux secondes confirment une progression continue
+du compteur, des images décodées et des pixels vidéo. Aucune erreur JavaScript
+interceptée. L'état réduit a été contrôlé avec Win32, pas avec `visibilityState`,
+qui reste `visible` avec ce réglage. Cette mesure ne garantit pas une cadence.
+
+La vraie webcam et la perte/le retour d'une main pendant la réduction restent
+à valider par l'utilisateur. Les commandes restent simulées et l'étape 10
+n'est pas commencée. Aucun commit n'a été réalisé pour ce lot.
 
 ```bash
 npm test

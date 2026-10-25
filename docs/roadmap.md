@@ -39,6 +39,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `7f6d27b` | Ensemble du recadrage et des suppressions, étapes 1 à 5 | Réalisé dans un seul commit |
 | `352f8e4` | Moteur commun des postures et pointeurs, étape 6 | Testé et validé par l'utilisateur |
 | `d18d337` | Commandes de déplacement partagées et simulation, étape 7 | Testé, revu et validé par l'utilisateur |
+| `9c0de98` | Socle Electron Windows et lancement depuis WSL2, étape 8 | Accepté et commité par l'utilisateur |
 
 ## Recadrage et suppressions — réalisé
 
@@ -76,12 +77,17 @@ du travail fonctionnel repris à l'étape 6.
    curseur simulé. Aucun contrôle système n'est ajouté.
 8. **`chore(desktop): bootstrap the Windows application`** — Ajouter l'application
    bureau et documenter son choix technique, sans recopier la logique du moteur.
-   Implémentation préparée, à valider : Electron 45.0.0, fenêtre locale réutilisant
+   Livrée et acceptée dans `9c0de98` : Electron 45.0.0, fenêtre locale réutilisant
    `playground/view`, permissions caméra vidéo et lancement Windows depuis WSL2.
    L'interface reste celle des diagnostics et de la simulation ; le suivi hors
    premier plan et l'exécution système ne sont pas inclus.
 9. **`feat(desktop): keep hand tracking active in the background`** — Vérifier la
    caméra et le moteur quand l'utilisateur change d'application ou réduit la fenêtre.
+   Implémentée, à valider avec la vraie webcam : cadence par timer dans la session
+   partagée pour le bureau, throttling Electron désactivé et compteur d'images
+   traitées. Le web conserve sa cadence par défaut. Vérifier la continuité,
+   la perte et le retour des mains, la restauration et le nettoyage à l'arrêt.
+   Les commandes restent simulées jusqu'à l'étape 10.
 10. **`feat(desktop): execute system pointer commands`** — Déplacer le vrai curseur,
     avec activation explicite, arrêt et suspension sur perte de suivi.
 
@@ -147,4 +153,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l'étape 8 pour reprendre dans une nouvelle discussion.
+périmètre de l'étape 9 pour reprendre dans une nouvelle discussion.

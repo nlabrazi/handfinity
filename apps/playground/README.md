@@ -21,6 +21,10 @@ Cliquer sur **Start camera** puis autoriser la webcam. L'aperçu est en miroir.
 
 ## Diagnostics
 
+- **Images processed** : nombre de nouvelles images analysées et transmises au
+  moteur, même sans main détectée. Une image répétée n'augmente pas ce compteur ;
+  l'arrêt le remet à zéro. Il permet de vérifier le suivi indépendamment des
+  commandes, qui restent absentes lorsqu'aucune main ne pointe.
 - **Hand identities** : numéros, latéralité, état `tracked` ou `missing`,
   dernière apparition/perte et indication d'ambiguïté. Les numéros sont des
   identités locales au suivi, sans reconnaissance persistante des mains.

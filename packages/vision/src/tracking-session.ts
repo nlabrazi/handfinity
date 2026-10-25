@@ -29,6 +29,11 @@ export type TrackingSession = {
 	stop(): void;
 };
 
+export type TrackingSessionOptions = {
+	/** Le bureau utilise un timer avec le throttling Electron désactivé. */
+	scheduling?: "animation-frame" | "timer";
+};
+
 type SessionRun = {
 	video: HTMLVideoElement;
 	abort: AbortController;
@@ -40,16 +45,26 @@ type SessionRun = {
 /** Une instance par propriétaire : aucune caméra globale ou persistante. */
 export function createTrackingSession(
 	callbacks: TrackingCallbacks,
+	options: TrackingSessionOptions = {},
 ): TrackingSession {
 	const identities = createHandIdentityTracker();
 	let current: SessionRun | null = null;
+	const useTimer = options.scheduling === "timer";
+
+	function schedule(tick: () => void) {
+		// Une fenêtre réduite peut recevoir très peu de frames d'animation.
+		return useTimer
+			? window.setTimeout(tick, 1000 / 30)
+			: requestAnimationFrame(tick);
+	}
 
 	function stop() {
 		const run = current;
 		if (!run) return;
 		current = null;
 		run.abort.abort();
-		cancelAnimationFrame(run.frameId);
+		if (useTimer) window.clearTimeout(run.frameId);
+		else cancelAnimationFrame(run.frameId);
 		identities.reset();
 		try {
 			run.tracker?.close();
@@ -123,10 +138,10 @@ export function createTrackingSession(
 					}
 					return;
 				}
-				if (current === run) run.frameId = requestAnimationFrame(tick);
+				if (current === run) run.frameId = schedule(tick);
 			}
 
-			run.frameId = requestAnimationFrame(tick);
+			run.frameId = schedule(tick);
 		} catch (error) {
 			// Une ancienne initialisation ne peut pas arrêter sa remplaçante.
 			if (current === run) stop();
