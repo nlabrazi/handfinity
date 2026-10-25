@@ -1,8 +1,10 @@
 # Roadmap Handfinity
 
 Objectif prioritaire : remplacer progressivement la souris et le clavier sur
-PC. Windows est la première cible proposée, à confirmer avec l'environnement
-de validation. Le smartphone et les lunettes AR seront étudiés après cette phase.
+PC. Windows 11 x64 est la première cible retenue, avec Electron et un
+développement sous WSL2. Le code reste commun pour une future version Linux,
+avec des adaptations système distinctes. Le contrôle d'Android par les gestes
+vus par sa caméra frontale et les lunettes AR seront étudiés après cette phase.
 
 Les numéros ci-dessous désignent les étapes du plan. Pour la suite, chaque étape
 doit être livrée en petits commits cohérents : une fonctionnalité par commit,
@@ -17,7 +19,8 @@ comment et pourquoi » accompagnent chaque livraison.
 
 Le template du README doit être conservé : badges, illustration, hiérarchie,
 ordre des sections, séparateurs et tableaux. Mettre à jour son contenu sans
-le réorganiser. Les gestes exacts et la technologie bureau restent à éprouver.
+le réorganiser. Les gestes exacts et le fonctionnement réel du bureau restent
+à éprouver au fil des étapes.
 
 ## Historique récent réellement livré
 
@@ -35,6 +38,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `35413b6` | Saisie et déplacement des tuiles | Retirés du projet actif |
 | `7f6d27b` | Ensemble du recadrage et des suppressions, étapes 1 à 5 | Réalisé dans un seul commit |
 | `352f8e4` | Moteur commun des postures et pointeurs, étape 6 | Testé et validé par l'utilisateur |
+| `d18d337` | Commandes de déplacement partagées et simulation, étape 7 | Testé, revu et validé par l'utilisateur |
 
 ## Recadrage et suppressions — réalisé
 
@@ -67,19 +71,26 @@ du travail fonctionnel repris à l'étape 6.
    remises à zéro. La session de vision conserve l'unique suivi d'identités.
 7. **`feat(input): expose shared pointer commands`** — Produire les commandes de
    déplacement ; les journaliser et les exécuter en simulation dans le Playground.
-   Implémentation préparée, à valider : `pointer:move` pour la main principale
+   Livrée et validée dans `d18d337` : `pointer:move` pour la main principale
    en pointage, destinations normalisées avec miroir commun, journal borné et
    curseur simulé. Aucun contrôle système n'est ajouté.
 8. **`chore(desktop): bootstrap the Windows application`** — Ajouter l'application
    bureau et documenter son choix technique, sans recopier la logique du moteur.
+   Implémentation préparée, à valider : Electron 45.0.0, fenêtre locale réutilisant
+   `playground/view`, permissions caméra vidéo et lancement Windows depuis WSL2.
+   L'interface reste celle des diagnostics et de la simulation ; le suivi hors
+   premier plan et l'exécution système ne sont pas inclus.
 9. **`feat(desktop): keep hand tracking active in the background`** — Vérifier la
    caméra et le moteur quand l'utilisateur change d'application ou réduit la fenêtre.
 10. **`feat(desktop): execute system pointer commands`** — Déplacer le vrai curseur,
     avec activation explicite, arrêt et suspension sur perte de suivi.
 
-Avant l'étape 8 : confirmer le système PC, la machine de test et la technologie
-bureau. Le prototype devra vérifier la réutilisation du socle et son exécution
-hors du premier plan. Le premier contrôle réel est validé dans une autre application.
+Décisions de l'étape 8 : Windows 11 x64 et Electron, avec édition et compilation
+sous WSL2 puis exécution directe sous Windows. Les essais web de l'utilisateur
+restent possibles dans Firefox Windows. La réutilisation du socle et l'accès
+caméra sont à vérifier dans la fenêtre bureau ; l'exécution hors premier plan
+appartient à l'étape 9. Le premier contrôle réel sera validé dans une autre
+application à l'étape 10.
 
 ## Souris utilisable — à réaliser
 
@@ -136,4 +147,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l'étape 6 pour reprendre dans une nouvelle discussion.
+périmètre de l'étape 8 pour reprendre dans une nouvelle discussion.

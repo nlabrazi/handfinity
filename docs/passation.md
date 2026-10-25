@@ -15,6 +15,9 @@
   liens de pied de page. Modifier son contenu, sans réécrire son organisation.
 - Limiter les changements à la demande. Ne pas réorganiser les fichiers ou
   adopter une technologie par initiative personnelle.
+- Expliquer les responsabilités avec les appareils concrets : développement
+  sous WSL2, essais web dans Firefox Windows, application Electron sur Windows.
+  Distinguer un PC Ubuntu d'un VPS d'hébergement pour éviter toute confusion.
 - Retirer le code sans usage actuel au lieu de garder des démonstrations ou
   abstractions « au cas où ». L'historique Git conserve les expériences retirées.
 
@@ -33,18 +36,26 @@ Deux interfaces web sont conservées :
   avec la future application PC. Une seconde interprétation des gestes propre
   aux démonstrations ne doit pas être ajoutée.
 
-Windows est la première cible proposée, pas une intégration déjà réalisée.
-La technologie bureau et l'environnement de validation Windows restent à
-confirmer avant l'étape 8. Aucun choix Electron, Tauri ou autre n'est arrêté.
+Windows 11 x64 est confirmé comme première cible ; Electron 45.0.0 est retenu.
+L'utilisateur développe sous WSL2 et teste le web dans Firefox Windows. Le
+lanceur bureau exécutera Electron Windows depuis WSL2, avec la webcam Windows.
+Un projet et un moteur communs serviront aux versions Windows et Linux ; les
+adaptations de contrôle propres aux systèmes seront développées séparément.
+
+Un futur PC Ubuntu pourra exécuter la version Linux ; le VPS reste disponible
+pour héberger un site. Le futur objectif Android consiste à contrôler les autres
+applications du téléphone grâce aux gestes vus par sa caméra frontale. Cette
+partie demandera une intégration native et des essais distincts. Ces perspectives
+ne sont pas ajoutées à l'étape 8.
 
 ## État Git et travail réalisé
 
 Dépôt : `/home/kaox/code/bricolage/handfinity`.
 
-Le dernier commit constaté à la reprise de l'étape 7 est :
+Le dernier commit constaté à la reprise de l'étape 8 est :
 
 ```text
-352f8e4 docs: update documentation for shared packages and gesture engine
+d18d337 docs: update README and documentation to reflect current state and new pointer command types
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -55,9 +66,10 @@ et le plan des étapes 6 à 27.
 
 Le commit `47e94db` restaure le template du README depuis `35413b6` et prépare
 la passation. Malgré son titre `docs`, `352f8e4` contient aussi le moteur commun
-de l'étape 6. L'utilisateur l'a testé, validé, commité et poussé. Le dépôt était
-propre sur `staging` avant les modifications de l'étape 7, qui lui sont laissées
-pour validation et commit. À chaque reprise, vérifier `git status --short` et
+de l'étape 6. `d18d337` contient les commandes et la simulation de l'étape 7,
+testées, revues et validées par l'utilisateur. Le dépôt était propre sur
+`staging` avant les modifications de l'étape 8, qui lui sont laissées pour
+validation et commit. À chaque reprise, vérifier `git status --short` et
 `git log` pour connaître l'état réel.
 
 ## Existant conservé
@@ -66,6 +78,7 @@ pour validation et commit. À chaque reprise, vérifier `git status --short` et
 | --- | --- |
 | `apps/hub` | Accueil, navigation vers le laboratoire et animations actives |
 | `apps/playground` | Diagnostics caméra, choix de main, simulation et journal des commandes |
+| `apps/desktop` | Fenêtre Electron locale réutilisant la vue du Playground et lancement Windows depuis WSL2 |
 | `packages/core` | Observations, identités, postures, pincement interne et lissage |
 | `packages/vision` | Caméra, MediaPipe, boucle de suivi et nettoyage des ressources |
 | `packages/interactions` | Moteur commun des postures, pointeurs, choix principal et commandes de déplacement |
@@ -85,44 +98,51 @@ caméra. Dans `apps/playground/src/App.vue`, `handleTrackingFrame` consomme le
 résultat du moteur et affiche les diagnostics. Le moteur produit maintenant
 les commandes de déplacement consommées par `createPointerSimulation`.
 
-**Aucune application bureau, exécution système, commande de boutons, de
-défilement, de clavier ou bibliothèque publiée n'est implémentée.**
+L'application bureau importe directement `playground/view`. Son processus
+principal crée la fenêtre et sert les fichiers compilés depuis
+`handfinity://app/`. Seule la page locale de cette fenêtre peut demander la
+caméra vidéo. Le renderer est isolé et sandboxé, sans intégration Node.js ni
+pont IPC sans usage actuel.
 
-## Étape 7 — implémentée, à valider
+**Aucune exécution système, commande de boutons, de défilement, de clavier ou
+bibliothèque publiée n'est implémentée.**
+
+## Étape 8 — implémentée, à valider
 
 ```text
-feat(input): expose shared pointer commands
+chore(desktop): bootstrap the Windows application
 ```
 
-Le moteur expose `update(trackingFrame, aspectRatio)` →
-`{ tracking, poses, pointers, commands }`, `setPrimaryHand(id)` et `reset()`.
-`PointerMoveCommand` contient `type: "pointer:move"`, `handId`, `timestamp`
-et `position: { x, y }`. Sa destination normalisée entre 0 et 1 a l'origine
-en haut à gauche ; le moteur applique déjà le miroir horizontal à la position
-lissée (`x = 1 - Source x`, `y = Source y`). Les diagnostics source restent
-avant miroir et la simulation ne retourne pas les coordonnées à nouveau.
+Le workspace `apps/desktop` ajoute la fenêtre **Handfinity Desktop**, les
+compilations du processus principal et du renderer, la politique locale de
+fichiers et de permissions, et un lanceur adapté à WSL2. L'interface reste
+celle des diagnostics et de la simulation du Playground. Aucune logique de
+gestes n'est recopiée.
 
-Chaque résultat du suivi alimente le moteur, même sans nouvelle image :
-`advance()` peut expirer une identité. Les horodatages des observations
-empêchent les trackers de confirmer une posture ou de lisser à nouveau une
-image répétée. Seule une observation fraîche de la principale en pointage
-confirmé émet un déplacement, une fois par image. Le repos, le pincement,
-l'absence ou l'ambiguïté n'en produisent pas. Une image figée peut conserver
-le diagnostic précédent jusqu'à l'expiration de 120 ms sans nouvelle commande.
+Depuis WSL2, `npm run dev:desktop` compile puis lance le binaire Electron
+Windows. Le premier lancement garde l'archive dans le cache ignoré
+`apps/desktop/node_modules/.cache/` et l'extrait avec `unzip` dans
+`%LOCALAPPDATA%\Handfinity\Cache\electron-45.0.0-x64`. Chromium doit lancer ses
+processus depuis le disque Windows local ; le projet compilé reste accessible
+via UNC. Les protections d'Electron sont conservées.
+Il ne demande pas de second clone Windows. Hors WSL2, le lanceur utilise
+Electron de la plateforme courante.
 
-Le Playground exécute uniquement les commandes reçues dans une zone dédiée,
-conserve la dernière position sans commande, affiche les huit dernières
-commandes et leur compteur total. L'arrêt réinitialise le moteur, la position
-simulée, le journal et le compteur. La reconnaissance des gestes reste commune.
+`npm run build:desktop` compile sans ouvrir la fenêtre ; `npm run start:desktop`
+lance le dernier build. Il n'y a pas de HMR dans ce lot : fermer la fenêtre et
+relancer après une modification. `npm ci` ne télécharge pas Electron à l'avance ;
+un accès réseau est nécessaire au premier lancement. Les fichiers MediaPipe et
+le modèle restent chargés depuis leurs hébergements externes.
 
-Les tests d'intégration du moteur utilisent les vrais trackers ; cinq cas de
-commandes et six cas de simulation complètent les 146 tests de l'étape 6.
-Les vérifications webcam restent à réaliser par l'utilisateur selon le
-[guide du Playground](../apps/playground/README.md#vérifications-manuelles).
-Attendre sa validation avant l'étape suivante.
+Le contrat du moteur de l'étape 7 reste `{ tracking, poses, pointers, commands }`.
+Les commandes `pointer:move` sont toujours simulées. L'arrêt caméra et la
+fermeture de la fenêtre doivent libérer les ressources ; le redémarrage demande
+une nouvelle action **Start camera**. Les essais sont décrits dans le
+[guide Desktop](../apps/desktop/README.md#vérifications-manuelles).
 
-L'étape 8 n'est pas commencée. Avant de l'entreprendre, confirmer Windows,
-la machine de test et la technologie bureau avec l'utilisateur.
+Le suivi hors premier plan appartient à l'étape 9, l'exécuteur système à
+l'étape 10 et l'installeur distribuable à l'étape 27. Attendre la validation
+de l'étape 8 par l'utilisateur avant de poursuivre.
 
 ## Plan de progression
 
@@ -153,13 +173,28 @@ Validation de l'étape 7 : **157 tests passent**, lint, formatage et builds des
 deux interfaces réussis. Chrome a vérifié le laboratoire à 1440 et 390 px avec
 des observations synthétiques : émissions, déduplication, miroir, journal borné,
 repos et arrêt, sans erreur JavaScript ni débordement horizontal. Ces contrôles
-ne constituent pas des essais webcam réels, qui restent à faire par l'utilisateur.
+ne constituent pas des essais webcam réels. L'utilisateur a ensuite testé,
+revu et validé cette étape avant son commit.
+
+Validation automatisée de l'étape 8 : **201 tests passent**, dont 44 tests
+supplémentaires de politique locale et de permissions. Lint, formatage, builds
+web et bureau, installation propre et build du hub dans Docker réussis.
+
+Electron Windows a été lancé depuis WSL2 et contrôlé avec une caméra simulée :
+chargement réel de MediaPipe, traitement vidéo, trois cycles caméra avec pistes
+libérées à l'arrêt, refus du microphone, navigation et fenêtres externes bloquées,
+confinement des fichiers, redémarrage et fermeture pendant le suivi vérifiés.
+Aucune erreur JavaScript non interceptée. Les chemins de fichiers ont également
+été vérifiés avec Node Windows. Ces essais ne remplacent pas la validation avec
+la vraie webcam de l'utilisateur ; aucun contrôle système ni suivi continu hors
+premier plan n'est encore validé.
 
 ```bash
 npm test
 npm run lint
 npm run format:check
 npm run build
+npm run build:desktop
 ```
 
 ```bash
@@ -169,6 +204,9 @@ npm run dev
 
 npm run dev -w playground
 # Laboratoire autonome : http://localhost:3002
+
+npm run dev:desktop
+# Depuis WSL2 : compilation puis fenêtre Electron Windows
 ```
 
 Docker conserve les services `hub` et `playground`. Ils ont été reconstruits et

@@ -8,9 +8,21 @@ pas nécessiter une intégration dans chaque site web. Le smartphone et les
 lunettes AR sont des perspectives ultérieures, avec leur propre étude de
 faisabilité et leur propre intégration système.
 
-Windows est la première cible PC proposée. Le système effectivement supporté,
-la machine de validation et la technologie bureau doivent être confirmés avant
-le développement de l'application locale.
+Windows 11 x64 est la première cible PC retenue, avec Electron 45.0.0. Le projet
+est développé sous WSL2 et les essais web de l'utilisateur se font dans Firefox
+Windows. Le lancement bureau depuis WSL2 ouvre Electron Windows : les calculs
+et la webcam restent sur la machine Windows utilisée.
+
+Electron permet de réutiliser Vue, TypeScript et la vision dans un Chromium
+embarqué, tout en gérant la fenêtre et le cycle de vie de l'application locale.
+Ce choix conserve le moteur indépendant des API de contrôle Windows ; il ne
+remplace pas la validation réelle de la caméra, de l'arrière-plan et des entrées.
+
+Le même projet et le même moteur serviront à une future version Linux, avec
+des adaptations de contrôle propres au système. Un PC Ubuntu désigne ici un
+éventuel poste d'utilisation ; le VPS peut héberger le site. Le futur objectif
+mobile est de contrôler les applications d'un téléphone Android par les gestes
+vus par sa caméra frontale. Cette intégration native n'est pas implémentée.
 
 ## Existant conservé
 
@@ -26,6 +38,9 @@ le développement de l'application locale.
 | Orchestration postures → pointeurs | `packages/interactions/src/gesture-engine.ts` | Playground |
 | Commandes de déplacement | `packages/interactions/src/pointer-commands.ts` et moteur commun | Simulation du Playground |
 | Exécution simulée et journal | `apps/playground/src/pointer-simulation.ts` | Diagnostics des commandes |
+| Fenêtre Electron, origine locale et permissions | `apps/desktop/src/main.ts` | Application bureau |
+| Lancement Electron de la plateforme, Windows depuis WSL2 | `apps/desktop/scripts/start.mjs` | Commandes bureau |
+| Interface bureau réutilisée | `playground/view` via `apps/desktop/src/renderer/` | Fenêtre Handfinity Desktop |
 | Présentation et navigation | `apps/hub/` | Accueil et route du laboratoire |
 | Rendu et diagnostics | `apps/playground/` | Essais de reconnaissance |
 
@@ -84,6 +99,18 @@ Il orchestre les trackers existants dans cet ordre, transmet le choix principal
 via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
 Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
 
+L'application bureau importe directement `playground/view` et compile cette
+interface avec Vite. Elle réutilise donc les mêmes packages `core`, `vision`
+et `interactions`, ainsi que l'exécuteur de simulation. Le processus principal
+Electron crée la fenêtre et sert les fichiers compilés depuis
+`handfinity://app/` ; il ne reconnaît aucun geste.
+
+Cette page locale est le seul contexte autorisé à demander la caméra vidéo,
+dans la fenêtre principale. Le microphone, la capture d'écran, les navigations
+et les nouvelles fenêtres sont refusés. Le renderer utilise l'isolation de
+contexte et le sandbox, sans intégration Node.js ni pont IPC sans consommateur.
+Le confinement des fichiers et les permissions sont testés séparément.
+
 Le Playground consomme chaque résultat de la session, y compris sans nouvelle
 image pour traiter les expirations. Les trackers dédupliquent les observations
 avec leur horodatage ; le moteur n'ajoute aucune confirmation ni aucun lissage
@@ -99,6 +126,12 @@ La destination de `pointer:move` utilise la position déjà lissée :
 second miroir. Il conserve la dernière position sans commande, borne son
 journal à huit entrées, compte les commandes reçues et efface ces états à
 l'arrêt. Les états de contrôle et l'exécuteur système restent à construire.
+
+Le bootstrap ne règle pas encore le suivi hors premier plan. La chaîne
+actuelle reste fondée sur une vidéo HTML et `requestAnimationFrame` ; son
+fonctionnement lorsque la fenêtre est réduite ou qu'une autre application
+est utilisée sera vérifié à l'étape 9. Les entrées système commencent à
+l'étape 10 et l'installeur de distribution reste prévu à l'étape 27.
 
 Les règles d'interprétation doivent être partagées : seuils, confirmations,
 choix de main, activation, pause, gestes et transitions. Une interface ne doit
@@ -116,9 +149,9 @@ validation de leur exécution réelle sur le système cible.
 
 ## Points à décider ou à éprouver
 
-1. Environnement de validation du premier système PC et choix de l'application
-   bureau. La réutilisation de TypeScript et de la vision sera vérifiée par un
-   prototype avant de fixer les choix définitifs.
+1. Validation réelle du bootstrap sur Windows 11 x64 : réutilisation du moteur,
+   chargement MediaPipe, accès webcam, arrêt et fermeture. Electron est retenu ;
+   le build et les tests unitaires seuls ne prouvent pas ce parcours Windows.
 2. Suivi continu quand l'utilisateur change d'application ou réduit la fenêtre.
    La session actuelle dépend d'une vidéo HTML et de `requestAnimationFrame` ;
    son adaptation doit être testée dans l'environnement bureau retenu.
@@ -139,6 +172,12 @@ simule les déplacements dans le navigateur, puis ferme la caméra à sa sortie.
 Il ne contrôle aucune autre application. Les commandes de boutons, de
 défilement et de clavier ne sont pas encore implémentées.
 
-Aucune application PC, intégration mobile, interface AR ou bibliothèque
-publiée n'est présente. Le choix de l'environnement bureau ne sera pas déduit
-seulement de la réussite des tests unitaires ou du build web.
+Le socle de l'application PC est présent ; il affiche encore les diagnostics
+et la simulation du Playground. Aucun exécuteur système, contrôle Linux,
+intégration Android, interface AR ou bibliothèque publiée n'est livré.
+
+Un hébergement du site sur VPS ou PC Ubuntu fournit les fichiers web au
+navigateur. Il ne déplace pas automatiquement la reconnaissance vers cet
+hébergement. Dans le bureau, l'application Electron exécute la vision et le
+moteur localement. Un calcul distant demanderait une acquisition et un transport
+distincts, qui ne font pas partie du bootstrap.

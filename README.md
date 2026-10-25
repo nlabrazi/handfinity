@@ -21,15 +21,16 @@
 
 **Handfinity** est un projet d'**interface gestuelle par webcam** visant à remplacer progressivement la **souris et le clavier sur PC**, dans les applications existantes. Le smartphone, puis les lunettes de réalité augmentée, seront étudiés après validation de l'usage sur PC.
 
-**État actuel :** le [site d'accueil](apps/hub/README.md) et le [Playground](apps/playground/README.md) sont fonctionnels. Le moteur partagé produit des commandes de déplacement, journalisées et simulées dans le laboratoire, en complément des diagnostics des mains ; **le contrôle de la souris et du clavier du système n'est pas encore implémenté**.
+**État actuel :** le [site d'accueil](apps/hub/README.md), le [Playground](apps/playground/README.md) et le socle de l'[application bureau Electron](apps/desktop/README.md) sont présents. La fenêtre bureau réutilise les diagnostics et la simulation du Playground, avec le même moteur partagé ; **le contrôle de la souris et du clavier du système n'est pas encore implémenté**.
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur, avec démarrage et arrêt explicites.
 - 🎮 **Un accueil et un laboratoire** :
   - **Accueil** : Présentation de Handfinity et accès au laboratoire sur `/playground`, avec une identité visuelle animée.
   - **Vision Playground** : Diagnostic des identités, des postures et des pointeurs, avec aperçu vidéo en miroir, journal des commandes et curseur simulé.
+  - **Application bureau** : Fenêtre Electron **Handfinity Desktop**, utilisant directement la vue du Playground et ses packages partagés. Windows 11 x64 est la première cible de validation.
   - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour le moteur commun et ses commandes de déplacement.
 - 👓 **Objectif d'interaction sans contact** : Pointer, cliquer, déplacer, défiler et invoquer un clavier pour écrire dans l'application utilisée.
-- ⚡ **Stack actuelle** : Vue 3, Vite, TypeScript, Tailwind CSS v4 et npm Workspaces avec Node.js 24. La technologie de l'application bureau reste à choisir.
+- ⚡ **Stack actuelle** : Vue 3, Vite, TypeScript, Tailwind CSS v4, Electron 45.0.0 et npm Workspaces avec Node.js 24. Un projet commun, avec de futures adaptations de contrôle propres à Windows et Linux.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
 - 🔊 **Retour visuel en direct** : Posture confirmée et candidate, estimation des doigts, coordonnées et rôle de chaque main.
 - 🧹 **Outillage** : Biome v2 pour le lint et le formatage, y compris les fichiers Vue.
@@ -43,10 +44,10 @@ Le [cadrage technique](docs/architecture.md) décrit les responsabilités et lim
 ## ⚖️ Confidentialité & Utilisation de la Webcam
 
 Handfinity est conçu pour expérimenter la vision par ordinateur tout en limitant la circulation des données caméra :
-1. **Traitement côté navigateur** : La webcam est ouverte localement ; le traitement gestuel avec **MediaPipe Tasks Vision** s'exécute dans le navigateur. Le démarrage télécharge les fichiers MediaPipe et le modèle depuis leurs hébergements externes ; aucun enregistrement vidéo ni envoi des images à un serveur applicatif n'est implémenté.
-2. **Contrôle explicite de la caméra** : L'utilisateur doit autoriser l'accès à la webcam et peut arrêter la session depuis les applications. Les ressources vidéo et le suivi sont libérés à l'arrêt.
+1. **Traitement sur l'appareil utilisé** : La webcam et **MediaPipe Tasks Vision** s'exécutent dans le navigateur pour le web, ou dans la fenêtre Electron pour le bureau. Le démarrage télécharge les fichiers MediaPipe et le modèle depuis leurs hébergements externes ; aucun enregistrement vidéo ni envoi des images à un serveur applicatif n'est implémenté.
+2. **Contrôle explicite de la caméra** : **Start camera** demande la webcam ; **Stop camera** ferme la session. Le navigateur et Windows peuvent refuser l'accès. L'application bureau autorise uniquement la vidéo depuis sa page locale, sans microphone ni capture d'écran. Les ressources vidéo et le suivi sont libérés à l'arrêt.
 3. **Précaution pour un déploiement public** :
-   > *L'accès à la caméra nécessite un contexte sécurisé (HTTPS ou localhost). Handfinity n'a actuellement ni authentification, ni stockage distant des vidéos, ni base de données. Tout ajout futur de collecte devra être documenté explicitement.*
+   > *Sur le web, l'accès à la caméra nécessite un contexte sécurisé (HTTPS ou localhost). Handfinity n'a actuellement ni authentification, ni stockage distant des vidéos, ni base de données. Tout ajout futur de collecte devra être documenté explicitement.*
 
 ---
 
@@ -207,10 +208,12 @@ L'exécuteur système reste à construire et devra être validé sur le système
 fonctionnement en arrière-plan, les entrées maintenues et la destination de la
 saisie. Ces fonctionnalités ne sont pas encore présentes.
 
-Windows est la première cible proposée. La technologie bureau et la machine
-sur laquelle les entrées système seront vérifiées restent à confirmer avant
-le développement de l'application locale. Le [cadrage](docs/architecture.md)
-et la [roadmap](docs/roadmap.md) détaillent ces décisions.
+Windows 11 x64 et Electron sont retenus pour la première application bureau.
+Le développement se fait sous WSL2 ; la fenêtre Electron s'exécute directement
+sous Windows et utilise sa webcam. Le moteur et l'interface restent communs
+aux futures versions Windows et Linux ; leurs exécuteurs système seront adaptés
+séparément. Le [cadrage](docs/architecture.md) et la [roadmap](docs/roadmap.md)
+détaillent ce périmètre.
 
 ### Sessions de suivi communes
 
@@ -242,9 +245,15 @@ npm run dev
 
 # Facultatif : laboratoire autonome sur http://localhost:3002
 npm run dev -w playground
+
+# Fenêtre Windows Electron depuis WSL2 : compile puis lance l'application
+npm run dev:desktop
 ```
 Le hub donne accès aux deux pages. Docker Compose permet également de lancer
-leurs services de développement.
+leurs services de développement web. Le lancement bureau est décrit dans le
+[guide Desktop](apps/desktop/README.md) ; il ouvre une vraie application Windows
+depuis WSL2 et ne nécessite pas de second clone Windows. À cette étape, une
+modification demande de fermer la fenêtre puis de relancer la commande.
 
 #### En production (Build statique des applications) :
 ```bash
@@ -255,6 +264,11 @@ La commande compile les interfaces Vue avec Vite :
 - **Hub** : `apps/hub/dist/`, contenant l'accueil et le laboratoire intégré.
 - **Playground** : `apps/playground/dist/`, pour le laboratoire autonome.
 - **Distribution web** : Fichiers statiques pouvant être servis par Nginx derrière un hébergement HTTPS.
+
+`npm run build:desktop` compile séparément le processus Electron et son
+interface partagée ; `npm run start:desktop` lance ce build. L'exécutable
+Electron est téléchargé au premier lancement. L'installeur Windows destiné à
+la distribution reste prévu à l'étape 27.
 
 > [!NOTE]
 > **Accès webcam en production :** HTTPS ou localhost est nécessaire. Ces builds
@@ -280,7 +294,8 @@ La commande compile les interfaces Vue avec Vite :
 - [ ] **Moteur commun et premier contrôle du PC — étapes 6 à 10**
   - [x] Centralisation de la chaîne postures → pointeurs consommée par le Playground
   - [x] Commandes de déplacement partagées et simulation dans le Playground
-  - [ ] Application bureau, suivi en arrière-plan et véritable curseur
+  - [x] Socle de l'application Electron Windows réutilisant le Playground
+  - [ ] Suivi en arrière-plan et véritable curseur
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [ ] Pause, reprise, choix de main et calibration
   - [ ] Clic principal, déplacement avec maintien, clic secondaire et défilement
@@ -291,7 +306,8 @@ La commande compile les interfaces Vue avec Vite :
 - [ ] **Validation et distribution — étapes 25 à 27**
   - [ ] Parcours complets, vérifications Windows et application distribuable
 - [ ] **Perspectives ultérieures**
-  - [ ] Étude d'une intégration smartphone
+  - [ ] Étude du contrôle d'Android par les gestes vus par sa caméra frontale
+  - [ ] Adaptation et validation du contrôle sur un PC Ubuntu
   - [ ] Étude des lunettes de réalité augmentée selon le matériel retenu
 
 Les étapes de recadrage 1 à 5 ont été livrées ensemble dans **un seul commit,
@@ -324,6 +340,7 @@ détaille les postures et résultats attendus.
 ### Prérequis
 * **Node.js 24** et npm pour le développement local, les tests et la CI Jenkins ; Docker utilise également Node.js 24.
 * Une webcam fonctionnelle et un navigateur récent autorisant `getUserMedia()` sur localhost ou en HTTPS.
+* Pour le bureau : Windows 11 x64 ; depuis WSL2, interopérabilité Windows et `unzip` disponibles. Le [guide Desktop](apps/desktop/README.md) détaille le lancement et les téléchargements nécessaires.
 
 ### Option A : Lancer en local
 
@@ -405,7 +422,7 @@ docker build --target prod -t handfinity-web .
 
 Le fallback de `nginx.conf` permet le rechargement direct de `/playground`.
 HTTPS doit être fourni par l'hébergement hors localhost. Cette distribution
-web ne remplace pas l'application bureau prévue dans la roadmap.
+web reste distincte de l'application bureau Electron.
 
 ---
 
@@ -416,12 +433,15 @@ web ne remplace pas l'application bureau prévue dans la roadmap.
 | `npm run dev` | Démarre l'accueil et le laboratoire intégré sur le port 3000 |
 | `npm run dev -w playground` | Démarre le laboratoire autonome sur le port 3002 |
 | `npm run build` | Compile le Playground autonome puis le hub intégré |
+| `npm run dev:desktop` | Compile et lance la fenêtre Electron ; depuis WSL2, exécute la version Windows |
+| `npm run build:desktop` | Compile le processus Electron et son interface partagée |
+| `npm run start:desktop` | Lance la dernière compilation bureau, sans reconstruire |
 | `npm run lint` | Exécute le linter Biome |
 | `npm run format` | Formate le code avec Biome |
 | `npm run format:check` | Vérifie le formatage sans modifier les fichiers |
 | `npm run check` | Lance `biome check .` |
 | `npm test -w @handfinity/core` | Exécute les tests unitaires du core |
-| `npm test` | Exécute les tests du core, du moteur, de la simulation, de la vision et des transitions du hub |
+| `npm test` | Exécute les tests du core, du moteur, de la simulation, de la vision, du bureau et des transitions du hub |
 | `docker compose up --build hub` | Démarre l'accueil et le laboratoire intégré dans Docker |
 | `docker compose up --build playground` | Démarre le laboratoire autonome dans Docker |
 
