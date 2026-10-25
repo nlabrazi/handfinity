@@ -34,6 +34,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `cb5f96f` | Sélection et annulation dans les démonstrations | Retirées du projet actif |
 | `35413b6` | Saisie et déplacement des tuiles | Retirés du projet actif |
 | `7f6d27b` | Ensemble du recadrage et des suppressions, étapes 1 à 5 | Réalisé dans un seul commit |
+| `352f8e4` | Moteur commun des postures et pointeurs, étape 6 | Testé et validé par l'utilisateur |
 
 ## Recadrage et suppressions — réalisé
 
@@ -55,17 +56,20 @@ indiquent le découpage qui était prévu ; ils ne sont pas cinq commits existan
 L'historique Git conserve les étapes précédentes. Les anciennes expériences
 ne font plus partie de la roadmap active. La correction du template du README
 et la préparation de la passation sont des changements documentaires distincts
-du travail fonctionnel à reprendre à l'étape 6.
+du travail fonctionnel repris à l'étape 6.
 
 ## Moteur commun et premier contrôle PC — à réaliser
 
 6. **`refactor(engine): centralize the gesture processing pipeline`** — Centraliser
    l'interprétation et faire consommer cette chaîne commune par le Playground.
-   Implémentation préparée, à valider : `createGestureEngine` dans `interactions`
+   Livrée et validée dans `352f8e4` : `createGestureEngine` dans `interactions`
    assemble postures et pointeurs, transmet le choix principal et regroupe les
    remises à zéro. La session de vision conserve l'unique suivi d'identités.
 7. **`feat(input): expose shared pointer commands`** — Produire les commandes de
    déplacement ; les journaliser et les exécuter en simulation dans le Playground.
+   Implémentation préparée, à valider : `pointer:move` pour la main principale
+   en pointage, destinations normalisées avec miroir commun, journal borné et
+   curseur simulé. Aucun contrôle système n'est ajouté.
 8. **`chore(desktop): bootstrap the Windows application`** — Ajouter l'application
    bureau et documenter son choix technique, sans recopier la logique du moteur.
 9. **`feat(desktop): keep hand tracking active in the background`** — Vérifier la

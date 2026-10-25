@@ -24,6 +24,8 @@ le développement de l'application locale.
 | Caméra, MediaPipe et cycle de vie | `packages/vision/src/` | Playground |
 | Pointeurs et main principale | `packages/interactions/src/` | Diagnostics du Playground |
 | Orchestration postures → pointeurs | `packages/interactions/src/gesture-engine.ts` | Playground |
+| Commandes de déplacement | `packages/interactions/src/pointer-commands.ts` et moteur commun | Simulation du Playground |
+| Exécution simulée et journal | `apps/playground/src/pointer-simulation.ts` | Diagnostics des commandes |
 | Présentation et navigation | `apps/hub/` | Accueil et route du laboratoire |
 | Rendu et diagnostics | `apps/playground/` | Essais de reconnaissance |
 
@@ -49,12 +51,17 @@ contrôleur sans consommateur pour un éventuel usage futur.
 - `createHandPointerTracker` : position de l'index, état actif en pointage,
   lissage par identité et choix automatique ou manuel de la main principale.
 - `createGestureEngine` : enchaînement postures → pointeurs à partir du suivi
-  fourni, choix principal et remise à zéro communs, sans Vue ni caméra.
+  fourni, commandes de déplacement, choix principal et remise à zéro communs,
+  sans Vue ni caméra.
+- `PointerMoveCommand` : `type: "pointer:move"`, identité `handId`, horodatage
+  d'observation `timestamp` et destination normalisée `position: { x, y }`.
+  L'origine est en haut à gauche, avec le miroir horizontal déjà appliqué par
+  le moteur ; les diagnostics des pointeurs restent dans le repère source.
 - `createTrackingSession` : démarrage, arrêt, libération des ressources et
   traitement des nouvelles images, avec expiration des identités même sans
   nouvelle image tant que la boucle s'exécute.
 
-Les coordonnées précèdent le miroir d'affichage. La profondeur relative au
+Les coordonnées des observations et des pointeurs précèdent le miroir d'affichage. La profondeur relative au
 poignet n'est pas une distance métrique. L'ordre des observations et la
 latéralité ne constituent pas des identifiants physiques persistants.
 
@@ -72,7 +79,7 @@ Commandes indépendantes de l'interface
 
 La session de vision possède l'unique suivi des identités. Le moteur commun
 `createGestureEngine` dans `@handfinity/interactions` reçoit ce suivi via
-`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers }`.
+`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers, commands }`.
 Il orchestre les trackers existants dans cet ordre, transmet le choix principal
 via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
 Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
@@ -81,8 +88,17 @@ Le Playground consomme chaque résultat de la session, y compris sans nouvelle
 image pour traiter les expirations. Les trackers dédupliquent les observations
 avec leur horodatage ; le moteur n'ajoute aucune confirmation ni aucun lissage
 sur une image répétée. Vue conserve le rendu et les diagnostics et réinitialise
-le moteur à l'arrêt. Les commandes, les états de contrôle et les exécuteurs ne
-sont pas encore implémentés.
+le moteur à l'arrêt. Les commandes de déplacement sont émises uniquement pour
+une nouvelle observation de la main principale en pointage confirmé, une fois
+par image. Une image répétée ou un diagnostic conservé jusqu'à l'expiration
+ne produit aucun déplacement.
+
+La destination de `pointer:move` utilise la position déjà lissée :
+`x = 1 - pointer.position.x`, `y = pointer.position.y`, entre 0 et 1.
+`createPointerSimulation` consomme ces commandes sans réinterprétation ni
+second miroir. Il conserve la dernière position sans commande, borne son
+journal à huit entrées, compte les commandes reçues et efface ces états à
+l'arrêt. Les états de contrôle et l'exécuteur système restent à construire.
 
 Les règles d'interprétation doivent être partagées : seuils, confirmations,
 choix de main, activation, pause, gestes et transitions. Une interface ne doit
@@ -90,11 +106,11 @@ pas ajouter sa propre détection du pincement ou une autre interprétation du
 même geste. Les commandes seront introduites au rythme de leurs consommateurs
 réels : déplacement, boutons, défilement puis clavier.
 
-La simulation affichera les commandes et leurs effets. L'exécuteur système
-les traduira en entrées du PC. Le choix d'un champ de texte ou d'un bouton du
+La simulation affiche les commandes de déplacement et leurs effets. Le futur
+exécuteur système les traduira en entrées du PC. Le choix d'un champ de texte ou d'un bouton du
 logiciel utilisé appartiendra au fonctionnement normal de ce logiciel.
 
-Les tests utiliseront des observations horodatées et des réglages identiques
+Les tests utilisent des observations horodatées et des réglages identiques
 pour vérifier la production des commandes. La simulation ne remplace pas la
 validation de leur exécution réelle sur le système cible.
 
@@ -118,9 +134,10 @@ validation de leur exécution réelle sur le système cible.
 
 ## Limites de la première phase
 
-L'accueil ne démarre pas la webcam. Le Playground affiche uniquement des
-diagnostics dans le navigateur et ferme la caméra à sa sortie. Il ne simule
-pas encore de commandes système et ne contrôle aucune autre application.
+L'accueil ne démarre pas la webcam. Le Playground affiche les diagnostics et
+simule les déplacements dans le navigateur, puis ferme la caméra à sa sortie.
+Il ne contrôle aucune autre application. Les commandes de boutons, de
+défilement et de clavier ne sont pas encore implémentées.
 
 Aucune application PC, intégration mobile, interface AR ou bibliothèque
 publiée n'est présente. Le choix de l'environnement bureau ne sera pas déduit

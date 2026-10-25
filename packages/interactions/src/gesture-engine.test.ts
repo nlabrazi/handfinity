@@ -4,7 +4,7 @@ import {
 	type HandPoseKind,
 } from "@handfinity/core";
 import { describe, expect, it } from "vitest";
-import { createGestureEngine } from "./index";
+import { createGestureEngine, type PointerMoveCommand } from "./index";
 
 function hand(
 	kind: HandPoseKind,
@@ -81,6 +81,7 @@ describe("Shared gesture engine", () => {
 				pending: true,
 			});
 			expect(candidate.pointers.pointers[0]?.active).toBe(false);
+			expect(candidate.commands).toEqual([]);
 			expect(candidate.poses[0]?.measurements?.pinchRatio).toBeCloseTo(
 				Math.hypot(0.24, 0.27) / 0.25,
 			);
@@ -91,17 +92,28 @@ describe("Shared gesture engine", () => {
 				active: true,
 				isPrimary: true,
 			});
+			const command: PointerMoveCommand | undefined = pointing.commands[0];
+			expect(pointing.commands).toHaveLength(1);
+			expect(command).toMatchObject({
+				type: "pointer:move",
+				handId: 1,
+				timestamp: 80,
+			});
+			expect(command?.position.x).toBeCloseTo(0.5 + 0.08 / aspectRatio);
+			expect(command?.position.y).toBeCloseTo(0.28);
 
 			observe("open-palm", 100);
 			const resting = observe("open-palm", 180);
 			expect(resting.poses[0]?.pose).toBe("open-palm");
 			expect(resting.pointers.pointers[0]?.active).toBe(false);
 			expect(resting.pointers.primaryHandId).toBe(1);
+			expect(resting.commands).toEqual([]);
 
 			observe("pinch", 200);
 			const pinching = observe("pinch", 240);
 			expect(pinching.poses[0]?.pose).toBe("pinch");
 			expect(pinching.pointers.pointers[0]?.active).toBe(false);
+			expect(pinching.commands).toEqual([]);
 			expect(pointing.poses[0]?.pose).toBe("pointing");
 			expect(pointing.pointers.pointers[0]?.active).toBe(true);
 		},
@@ -114,16 +126,25 @@ describe("Shared gesture engine", () => {
 		const repeatedCandidate = engine.update(identities.advance(80));
 		expect(repeatedCandidate.poses[0]?.pose).toBe("unknown");
 		expect(repeatedCandidate.pointers.pointers[0]?.active).toBe(false);
+		expect(repeatedCandidate.commands).toEqual([]);
 
-		engine.update(identities.update([hand("pointing", 80)], 80));
+		expect(
+			engine.update(identities.update([hand("pointing", 80)], 80)).commands,
+		).toHaveLength(1);
 		const moved = engine.update(
 			identities.update([hand("pointing", 100, 0.1)], 100),
 		);
 		expect(moved.pointers.pointers[0]?.position.x).toBeGreaterThan(0.42);
 		expect(moved.pointers.pointers[0]?.position.x).toBeLessThan(0.52);
+		expect(moved.commands).toHaveLength(1);
+		expect(moved.commands[0]?.position.x).toBeGreaterThan(0.48);
+		expect(moved.commands[0]?.position.x).toBeLessThan(0.58);
+		expect(moved.commands[0]?.timestamp).toBe(100);
 		const repeated = engine.update(identities.advance(160));
 		expect(repeated.poses).toEqual(moved.poses);
 		expect(repeated.pointers.pointers).toEqual(moved.pointers.pointers);
+		expect(repeated.commands).toEqual([]);
+		expect(engine.update(repeated.tracking).commands).toEqual([]);
 		expect(engine.update(repeated.tracking).pointers).toEqual(
 			repeated.pointers,
 		);
@@ -133,6 +154,7 @@ describe("Shared gesture engine", () => {
 			{ type: "hand:lost", handId: 1, reason: "timeout" },
 		]);
 		expect(expired.poses).toEqual([]);
+		expect(expired.commands).toEqual([]);
 		expect(expired.pointers).toMatchObject({
 			pointers: [],
 			primaryHandId: null,
@@ -160,6 +182,7 @@ describe("Shared gesture engine", () => {
 			{ handId: 2, pose: "open-palm" },
 		]);
 		expect(confirmed.pointers.primaryHandId).toBe(1);
+		expect(confirmed.commands).toMatchObject([{ handId: 1, timestamp: 80 }]);
 		engine.setPrimaryHand(2);
 		const chosen = engine.update(identities.advance(100));
 		expect(chosen.pointers).toMatchObject({
@@ -170,12 +193,14 @@ describe("Shared gesture engine", () => {
 			{ handId: 1, active: true, isPrimary: false },
 			{ handId: 2, active: false, isPrimary: true },
 		]);
+		expect(chosen.commands).toEqual([]);
 		engine.setPrimaryHand(null);
 		const automatic = engine.update(identities.advance(110));
 		expect(automatic.pointers).toMatchObject({
 			primaryHandId: 1,
 			preferredHandId: null,
 		});
+		expect(automatic.commands).toEqual([]);
 		expect(confirmed.pointers.primaryHandId).toBe(1);
 	});
 
@@ -205,6 +230,7 @@ describe("Shared gesture engine", () => {
 			{ handId: 1, active: true, isPrimary: false },
 		]);
 		expect(missing.pointers.pointers).toHaveLength(1);
+		expect(missing.commands).toEqual([]);
 
 		const returned = observe(120, 0.12);
 		expect(returned.poses[1]).toMatchObject({
@@ -213,6 +239,7 @@ describe("Shared gesture engine", () => {
 			candidate: "pointing",
 		});
 		expect(returned.pointers.pointers[1]?.active).toBe(false);
+		expect(returned.commands).toEqual([]);
 		const reconfirmed = observe(200, 0.12);
 		expect(reconfirmed.pointers.pointers[1]).toMatchObject({
 			handId: 2,
@@ -220,6 +247,10 @@ describe("Shared gesture engine", () => {
 			isPrimary: true,
 		});
 		expect(reconfirmed.pointers.pointers[1]?.position.x).toBeCloseTo(0.54);
+		expect(reconfirmed.commands).toMatchObject([
+			{ handId: 2, timestamp: 200, position: { y: 0.28 } },
+		]);
+		expect(reconfirmed.commands[0]?.position.x).toBeCloseTo(0.46);
 
 		observe(210, null);
 		const expired = observe(330, null);
@@ -231,6 +262,7 @@ describe("Shared gesture engine", () => {
 			preferredHandId: null,
 			pointers: [{ handId: 1, active: true, isPrimary: true }],
 		});
+		expect(expired.commands).toMatchObject([{ handId: 1, timestamp: 330 }]);
 	});
 
 	it("discards poses and the selected main hand after an ambiguous association", () => {
@@ -253,6 +285,7 @@ describe("Shared gesture engine", () => {
 		);
 		expect(ambiguous.tracking.ambiguous).toBe(true);
 		expect(ambiguous.poses).toEqual([]);
+		expect(ambiguous.commands).toEqual([]);
 		expect(ambiguous.pointers).toMatchObject({
 			pointers: [],
 			primaryHandId: null,
@@ -267,11 +300,13 @@ describe("Shared gesture engine", () => {
 			candidate: "pointing",
 		});
 		expect(recovered.pointers.pointers[0]?.active).toBe(false);
+		expect(recovered.commands).toEqual([]);
 		const confirmed = engine.update(
 			identities.update([hand("pointing", 200, 0.1)], 200),
 		);
 		expect(confirmed.pointers.primaryHandId).toBe(3);
 		expect(confirmed.pointers.pointers[0]?.position.x).toBeCloseTo(0.52);
+		expect(confirmed.commands).toMatchObject([{ handId: 3, timestamp: 200 }]);
 	});
 
 	it("resets every stage before restarting with the same identities and a fresh clock", () => {
@@ -297,5 +332,148 @@ describe("Shared gesture engine", () => {
 			pointers: [{ handId: 1, active: false }],
 		});
 		expect(restarted.pointers.pointers[0]?.position.x).toBeCloseTo(0.42);
+		expect(restarted.commands).toEqual([]);
+		const reconfirmed = engine.update({
+			...initial,
+			timestamp: 80,
+			hands: initial.hands.map((tracked) => ({
+				...tracked,
+				observation: hand("pointing", 80),
+			})),
+		});
+		expect(reconfirmed.commands).toMatchObject([{ handId: 1, timestamp: 80 }]);
+	});
+});
+
+describe("Shared pointer commands", () => {
+	it("emits once per fresh image and waits for a new image after a main-hand change", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		function tracking(timestamp: number) {
+			return identities.update(
+				[hand("pointing", timestamp, -0.18), hand("pointing", timestamp, 0.18)],
+				timestamp,
+			);
+		}
+		engine.update(tracking(0));
+		const image = tracking(80);
+		const first = engine.update(image);
+		expect(first.commands).toMatchObject([{ handId: 1, timestamp: 80 }]);
+		expect(engine.update(image).commands).toEqual([]);
+		engine.setPrimaryHand(2);
+		expect(engine.update(image).commands).toEqual([]);
+		expect(engine.update(identities.advance(100)).commands).toEqual([]);
+		const next = engine.update(tracking(100));
+		expect(next.commands).toMatchObject([{ handId: 2, timestamp: 100 }]);
+		expect(first.commands).toMatchObject([{ handId: 1, timestamp: 80 }]);
+	});
+
+	it("consumes fresh images without commands before selecting another hand", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		function tracking(timestamp: number) {
+			return identities.update(
+				[
+					hand("open-palm", timestamp, -0.18),
+					hand("pointing", timestamp, 0.18),
+				],
+				timestamp,
+			);
+		}
+		engine.update(tracking(0));
+		expect(engine.update(tracking(80)).commands).toMatchObject([
+			{ handId: 2, timestamp: 80 },
+		]);
+		engine.setPrimaryHand(1);
+		const resting = tracking(100);
+		expect(engine.update(resting).commands).toEqual([]);
+		engine.setPrimaryHand(2);
+		expect(engine.update(resting).commands).toEqual([]);
+		expect(engine.update(tracking(120)).commands).toMatchObject([
+			{ handId: 2, timestamp: 120 },
+		]);
+	});
+
+	it("does not transfer movement from an expired main hand using a stale secondary image", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		for (const timestamp of [0, 80]) {
+			engine.update(
+				identities.update(
+					[
+						hand("pointing", timestamp, -0.18),
+						hand("pointing", timestamp, 0.18),
+					],
+					timestamp,
+				),
+			);
+		}
+		const missing = engine.update(
+			identities.update([hand("pointing", 100, 0.18)], 100),
+		);
+		expect(missing.pointers.primaryHandId).toBe(1);
+		expect(missing.commands).toEqual([]);
+		const expired = engine.update(identities.advance(201));
+		expect(expired.pointers.primaryHandId).toBe(2);
+		expect(expired.pointers.pointers[0]?.active).toBe(true);
+		expect(expired.commands).toEqual([]);
+		expect(
+			engine.update(identities.update([hand("pointing", 210, 0.18)], 210))
+				.commands,
+		).toMatchObject([{ handId: 2, timestamp: 210 }]);
+	});
+
+	it("does not move an out-of-image pointer even while pointing stays confirmed", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		engine.update(identities.update([hand("pointing", 0)], 0));
+		engine.update(identities.update([hand("pointing", 80)], 80));
+		const outside = hand("pointing", 100);
+		const frame = engine.update(
+			identities.update(
+				[
+					{
+						...outside,
+						landmarks: outside.landmarks.map((point, index) =>
+							index === 8 ? { ...point, x: -0.1 } : point,
+						),
+					},
+				],
+				100,
+			),
+		);
+		expect(frame.poses[0]?.pose).toBe("pointing");
+		expect(frame.pointers.pointers[0]?.active).toBe(false);
+		expect(frame.commands).toEqual([]);
+	});
+
+	it("produces identical commands for identical observations and main-hand choices", () => {
+		function replay() {
+			const identities = createHandIdentityTracker();
+			const engine = createGestureEngine();
+			const commands: PointerMoveCommand[] = [];
+			for (const timestamp of [0, 80, 100, 140]) {
+				if (timestamp === 100) engine.setPrimaryHand(2);
+				commands.push(
+					...engine.update(
+						identities.update(
+							[
+								hand("pointing", timestamp, -0.18),
+								hand("pointing", timestamp, timestamp > 80 ? 0.14 : 0.18),
+							],
+							timestamp,
+						),
+					).commands,
+				);
+				commands.push(
+					...engine.update(identities.advance(timestamp + 10)).commands,
+				);
+			}
+			return commands;
+		}
+		const commands = replay();
+		expect(commands).toHaveLength(3);
+		expect(commands.map((command) => command.handId)).toEqual([1, 2, 2]);
+		expect(replay()).toEqual(commands);
 	});
 });

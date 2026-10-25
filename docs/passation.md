@@ -41,34 +41,34 @@ confirmer avant l'étape 8. Aucun choix Electron, Tauri ou autre n'est arrêté.
 
 Dépôt : `/home/kaox/code/bricolage/handfinity`.
 
-Le dernier commit constaté à la reprise de l'étape 6 est :
+Le dernier commit constaté à la reprise de l'étape 7 est :
 
 ```text
-47e94db docs: update README with project overview, roadmap, and passation documentation
+352f8e4 docs: update documentation for shared packages and gesture engine
 ```
 
-Le commit précédent `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
+Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
 Le lot livré avait regroupé ces étapes malgré le découpage demandé. Ne pas prétendre que
 cinq commits distincts ont été faits et ne pas réécrire cet historique sans
 demande explicite. La [roadmap](roadmap.md) contient les commits antérieurs utiles
 et le plan des étapes 6 à 27.
 
-Le commit `47e94db` restaure le README
-depuis son template au commit `35413b6`, avec le contenu actuel et une capture
-de l'accueil actuel. Il n'ajoute aucune fonctionnalité. Le dépôt était propre
-sur `staging` avant les modifications de l'étape 6. Ces modifications sont
-laissées à l'utilisateur pour validation et commit. À chaque reprise, vérifier
-`git status --short` et `git log` pour connaître l'état réel.
+Le commit `47e94db` restaure le template du README depuis `35413b6` et prépare
+la passation. Malgré son titre `docs`, `352f8e4` contient aussi le moteur commun
+de l'étape 6. L'utilisateur l'a testé, validé, commité et poussé. Le dépôt était
+propre sur `staging` avant les modifications de l'étape 7, qui lui sont laissées
+pour validation et commit. À chaque reprise, vérifier `git status --short` et
+`git log` pour connaître l'état réel.
 
 ## Existant conservé
 
 | Emplacement | Responsabilité actuelle |
 | --- | --- |
 | `apps/hub` | Accueil, navigation vers le laboratoire et animations actives |
-| `apps/playground` | Aperçu caméra, identités, postures, pointeurs et choix de main |
+| `apps/playground` | Diagnostics caméra, choix de main, simulation et journal des commandes |
 | `packages/core` | Observations, identités, postures, pincement interne et lissage |
 | `packages/vision` | Caméra, MediaPipe, boucle de suivi et nettoyage des ressources |
-| `packages/interactions` | Moteur commun des postures, pointeurs et choix de la main principale |
+| `packages/interactions` | Moteur commun des postures, pointeurs, choix principal et commandes de déplacement |
 
 Paint, ses adaptateurs dédiés, les exercices de cartes/tuiles, leurs contrôleurs
 et leurs tests spécifiques ont été supprimés. Les fichiers de démarrage
@@ -82,38 +82,47 @@ La session de vision conserve l'unique tracker d'identités.
 `createGestureEngine` dans `packages/interactions/src/gesture-engine.ts`
 assemble `createHandPoseTracker` puis `createHandPointerTracker` sans Vue ni
 caméra. Dans `apps/playground/src/App.vue`, `handleTrackingFrame` consomme le
-résultat du moteur et affiche les diagnostics.
+résultat du moteur et affiche les diagnostics. Le moteur produit maintenant
+les commandes de déplacement consommées par `createPointerSimulation`.
 
-**Aucune application bureau, commande système, simulation de commande PC,
-commande de clavier ou bibliothèque publiée n'est implémentée.**
+**Aucune application bureau, exécution système, commande de boutons, de
+défilement, de clavier ou bibliothèque publiée n'est implémentée.**
 
-## Étape 6 — implémentée, à valider
+## Étape 7 — implémentée, à valider
 
 ```text
-refactor(engine): centralize the gesture processing pipeline
+feat(input): expose shared pointer commands
 ```
 
 Le moteur expose `update(trackingFrame, aspectRatio)` →
-`{ tracking, poses, pointers }`, `setPrimaryHand(id)` et `reset()`.
-Le Playground n'assemble plus les deux trackers et leur remise à zéro ; il
-conserve ses états d'interface et le rendu. Aucun seuil ni comportement de
-reconnaissance n'est modifié.
+`{ tracking, poses, pointers, commands }`, `setPrimaryHand(id)` et `reset()`.
+`PointerMoveCommand` contient `type: "pointer:move"`, `handId`, `timestamp`
+et `position: { x, y }`. Sa destination normalisée entre 0 et 1 a l'origine
+en haut à gauche ; le moteur applique déjà le miroir horizontal à la position
+lissée (`x = 1 - Source x`, `y = Source y`). Les diagnostics source restent
+avant miroir et la simulation ne retourne pas les coordonnées à nouveau.
 
 Chaque résultat du suivi alimente le moteur, même sans nouvelle image :
 `advance()` peut expirer une identité. Les horodatages des observations
 empêchent les trackers de confirmer une posture ou de lisser à nouveau une
-image répétée. Une image figée conserve le diagnostic précédent jusqu'à
-l'expiration existante de 120 ms.
+image répétée. Seule une observation fraîche de la principale en pointage
+confirmé émet un déplacement, une fois par image. Le repos, le pincement,
+l'absence ou l'ambiguïté n'en produisent pas. Une image figée peut conserver
+le diagnostic précédent jusqu'à l'expiration de 120 ms sans nouvelle commande.
 
-Les tests d'intégration utilisent les vrais trackers pour couvrir les
-transitions de postures, images répétées, pertes, choix de main, ambiguïtés
-et remises à zéro. Les vérifications webcam restent à réaliser par l'utilisateur
-selon le [guide du Playground](../apps/playground/README.md#vérifications-manuelles).
+Le Playground exécute uniquement les commandes reçues dans une zone dédiée,
+conserve la dernière position sans commande, affiche les huit dernières
+commandes et leur compteur total. L'arrêt réinitialise le moteur, la position
+simulée, le journal et le compteur. La reconnaissance des gestes reste commune.
+
+Les tests d'intégration du moteur utilisent les vrais trackers ; cinq cas de
+commandes et six cas de simulation complètent les 146 tests de l'étape 6.
+Les vérifications webcam restent à réaliser par l'utilisateur selon le
+[guide du Playground](../apps/playground/README.md#vérifications-manuelles).
 Attendre sa validation avant l'étape suivante.
 
-Les commandes de pointeur et leur simulation appartiennent à l'étape 7.
-L'application bureau commence à l'étape 8. Ne pas les inclure dans l'étape 6
-et ne pas créer leurs abstractions en avance sans consommateur réel.
+L'étape 8 n'est pas commencée. Avant de l'entreprendre, confirmer Windows,
+la machine de test et la technologie bureau avec l'utilisateur.
 
 ## Plan de progression
 
@@ -138,7 +147,13 @@ ensuite validé le recadrage. Ces résultats ne prouvent aucun contrôle natif.
 
 Validation automatisée de l'étape 6 : **146 tests passent**, dont 7 nouveaux
 cas d'intégration du moteur ; lint, formatage et builds des deux interfaces
-réussis. La validation manuelle avec webcam reste en attente.
+réussis. L'utilisateur a également validé ses essais manuels de cette étape.
+
+Validation de l'étape 7 : **157 tests passent**, lint, formatage et builds des
+deux interfaces réussis. Chrome a vérifié le laboratoire à 1440 et 390 px avec
+des observations synthétiques : émissions, déduplication, miroir, journal borné,
+repos et arrêt, sans erreur JavaScript ni débordement horizontal. Ces contrôles
+ne constituent pas des essais webcam réels, qui restent à faire par l'utilisateur.
 
 ```bash
 npm test

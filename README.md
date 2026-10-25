@@ -21,13 +21,13 @@
 
 **Handfinity** est un projet d'**interface gestuelle par webcam** visant à remplacer progressivement la **souris et le clavier sur PC**, dans les applications existantes. Le smartphone, puis les lunettes de réalité augmentée, seront étudiés après validation de l'usage sur PC.
 
-**État actuel :** le [site d'accueil](apps/hub/README.md) et le [Playground](apps/playground/README.md) sont fonctionnels. Le suivi des mains, les postures et les pointeurs sont disponibles dans le laboratoire ; **le contrôle de la souris et du clavier du système n'est pas encore implémenté**.
+**État actuel :** le [site d'accueil](apps/hub/README.md) et le [Playground](apps/playground/README.md) sont fonctionnels. Le moteur partagé produit des commandes de déplacement, journalisées et simulées dans le laboratoire, en complément des diagnostics des mains ; **le contrôle de la souris et du clavier du système n'est pas encore implémenté**.
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur, avec démarrage et arrêt explicites.
 - 🎮 **Un accueil et un laboratoire** :
   - **Accueil** : Présentation de Handfinity et accès au laboratoire sur `/playground`, avec une identité visuelle animée.
-  - **Vision Playground** : Diagnostic des identités, des postures et des pointeurs, avec aperçu vidéo en miroir.
-  - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour le moteur commun des postures, des pointeurs et de la main principale.
+  - **Vision Playground** : Diagnostic des identités, des postures et des pointeurs, avec aperçu vidéo en miroir, journal des commandes et curseur simulé.
+  - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour le moteur commun et ses commandes de déplacement.
 - 👓 **Objectif d'interaction sans contact** : Pointer, cliquer, déplacer, défiler et invoquer un clavier pour écrire dans l'application utilisée.
 - ⚡ **Stack actuelle** : Vue 3, Vite, TypeScript, Tailwind CSS v4 et npm Workspaces avec Node.js 24. La technologie de l'application bureau reste à choisir.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
@@ -61,7 +61,7 @@ Le socle actuel repose sur MediaPipe et trois packages internes :
 - 🌐 **Packages partagés** : `core` définit les modèles et la reconnaissance ; `vision` possède la session caméra, la détection et les identités ; `interactions` assemble les postures et les pointeurs dans le moteur commun.
 - ⚡ **Actualisation continue** : Analyse des nouvelles images ; les images répétées ne confirment pas de nouvelle posture et ne sont pas lissées à nouveau.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt, fermeture du détecteur et nettoyage des états.
-- ⌨️ **Commandes PC à construire** : La chaîne postures → pointeurs est centralisée ; la production des commandes et leurs exécuteurs simulé et système restent prévus dans la roadmap.
+- ⌨️ **Commandes de déplacement partagées** : Le moteur produit `pointer:move` pour la main principale en pointage ; le Playground exécute ces commandes en simulation. L'exécuteur système reste prévu dans la roadmap.
 
 ### 🏆 Vision Playground & Diagnostics
 
@@ -73,7 +73,8 @@ Le **Playground** permet d'observer ce que reconnaissent les briques partagées 
 - **Postures** : **Hand poses** affiche les postures confirmées et candidates, les estimations des doigts et le ratio de pincement.
 - **Pointeurs** : L'index tendu, les trois autres doigts repliés et le pouce séparé activent un cercle dans la vidéo. Le contour plein désigne la main principale ; le pointillé la seconde main.
 - **Choix de la main principale** : Le sélecteur **Main hand** permet de choisir une identité ou de revenir au mode automatique.
-- **Limite actuelle** : Le cercle reste un diagnostic dans la vidéo ; il ne déplace pas le pointeur du système.
+- **Commandes et simulation** : **Pointer commands** affiche un curseur dans une zone dédiée, les huit dernières commandes et le nombre total reçu.
+- **Limite actuelle** : Le cercle vidéo et le curseur simulé restent dans le laboratoire ; ils ne déplacent pas le pointeur du système.
 
 ### ⏱️ Réactivité & Fiabilité de la Détection
 - **Analyse vidéo continue** : Le Playground traite les nouvelles images de la caméra et dessine les connexions entre les points de repère pour visualiser les mouvements.
@@ -178,13 +179,22 @@ avant miroir. Les règles décrites ici sont celles du diagnostic actuel ; les
 
 `createGestureEngine`, exporté par `@handfinity/interactions`, centralise déjà
 la chaîne postures → pointeurs consommée par le Playground.
-`update(trackingFrame, aspectRatio)` retourne `{ tracking, poses, pointers }` ;
+`update(trackingFrame, aspectRatio)` retourne `{ tracking, poses, pointers, commands }` ;
 `setPrimaryHand(id)` transmet le choix principal et `reset()` efface ensemble
 postures, lissage et choix de main. Les identités restent fournies par la session
 de vision, sans second suivi dans le moteur.
 
-La future application PC utilisera cette même interprétation. Les commandes
-et leurs exécuteurs restent à construire :
+Une commande `PointerMoveCommand` contient `type: "pointer:move"`, `handId`,
+`timestamp` et `position: { x, y }`. Sa destination est normalisée entre 0 et 1,
+avec l'origine en haut à gauche ; le moteur applique déjà le miroir horizontal
+(`x = 1 - Source x`, `y = Source y`). La simulation consomme cette destination
+directement. Le point source reste celui du pointeur lissé.
+
+Seule une nouvelle observation de la main principale en pointage confirmé
+produit une commande, au plus une fois par image. Une image répétée, une main
+au repos, manquante ou ambiguë n'en produit pas. Le curseur simulé conserve sa
+dernière position sans commande ; l'arrêt efface sa position, le journal et le
+compteur. La future application PC utilisera ces mêmes commandes :
 
 ```text
 Observations → Interprétation commune → Commandes
@@ -192,8 +202,8 @@ Observations → Interprétation commune → Commandes
                                           └── Exécution sur le PC
 ```
 
-La simulation permettra de diagnostiquer les commandes effectivement produites.
-L'exécuteur système devra être validé sur le système cible, notamment pour le
+La simulation permet de diagnostiquer les commandes effectivement produites.
+L'exécuteur système reste à construire et devra être validé sur le système cible, notamment pour le
 fonctionnement en arrière-plan, les entrées maintenues et la destination de la
 saisie. Ces fonctionnalités ne sont pas encore présentes.
 
@@ -269,7 +279,7 @@ La commande compile les interfaces Vue avec Vite :
   - [x] Responsabilités et limites actuelles documentées
 - [ ] **Moteur commun et premier contrôle du PC — étapes 6 à 10**
   - [x] Centralisation de la chaîne postures → pointeurs consommée par le Playground
-  - [ ] Commandes de pointeur partagées et simulation
+  - [x] Commandes de déplacement partagées et simulation dans le Playground
   - [ ] Application bureau, suivi en arrière-plan et véritable curseur
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [ ] Pause, reprise, choix de main et calibration
@@ -295,7 +305,7 @@ validation utilisateur.
 
 1. **Ouvrir le laboratoire** : depuis l'accueil, accéder à **Playground**. La caméra reste arrêtée jusqu'à l'action **Start camera** et l'autorisation du navigateur.
 2. **Observer le suivi** : présenter une ou deux mains séparées pour lire leurs numéros, états et postures dans les diagnostics.
-3. **Activer un pointeur** : tendre l'index, replier majeur, annulaire et auriculaire et séparer le pouce de l'index. Un cercle apparaît dans la vidéo ; son contour plein désigne la main principale.
+3. **Activer un pointeur** : tendre l'index, replier majeur, annulaire et auriculaire et séparer le pouce de l'index. Un cercle apparaît dans la vidéo ; son contour plein désigne la main principale. Cette main déplace aussi le curseur de **Pointer commands** et alimente son journal.
 4. **Choisir et arrêter** : utiliser **Main hand** pour changer de main principale et **Stop camera** pour libérer la session. Quitter le laboratoire coupe également la caméra.
 
 **Caméra et aide :** le laboratoire n'est pas conservé en cache à la navigation.
@@ -411,7 +421,7 @@ web ne remplace pas l'application bureau prévue dans la roadmap.
 | `npm run format:check` | Vérifie le formatage sans modifier les fichiers |
 | `npm run check` | Lance `biome check .` |
 | `npm test -w @handfinity/core` | Exécute les tests unitaires du core |
-| `npm test` | Exécute les tests du core, des pointeurs, de la vision et des transitions du hub |
+| `npm test` | Exécute les tests du core, du moteur, de la simulation, de la vision et des transitions du hub |
 | `docker compose up --build hub` | Démarre l'accueil et le laboratoire intégré dans Docker |
 | `docker compose up --build playground` | Démarre le laboratoire autonome dans Docker |
 

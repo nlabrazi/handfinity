@@ -16,6 +16,8 @@ import {
 	type HandPointerFrame,
 } from "@handfinity/interactions";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
+import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
+import { createPointerSimulation } from "./pointer-simulation";
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -38,6 +40,8 @@ const emptyPointers: HandPointerFrame = {
 const pointerFrame = shallowRef(emptyPointers);
 
 const engine = createGestureEngine();
+const simulator = createPointerSimulation();
+const pointerSimulation = shallowRef(simulator.reset());
 
 const session = createTrackingSession({
 	onFrame: handleTrackingFrame,
@@ -167,6 +171,7 @@ function handleTrackingFrame({ tracking, aspectRatio }: TrackingSessionFrame) {
 	showTracking(frame.tracking);
 	handPoses.value = frame.poses;
 	pointerFrame.value = frame.pointers;
+	pointerSimulation.value = simulator.execute(frame.commands);
 	const visible = frame.tracking.hands
 		.filter((hand) => hand.status === "tracked")
 		.map((hand) => hand.observation);
@@ -193,6 +198,7 @@ function stop() {
 	handCount.value = 0;
 	trackedHands.value = [];
 	engine.reset();
+	pointerSimulation.value = simulator.reset();
 	handPoses.value = [];
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
@@ -239,11 +245,12 @@ onBeforeUnmount(() => {
 			<header>
 				<h1 class="text-3xl font-bold">Playground</h1>
 				<p class="mt-2 text-slate-400">
-					Hand tracking, poses and pointer diagnostics.
+					Hand tracking, poses and pointer command simulation.
 				</p>
 				<p class="mt-2 text-sm text-slate-400">
-					The cursor is displayed in the camera preview. System mouse and
-					keyboard control is not implemented yet.
+					Hand pointers appear in the camera preview; shared move commands drive
+					the simulation. System mouse and keyboard control is not implemented
+					yet.
 				</p>
 			</header>
 
@@ -363,9 +370,10 @@ onBeforeUnmount(() => {
 				</section>
 
 				<section
-					aria-label="Tracking and pose diagnostics"
+					aria-label="Command, tracking and pose diagnostics"
 					class="min-w-0 space-y-4"
 				>
+					<PointerCommandDiagnostics :frame="pointerSimulation" />
 					<div
 						data-hand-tracking
 						class="space-y-2 rounded-lg bg-slate-900 p-3 text-sm"
