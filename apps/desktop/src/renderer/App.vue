@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { GestureEngineFrame } from "@handfinity/interactions";
+import {
+	CONTROL_HOLD_MS,
+	type GestureEngineFrame,
+} from "@handfinity/interactions";
 import Playground from "playground/view";
 import { computed, onBeforeUnmount, onMounted, shallowRef } from "vue";
 import type { PointerControlState } from "../pointer-contract";
@@ -23,6 +26,8 @@ const status = computed(() => {
 			return "Enabled — waiting for a pointing hand.";
 		case "moving":
 			return "Enabled — following your main hand.";
+		case "paused":
+			return `Paused by gesture — hold your open palm for ${CONTROL_HOLD_MS / 1000} seconds to resume.`;
 		case "error":
 			return state.value.error;
 		default:

@@ -102,7 +102,12 @@ describe("System pointer IPC", () => {
 		expect(invoke("get-state", event)).toBe(state);
 		expect(await invoke("enable", event)).toMatchObject({ phase: "waiting" });
 		expect(invoke("disable", event)).toBe(state);
-		const payload = { sessionId: 1, command: null, capturedAt: 1000 };
+		const payload = {
+			sessionId: 1,
+			command: null,
+			capturedAt: 1000,
+			paused: true,
+		};
 		update(event, payload);
 		expect(controller.getState).toHaveBeenCalledOnce();
 		expect(controller.enable).toHaveBeenCalledOnce();

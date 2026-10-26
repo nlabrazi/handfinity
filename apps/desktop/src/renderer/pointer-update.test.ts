@@ -2,8 +2,13 @@ import {
 	createHandIdentityTracker,
 	type HandObservation,
 } from "@handfinity/core";
-import { createGestureEngine } from "@handfinity/interactions";
-import { describe, expect, it } from "vitest";
+import {
+	createGestureEngine,
+	type GestureEngineFrame,
+} from "@handfinity/interactions";
+import { describe, expect, it, vi } from "vitest";
+import { createPointerSimulation } from "../../../playground/src/pointer-simulation";
+import { createPointerController } from "../pointer-controller";
 import { toPointerUpdate } from "./pointer-update";
 
 function hand(
@@ -67,6 +72,104 @@ function setup() {
 }
 
 describe("Desktop pointer updates from the shared engine", () => {
+	it("keeps simulation and native execution paused through pointing and loss, then resumes from a fresh target", async () => {
+		vi.useFakeTimers();
+		const epoch = 1_800_000_000_000;
+		vi.setSystemTime(epoch + 80);
+		const { observe, pointing } = setup();
+		const simulation = createPointerSimulation();
+		const driver = {
+			start: vi.fn(async () => {}),
+			move: vi.fn(async () => true),
+			stop: vi.fn(),
+		};
+		const controller = createPointerController({
+			supported: true,
+			driver,
+			getBounds: () => ({ x: 0, y: 0, width: 1001, height: 1001 }),
+			registerStop: () => true,
+			unregisterStop() {},
+			onState() {},
+		});
+		try {
+			const { sessionId } = await controller.enable();
+			if (sessionId === null)
+				throw new Error("Native test session did not start");
+			async function publish(frame: GestureEngineFrame) {
+				simulation.execute(frame.commands);
+				const packet = toPointerUpdate(frame, sessionId, epoch);
+				if (packet) controller.submit(packet);
+				await Promise.resolve();
+				await Promise.resolve();
+				return frame;
+			}
+			let now = 80;
+			async function sample(
+				time: number,
+				kind: "pointing" | "open-palm",
+				present = true,
+			) {
+				await vi.advanceTimersByTimeAsync(time - now);
+				now = time;
+				return publish(
+					observe(
+						time,
+						present ? [hand(kind, time, time >= 1700 ? 0.06 : 0)] : [],
+					),
+				);
+			}
+			await publish(pointing);
+			expect(driver.move).toHaveBeenCalledOnce();
+			await sample(100, "open-palm");
+			await sample(180, "open-palm");
+			for (let time = 230; time <= 1680; time += 50)
+				await sample(time, "open-palm");
+			expect(controller.getState()).toMatchObject({
+				phase: "paused",
+				sessionId,
+			});
+			const position = simulation.execute([]).position;
+			const count = simulation.execute([]).commandCount;
+			const nativeCount = driver.move.mock.calls.length;
+			await sample(1700, "pointing");
+			const pointed = await sample(1780, "pointing");
+			expect(pointed.pointers.pointers[0]?.active).toBe(true);
+			expect(pointed.commands).toEqual([]);
+			await sample(1850, "pointing", false);
+			await sample(2000, "pointing", false);
+			expect(controller.getState().phase).toBe("paused");
+			expect(simulation.execute([])).toMatchObject({
+				position,
+				commandCount: count,
+			});
+			expect(driver.move).toHaveBeenCalledTimes(nativeCount);
+			await sample(2100, "open-palm");
+			await sample(2180, "open-palm");
+			for (let time = 2230; time <= 3680; time += 50)
+				await sample(time, "open-palm");
+			expect(controller.getState().phase).toBe("waiting");
+			expect(driver.move).toHaveBeenCalledTimes(nativeCount);
+			await sample(3700, "pointing");
+			const resumed = await sample(3780, "pointing");
+			const target = resumed.commands[0]?.position;
+			if (!target) throw new Error("Missing resumed command");
+			expect(simulation.execute([]).position).toBe(target);
+			expect(driver.move).toHaveBeenLastCalledWith(
+				{ x: Math.round(target.x * 1000), y: Math.round(target.y * 1000) },
+				epoch + 3780 + 250,
+			);
+			expect(controller.getState().phase).toBe("moving");
+			controller.disable();
+			const stoppedCount = driver.move.mock.calls.length;
+			await sample(3830, "pointing");
+			expect(controller.getState().phase).toBe("disabled");
+			expect(driver.move).toHaveBeenCalledTimes(stoppedCount);
+		} finally {
+			controller.disable();
+			vi.useRealTimers();
+		}
+	});
+
 	it("preserves the command and its mirror using the frame capture time", () => {
 		const { pointing } = setup();
 		const update = toPointerUpdate(pointing, 7, 10_000);
@@ -99,6 +202,7 @@ describe("Desktop pointer updates from the shared engine", () => {
 		expect(toPointerUpdate(expired, 7, 10_000)).toEqual({
 			sessionId: 7,
 			capturedAt: 10_201,
+			paused: false,
 			command: null,
 		});
 	});
@@ -110,6 +214,7 @@ describe("Desktop pointer updates from the shared engine", () => {
 		expect(toPointerUpdate(missing, 7, 10_000)).toEqual({
 			sessionId: 7,
 			capturedAt: 10_100,
+			paused: false,
 			command: null,
 		});
 	});

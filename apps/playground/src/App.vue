@@ -17,6 +17,7 @@ import {
 	type TrackingSessionOptions,
 } from "@handfinity/vision";
 import { onBeforeUnmount, ref, shallowRef } from "vue";
+import GestureControlDiagnostics from "./components/GestureControlDiagnostics.vue";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
 import { createPointerSimulation } from "./pointer-simulation";
@@ -49,6 +50,7 @@ const emptyPointers: HandPointerFrame = {
 const pointerFrame = shallowRef(emptyPointers);
 
 const engine = createGestureEngine();
+const controlFrame = shallowRef(engine.getControlState());
 const simulator = createPointerSimulation();
 const pointerSimulation = shallowRef(simulator.reset());
 
@@ -188,6 +190,7 @@ function handleTrackingFrame({
 	showTracking(frame.tracking);
 	handPoses.value = frame.poses;
 	pointerFrame.value = frame.pointers;
+	controlFrame.value = frame.control;
 	pointerSimulation.value = simulator.execute(frame.commands);
 	emit("gesture-frame", frame);
 	const visible = frame.tracking.hands
@@ -218,6 +221,7 @@ function stop() {
 	processedFrames.value = 0;
 	trackedHands.value = [];
 	engine.reset();
+	controlFrame.value = engine.getControlState();
 	pointerSimulation.value = simulator.reset();
 	handPoses.value = [];
 	pointerFrame.value = emptyPointers;
@@ -399,6 +403,10 @@ onBeforeUnmount(() => {
 					aria-label="Command, tracking and pose diagnostics"
 					class="min-w-0 space-y-4"
 				>
+					<GestureControlDiagnostics
+						:state="controlFrame"
+						:running="isRunning"
+					/>
 					<PointerCommandDiagnostics :frame="pointerSimulation" />
 					<div
 						data-hand-tracking

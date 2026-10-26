@@ -51,6 +51,7 @@ function update(
 	return {
 		sessionId,
 		capturedAt,
+		paused: false,
 		command: { type: "pointer:move", handId: 1, timestamp, position },
 	};
 }
@@ -259,7 +260,12 @@ describe("System pointer backpressure and tracking loss", () => {
 		vi.setSystemTime(Date.now() + 10);
 		controller.submit(update(sessionId, 1010));
 		vi.setSystemTime(Date.now() + 10);
-		controller.submit({ sessionId, capturedAt: Date.now(), command: null });
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			paused: false,
+			command: null,
+		});
 		ack.resolve(true);
 		await settle();
 		expect(driver.move).toHaveBeenCalledOnce();
@@ -316,6 +322,17 @@ describe("System pointer backpressure and tracking loss", () => {
 });
 
 describe("System pointer input validation", () => {
+	it.each([undefined, "true", 0, null])(
+		"rejects a non-boolean pause state (%s) with an otherwise valid command",
+		async (paused) => {
+			const { controller, driver } = setup();
+			const { sessionId } = await controller.enable();
+			controller.submit({ ...update(sessionId), paused });
+			await settle();
+			expect(driver.move).not.toHaveBeenCalled();
+		},
+	);
+
 	it.each([
 		{ name: "old frame", elapsed: 300, capturedAt: () => Date.now() - 251 },
 		{ name: "future frame", elapsed: 20, capturedAt: () => Date.now() + 51 },
@@ -417,7 +434,12 @@ describe("System pointer input validation", () => {
 		async (command) => {
 			const { controller, driver } = setup();
 			const { sessionId } = await controller.enable();
-			controller.submit({ sessionId, capturedAt: Date.now(), command });
+			controller.submit({
+				sessionId,
+				capturedAt: Date.now(),
+				paused: false,
+				command,
+			});
 			await settle();
 			expect(driver.move).not.toHaveBeenCalled();
 			expect(controller.getState().phase).toBe("waiting");
@@ -722,7 +744,12 @@ describe("System pointer presentation", () => {
 			controller.submit(update(sessionId, 1109, { x: 0.75, y: 0.75 }));
 			await vi.advanceTimersByTimeAsync(1);
 			if (reason === "null") {
-				controller.submit({ sessionId, capturedAt: Date.now(), command: null });
+				controller.submit({
+					sessionId,
+					capturedAt: Date.now(),
+					paused: false,
+					command: null,
+				});
 			} else if (reason === "malformed") {
 				controller.submit(update(sessionId, 1110, { x: Number.NaN, y: 0 }));
 			} else if (reason === "disabled") {
@@ -756,7 +783,12 @@ describe("System pointer presentation", () => {
 		controller.submit(update(sessionId, 1100, { x: 1, y: 1 }));
 		expect(vi.getTimerCount()).toBe(2);
 		await vi.advanceTimersByTimeAsync(1);
-		controller.submit({ sessionId, capturedAt: Date.now(), command: null });
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			paused: false,
+			command: null,
+		});
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(driver.move).toHaveBeenCalledOnce();
 		expect(vi.getTimerCount()).toBe(0);
@@ -786,5 +818,115 @@ describe("System pointer presentation", () => {
 		expect(driver.move.mock.lastCall?.[0].x).toBeLessThan(1919);
 		expect(controller.getState().phase).toBe("waiting");
 		expect(vi.getTimerCount()).toBe(0);
+	});
+});
+
+describe("System pointer gesture pause", () => {
+	it("keeps the session paused without watchdog resumption and drops an included move", async () => {
+		const { controller, driver, registerStop } = setup();
+		const { sessionId } = await controller.enable();
+		controller.submit({ ...update(sessionId), paused: true });
+		expect(controller.getState()).toMatchObject({ phase: "paused", sessionId });
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(controller.getState().phase).toBe("paused");
+		expect(driver.move).not.toHaveBeenCalled();
+		await controller.enable();
+		expect(driver.start).toHaveBeenCalledOnce();
+		registerStop.mock.calls[0]?.[0]();
+		expect(controller.getState()).toMatchObject({
+			phase: "disabled",
+			sessionId: null,
+		});
+		expect(driver.stop).toHaveBeenCalledOnce();
+	});
+
+	it("purges a pending destination and ignores a late ACK after pause", async () => {
+		const { controller, driver } = setup();
+		const ack = deferred<boolean>();
+		driver.move.mockReturnValueOnce(ack.promise);
+		const { sessionId } = await controller.enable();
+		controller.submit(update(sessionId));
+		vi.setSystemTime(Date.now() + 10);
+		controller.submit(update(sessionId, 1010, { x: 1, y: 1 }));
+		vi.setSystemTime(Date.now() + 10);
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			command: null,
+			paused: true,
+		});
+		ack.resolve(true);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(driver.move).toHaveBeenCalledOnce();
+		expect(controller.getState()).toMatchObject({ phase: "paused", sessionId });
+	});
+
+	it("cancels interpolation and resumes only from a new target", async () => {
+		const { controller, driver } = setup();
+		const { sessionId } = await controller.enable();
+		controller.submit(update(sessionId, 1000, { x: 0, y: 0 }));
+		await vi.advanceTimersByTimeAsync(100);
+		controller.submit(update(sessionId, 1100, { x: 1, y: 1 }));
+		await vi.advanceTimersByTimeAsync(20);
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			command: null,
+			paused: true,
+		});
+		const calls = driver.move.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(driver.move).toHaveBeenCalledTimes(calls);
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			command: null,
+			paused: false,
+		});
+		expect(controller.getState().phase).toBe("waiting");
+		expect(driver.move).toHaveBeenCalledTimes(calls);
+		vi.setSystemTime(Date.now() + 1);
+		controller.submit(update(sessionId, 2121, { x: 0.4, y: 0.6 }));
+		await settle();
+		expect(driver.move).toHaveBeenLastCalledWith(
+			{ x: 768, y: 647 },
+			Date.now() + 250,
+		);
+	});
+
+	it("does not resume from stale, foreign or malformed packets", async () => {
+		const { controller, driver } = setup();
+		const { sessionId } = await controller.enable();
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			command: null,
+			paused: true,
+		});
+		vi.setSystemTime(Date.now() + 1000);
+		controller.submit(update(sessionId, 2000, undefined, Date.now() - 251));
+		controller.submit(update(-1, 2000));
+		controller.submit({ ...update(sessionId, 2000), paused: "false" });
+		vi.setSystemTime(Date.now() + 1);
+		controller.submit(update(sessionId, 2001, { x: Number.NaN, y: 0 }));
+		expect(controller.getState()).toMatchObject({ phase: "paused", sessionId });
+		expect(driver.move).not.toHaveBeenCalled();
+	});
+
+	it("cannot re-enable a stopped session through a gesture packet", async () => {
+		const { controller, driver } = setup();
+		const { sessionId } = await controller.enable();
+		controller.submit({
+			sessionId,
+			capturedAt: Date.now(),
+			command: null,
+			paused: true,
+		});
+		controller.disable();
+		vi.setSystemTime(Date.now() + 1);
+		controller.submit(update(sessionId, 1001));
+		expect(controller.getState().phase).toBe("disabled");
+		expect(driver.start).toHaveBeenCalledOnce();
+		expect(driver.move).not.toHaveBeenCalled();
 	});
 });

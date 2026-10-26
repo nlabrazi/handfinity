@@ -75,6 +75,7 @@ export function createPointerController(options: PointerControllerOptions) {
 	};
 	let generation = 0;
 	let activeSession: number | null = null;
+	let paused = false;
 	let lastCapturedAt = -Infinity;
 	let lastCommandTimestamp = -Infinity;
 	let suspension = 0;
@@ -92,7 +93,9 @@ export function createPointerController(options: PointerControllerOptions) {
 		error: string | null = null,
 	) {
 		const sessionId =
-			phase === "waiting" || phase === "moving" ? activeSession : null;
+			phase === "waiting" || phase === "moving" || phase === "paused"
+				? activeSession
+				: null;
 		if (
 			state.phase === phase &&
 			state.error === error &&
@@ -122,7 +125,7 @@ export function createPointerController(options: PointerControllerOptions) {
 		lastTargetCapturedAt = null;
 		clearPresentationTimer();
 		clearWatchdog();
-		if (activeSession !== null) publish("waiting");
+		if (activeSession !== null) publish(paused ? "paused" : "waiting");
 	}
 
 	function shutdown(
@@ -131,6 +134,7 @@ export function createPointerController(options: PointerControllerOptions) {
 	) {
 		generation += 1;
 		activeSession = null;
+		paused = false;
 		suspend();
 		inFlight = false;
 		lastCapturedAt = -Infinity;
@@ -299,12 +303,30 @@ export function createPointerController(options: PointerControllerOptions) {
 			return;
 		}
 		lastCapturedAt = value.capturedAt;
-		if (value.command === null || !isMove(value.command)) {
+		if (typeof value.paused !== "boolean") {
 			suspend();
 			return;
 		}
-		if (value.command.timestamp <= lastCommandTimestamp) return;
-		lastCommandTimestamp = value.command.timestamp;
+		const command = value.command;
+		if (command !== null && !isMove(command)) {
+			suspend();
+			return;
+		}
+		if (
+			!value.paused &&
+			command !== null &&
+			command.timestamp <= lastCommandTimestamp
+		)
+			return;
+		const wasPaused = paused;
+		paused = value.paused;
+		if (paused || wasPaused) suspend();
+		if (paused) return;
+		if (command === null) {
+			suspend();
+			return;
+		}
+		lastCommandTimestamp = command.timestamp;
 		const expiresAt = Math.floor(value.capturedAt + MAX_FRAME_AGE_MS);
 		const duration = Math.max(
 			MIN_TRAJECTORY_DURATION_MS,
@@ -317,7 +339,7 @@ export function createPointerController(options: PointerControllerOptions) {
 		);
 		lastTargetCapturedAt = value.capturedAt;
 		pending = {
-			command: value.command,
+			command,
 			expiresAt,
 			duration,
 			continuing: trajectory !== null,

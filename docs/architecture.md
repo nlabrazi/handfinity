@@ -35,6 +35,7 @@ vus par sa caméra frontale. Cette intégration native n'est pas implémentée.
 | Lissage des points | `packages/core/src/pointer/` | Suivi des pointeurs |
 | Caméra, MediaPipe et cycle de vie | `packages/vision/src/` | Playground |
 | Pointeurs et main principale | `packages/interactions/src/` | Diagnostics du Playground |
+| Pause et reprise volontaires | `packages/interactions/src/gesture-control.ts` | Moteur commun et diagnostics partagés |
 | Orchestration postures → pointeurs | `packages/interactions/src/gesture-engine.ts` | Playground |
 | Commandes de déplacement | `packages/interactions/src/pointer-commands.ts` et moteur commun | Simulation du Playground |
 | Exécution simulée et journal | `apps/playground/src/pointer-simulation.ts` | Diagnostics des commandes |
@@ -85,7 +86,7 @@ contrôleur sans consommateur pour un éventuel usage futur.
 - `SystemPointerBridge` : capacités fixes de consultation, activation, arrêt,
   transmission d'une commande et abonnement aux états du contrôle Windows.
   `PointerUpdate` transporte le numéro de session d'activation, l'instant de
-  capture et une commande `pointer:move`, ou `null` pour suspendre l'exécution.
+  capture, le booléen `paused` et une commande `pointer:move`, ou `null` pour suspendre l’exécution.
 - `NativePointer` : démarrage du helper, déplacement en pixels physiques avec
   une date d'expiration, puis arrêt. Le résultat confirme l'appel Win32 réel ;
   une commande expirée retourne `false`.
@@ -108,10 +109,26 @@ Commandes indépendantes de l'interface
 
 La session de vision possède l'unique suivi des identités. Le moteur commun
 `createGestureEngine` dans `@handfinity/interactions` reçoit ce suivi via
-`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers, commands }`.
+`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers, control, commands }`.
 Il orchestre les trackers existants dans cet ordre, transmet le choix principal
 via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
 Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
+
+`gesture-control.ts` consomme les postures reconnues et le numéro principal déjà
+choisi. Une paume ouverte confirmée et candidate pendant 1 500 ms de nouvelles
+observations bascule `control.paused`. Le temps d’une image rejouée ne confirme
+rien ; perte, ambiguïté, changement de main ou de candidate annulent un maintien
+incomplet. Seule la principale est éligible, ou une main unique si aucune
+principale n’existe. L’absence d’une principale ne réserve pas une nouvelle
+identité : la sélection explicite du contrôle reste l’étape 12.
+
+Après un basculement, `requiresRelease` reste vrai jusqu’à un pointage ou
+pincement confirmé, ou quatre doigts nettement repliés. Une posture incertaine
+ne réarme pas le geste, même avec une nouvelle identité. Une perte ou une ambiguïté ne le retire pas. La pause reste globale
+au moteur après perte d’identité et bloque la production des commandes, tandis
+que les pointeurs de diagnostic restent suivis. `holdProgress` et `handId`
+alimentent uniquement l’affichage du maintien. `reset()` retire pause et maintien ;
+un changement explicite de principale annule le maintien, sans retirer la pause.
 
 L'interface bureau dans `apps/desktop/src/renderer/App.vue` importe
 `playground/view` et ajoute ses contrôles via un slot. La vue partagée transmet
@@ -148,7 +165,7 @@ l'arrêt. Le navigateur conserve uniquement cette simulation.
 
 L'étape 10 ajoute un exécuteur de déplacement Windows après une activation
 explicite **Enable Windows pointer**, disponible après **Start camera**. Le main
-porte les états `disabled`, `starting`, `waiting`, `moving`, `error` et
+porte les états `disabled`, `starting`, `waiting`, `moving`, `paused`, `error` et
 `unsupported`. Chaque activation possède un numéro de session ; les messages
 d'une activation précédente sont ignorés. **Stop Windows pointer** et le
 raccourci global **Ctrl + Alt + Esc** désactivent le contrôle. Le raccourci
@@ -191,12 +208,21 @@ l'expiration du suivi transmettent toujours `null` : le contrôleur supprime la
 destination en attente et le trajet, puis immobilise le curseur. Un watchdog
 suspend aussi l'exécution après 250 ms sans commande fraîche ; l'interpolation
 ne prolonge pas cette durée et le helper abandonne les commandes expirées.
-Une nouvelle commande valide permet la reprise tant que le contrôle reste activé.
+Une nouvelle commande valide permet la reprise tant que le contrôle reste activé
+et que la pause volontaire n’est pas active.
+
+À l’étape 11, le wrapper transmet aussi `paused`, y compris sur les images sans
+nouveau déplacement. Le main conserve `paused` avec le numéro de session ;
+les appels tardifs et les timers ne le font pas revenir à `moving`. Les reprises
+périmées, d’une autre session ou mal formées ne retirent pas la pause. Le main
+exécute l’état décidé par le moteur ; il ne reconnaît aucun geste. Une reprise
+valide passe à `waiting` puis attend une commande fraîche. Le helper persistant
+et le raccourci global restent disponibles pendant la pause.
 
 L'arrêt caméra, le rechargement de la page, la perte du renderer et la fermeture
 désactivent le contrôle et terminent le helper. Un changement d'application ou
 une réduction conserve l'activation. Cette étape livre uniquement le
-déplacement ; la pause/reprise volontaire par geste est prévue à l'étape 11,
+déplacement et la pause/reprise volontaire de l’étape 11 ;
 la calibration de la zone des mains à l'étape 13, puis les boutons, le défilement
 et le clavier aux étapes suivantes.
 
@@ -311,19 +337,24 @@ Les tests utilisent des observations horodatées et des réglages identiques
 pour vérifier la production des commandes. La simulation ne remplace pas la
 validation de leur exécution réelle sur le système cible.
 
+L’utilisateur a validé l’étape 10 dans `a2449a7` et demandé de reporter les
+améliorations restantes de fluidité. L’étape 11 utilise un maintien de 1,5 seconde
+choisi par l’utilisateur. Ses **421 tests** et les builds/contrôles de qualité
+passent ; le navigateur et Electron Windows ont vérifié les parcours synthétiques
+de pause/reprise et d’arrêt. La reconnaissance réelle de ce geste reste à valider.
+
 ## Points à décider ou à éprouver
 
-1. Validation avec la vraie webcam de l'exécuteur Windows de l'étape 10 :
-   activation explicite, pointage, arrêt global et nettoyage. Le scénario natif
-   avec commandes synthétiques prouve le déplacement Windows ; il ne valide pas
-   la reconnaissance et le confort des vrais gestes.
+1. Validation webcam du geste de pause/reprise de l’étape 11 : maintien de
+   1,5 seconde, relâchement et reprise volontaire. Le déplacement de l’étape 10
+   a été accepté ; son confort reste perfectible, avec itérations reportées.
 2. Maintien de ce contrôle dans une autre application ou fenêtre réduite,
    suspension sur perte de suivi, puis reprise. L'étape 9 a validé le suivi
    vidéo en arrière-plan et le scénario synthétique couvre le curseur ;
-   le parcours par gestes reste à éprouver avec la vraie webcam.
+   la nouvelle pause doit être éprouvée avec les vrais gestes.
 3. Correspondance entre la zone de mouvement des mains et l'écran, miroir,
    sensibilité et calibration.
-4. Gestes volontaires d'activation, de pause, de clic secondaire, de défilement
+4. Gestes volontaires d’activation, de clic secondaire, de défilement
    et d'invocation du clavier. Les postures reconnues ne fixent pas à elles
    seules leur signification dans le futur contrôle du PC.
 5. Relâchement des entrées maintenues lors d'une perte de suivi, d'une erreur,

@@ -4,6 +4,10 @@ import {
 	type TrackedHandPose,
 } from "@handfinity/core";
 import {
+	createGestureControl,
+	type GestureControlFrame,
+} from "./gesture-control";
+import {
 	createHandPointerTracker,
 	type HandPointerFrame,
 } from "./hand-pointers";
@@ -13,6 +17,7 @@ export type GestureEngineFrame = {
 	readonly tracking: HandTrackingFrame;
 	readonly poses: readonly TrackedHandPose[];
 	readonly pointers: HandPointerFrame;
+	readonly control: GestureControlFrame;
 	/** Commandes de cet appel uniquement ; les observations ne sont pas rejouées. */
 	readonly commands: readonly PointerMoveCommand[];
 };
@@ -21,6 +26,7 @@ export type GestureEngineFrame = {
 export function createGestureEngine() {
 	const poseTracker = createHandPoseTracker();
 	const pointerTracker = createHandPointerTracker();
+	const controlTracker = createGestureControl();
 	let lastObservationTimestamp: number | null = null;
 
 	function update(
@@ -29,6 +35,11 @@ export function createGestureEngine() {
 	): GestureEngineFrame {
 		const poses = poseTracker.update(tracking, aspectRatio);
 		const pointers = pointerTracker.update(tracking, poses);
+		const control = controlTracker.update(
+			tracking,
+			poses,
+			pointers.primaryHandId,
+		);
 		const hasNewObservation = tracking.hands.some(
 			(hand) =>
 				hand.status === "tracked" &&
@@ -44,7 +55,7 @@ export function createGestureEngine() {
 				pointer.timestamp === tracking.timestamp,
 		);
 		const commands: readonly PointerMoveCommand[] =
-			fresh && main
+			fresh && main && !control.paused
 				? [
 						{
 							type: "pointer:move",
@@ -54,14 +65,25 @@ export function createGestureEngine() {
 						},
 					]
 				: [];
-		return { tracking, poses, pointers, commands };
+		return { tracking, poses, pointers, control, commands };
 	}
 
 	function reset() {
 		poseTracker.reset();
 		pointerTracker.reset();
+		controlTracker.reset();
 		lastObservationTimestamp = null;
 	}
 
-	return { update, setPrimaryHand: pointerTracker.setPrimaryHand, reset };
+	function setPrimaryHand(handId: number | null) {
+		pointerTracker.setPrimaryHand(handId);
+		controlTracker.cancelHold();
+	}
+
+	return {
+		update,
+		setPrimaryHand,
+		getControlState: controlTracker.getState,
+		reset,
+	};
 }

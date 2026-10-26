@@ -41,6 +41,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `d18d337` | Commandes de déplacement partagées et simulation, étape 7 | Testé, revu et validé par l'utilisateur |
 | `9c0de98` | Socle Electron Windows et lancement depuis WSL2, étape 8 | Accepté et commité par l'utilisateur |
 | `9804677` | Suivi bureau en arrière-plan et cadence par timer, étape 9 | Testé avec la vraie webcam, validé, commité et poussé par l'utilisateur |
+| `a2449a7` | Véritable curseur Windows, corrections de fluidité, suivi réduit et posture, étape 10 | Validé et commité par l’utilisateur ; améliorations de confort reportées |
 
 ## Recadrage et suppressions — réalisé
 
@@ -90,15 +91,14 @@ du travail fonctionnel repris à l'étape 6.
    sa cadence par défaut. Cette étape prépare l'exécution Windows de l'étape 10.
 10. **`feat(desktop): execute system pointer commands`** — Déplacer le vrai curseur,
     avec activation explicite, arrêt et suspension sur perte de suivi.
-    Implémentée, en attente de validation utilisateur avec la vraie webcam :
+    Livrée, validée et commitée par l’utilisateur dans `a2449a7` :
     **Enable Windows pointer** après **Start camera**, écran principal entier,
     miroir unique, pont IPC limité et exécuteur PowerShell persistant.
     **Stop Windows pointer**, **Ctrl + Alt + Esc**, l'arrêt caméra et la fermeture
     désactivent le contrôle. Le repos ou la perte de suivi suspend les commandes.
     **390 tests passent**, lint, formatage et builds web/bureau réussis ; les
     essais natifs avec commandes synthétiques confirment le déplacement et les
-    arrêts, y compris hors focus et fenêtre réduite. Attendre la validation de cette étape
-    avant de commencer l'étape 11. Clics, défilement et clavier restent ultérieurs.
+    arrêts, y compris hors focus et fenêtre réduite. Clics, défilement et clavier restent ultérieurs.
     Les premiers essais ont demandé une correction de fluidité : budget caméra
     incluant le traitement, absence de faux arrêt entre images et interpolation
     des positions. Une comparaison native avec les mêmes cibles passe d'environ
@@ -107,18 +107,25 @@ du travail fonctionnel repris à l'étape 6.
     une politique de performance Windows pour le renderer et une déduplication
     vidéo compatible avec Firefox. Les pertes près du torse ont révélé un faux
     pincement lié à la projection 2D ; sa mesure utilise maintenant XYZ. Ces
-    corrections restent à valider avec la vraie webcam.
+    corrections ont été acceptées ; l’utilisateur juge le résultat meilleur,
+    encore perfectible, et demande de reporter les itérations de fluidité.
 
 Décisions de l'étape 8 : Windows 11 x64 et Electron, avec édition et compilation
 sous WSL2 puis exécution directe sous Windows. Les essais web de l'utilisateur
 restent possibles dans Firefox Windows. Le suivi hors premier plan a été validé
-à l'étape 9 ; le parcours par gestes avec la vraie webcam reste à valider pour
-l'étape 10. La calibration de la zone des mains est prévue à l'étape 13.
+à l’étape 9 ; le parcours de l’étape 10 a ensuite été accepté dans `a2449a7`. La calibration de la zone des mains est prévue à l'étape 13.
 
 ## Souris utilisable — à réaliser
 
 11. **`feat(control): add gesture-based pause and resume`** — Pause et reprise
-    volontaires avec états communs dans la simulation et sur PC.
+    volontaires avec états communs dans la simulation et sur PC. Implémentée,
+    à valider : maintien de la paume ouverte confirmée pendant **1,5 seconde**,
+    délai choisi par l’utilisateur. Un seul basculement jusqu’au relâchement
+    clair des doigts ou à un pointage confirmé ; ni le pointage ni la perte de suivi ne retirent une pause.
+    Main principale seulement, ou main unique si aucune principale n’existe.
+    État et progression visibles ; arrêt des commandes commun et état `paused`
+    transmis au main Windows. **421 tests passent**, lint, formatage et builds
+    web/bureau réussis. Attendre la validation de ce lot avant l’étape 12.
 12. **`feat(control): select the controlling hand`** — Choix explicite et prévention
     du transfert involontaire du contrôle.
 13. **`feat(pointer): calibrate the hand control area`** — Correspondance avec l'écran,
@@ -170,4 +177,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l'étape 10 pour reprendre dans une nouvelle discussion.
+périmètre de l’étape 11 pour reprendre dans une nouvelle discussion.

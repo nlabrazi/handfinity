@@ -78,7 +78,12 @@ describe("System pointer preload bridge", () => {
 			["handfinity:pointer:enable"],
 			["handfinity:pointer:disable"],
 		]);
-		const update = { sessionId: 1, capturedAt: 1000, command: null };
+		const update = {
+			sessionId: 1,
+			paused: false,
+			capturedAt: 1000,
+			command: null,
+		};
 		expect(bridge.submit(update)).toBeUndefined();
 		expect(electron.send).toHaveBeenCalledExactlyOnceWith(
 			"handfinity:pointer:update",

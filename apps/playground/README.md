@@ -34,6 +34,8 @@ Cliquer sur **Start camera** puis autoriser la webcam. L'aperçu est en miroir.
   et coordonnées normalisées de l'index avant miroir.
 - **Main hand** : choix automatique ou manuel d'une identité. Le curseur plein
   désigne la main principale et le pointillé la seconde main.
+- **Gesture control** : état `Ready` ou `Paused`, progression du maintien de la
+  paume ouverte et indication de relâchement nécessaire.
 - **Pointer commands** : curseur simulé, destination normalisée, compteur total
   et journal des huit dernières commandes `pointer:move`, de la plus récente
   à la plus ancienne.
@@ -42,6 +44,14 @@ Pour activer un pointeur : tendre l'index, replier majeur, annulaire et
 auriculaire et garder le pouce séparé du bout de l'index. Un pincement ou une
 ouverture des cinq doigts retire le curseur après la transition de posture.
 Les identités et leurs diagnostics restent visibles tant que les mains sont suivies.
+Maintenir la paume ouverte confirmée pendant **1,5 seconde** bascule une pause
+persistante. Le pointage ou une perte de suivi ne retire pas cette pause. Pour
+reprendre, montrer brièvement une autre posture confirmée (doigts repliés ou
+pointage), puis refaire le maintien de la paume. La main principale effectue le
+geste ; si aucune n’est désignée, présenter une seule main. Un maintien interrompu
+repart de zéro. Garder la paume ouverte ne produit qu’un basculement, même si
+l’identité est perdue puis retrouvée. La caméra et les diagnostics continuent.
+Une reprise attend de nouveaux déplacements, sans rejouer une ancienne cible.
 
 Le pointage et l'ouverture des cinq doigts demandent 80 ms de stabilité. Le
 pincement utilise des confirmations de 40 ms à la fermeture et 60 ms au
@@ -72,7 +82,7 @@ L'expiration des identités continue sans nouvelle image tant que la boucle tour
 `createGestureEngine` dans `@handfinity/interactions` assemble les postures et
 les pointeurs, sans Vue ni caméra. Le composant principal lui transmet le suivi
 et le ratio vidéo avec `update(tracking, aspectRatio)`, puis affiche les résultats
-`tracking`, `poses`, `pointers` et `commands`. Il transmet aussi le choix principal via
+`tracking`, `poses`, `pointers`, `control` et `commands`. Il transmet aussi le choix principal via
 `setPrimaryHand(id)` et réinitialise l'interprétation avec `reset()` à l'arrêt.
 Le moteur ne crée pas de second suivi d'identités.
 
@@ -102,7 +112,10 @@ Les tests du socle vérifient identités, ambiguïtés, durées de confirmation,
 images répétées, lissage indépendant, choix principal et nettoyage des sessions.
 Les tests d'intégration du moteur utilisent les vrais trackers pour vérifier
 leur enchaînement, la production déterministe des commandes, leur déduplication
-et la remise à zéro commune. Les tests de simulation vérifient l'exécution
+et la remise à zéro commune. Les tests de l’étape 11 couvrent les 1 500 ms, les
+images répétées, les interruptions, le relâchement obligatoire, la main autorisée
+et la persistance de la pause. Une intégration vérifie le même arrêt des commandes
+dans la simulation et le contrôleur Windows. Les tests de simulation vérifient l'exécution
 directe des destinations, le journal borné, les instantanés et le nettoyage.
 
 ## Vérifications manuelles
@@ -120,7 +133,8 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
 3. Ouvrir les cinq doigts : **Open palm**, pointeur **resting**, cercle retiré.
    Pincer pouce et index : **Pinch**, sans curseur vidéo actif ni clic. Après
    confirmation, le compteur doit rester fixe et le curseur simulé conserver sa
-   position. Repointer pour reprendre : cela vérifie l'arrêt des déplacements.
+   position. Repointer pour reprendre avant un maintien de 1,5 seconde : cela
+   vérifie le repos temporaire, distinct de la pause volontaire.
 4. Présenter deux mains séparées en pointage : numéros distincts, cercle plein
    et cercle pointillé. Choisir l'autre numéro dans **Main hand** : les rôles
    doivent s'inverser et les nouvelles commandes porter le nouveau numéro.
@@ -139,3 +153,15 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
    ralenti : la caméra doit se libérer et rester arrêtée au retour.
 8. Refuser l'autorisation caméra : un message d'erreur doit apparaître. Rétablir
    l'autorisation dans le navigateur puis vérifier qu'un démarrage est possible.
+
+9. Maintenir la paume ouverte au moins 1,5 seconde : **Gesture control** indique
+   `Paused`. Garder la paume ouverte trois secondes de plus, puis repointer :
+   le compteur et le curseur simulé restent fixes. La vidéo et **Images processed**
+   continuent. Cela vérifie la pause persistante et l’absence de basculements répétés.
+10. Retirer la main plusieurs secondes : la pause reste active. Montrer un
+    pointage ou des doigts repliés pour relâcher le geste, puis ouvrir à nouveau
+    la paume pendant 1,5 seconde : `Ready` revient. Repointer produit uniquement
+    de nouvelles commandes. Cela vérifie une reprise volontaire après perte.
+11. Ouvrir brièvement la paume puis repointer avant 1,5 seconde : aucune pause
+    persistante. Arrêter et redémarrer la caméra pendant une pause : état initial
+    `Ready` et simulation vide. Cela vérifie le délai et la remise à zéro.

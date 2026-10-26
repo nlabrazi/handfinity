@@ -9,8 +9,9 @@ L'étape 9, validée par l'utilisateur avec sa vraie webcam et livrée dans
 `9804677`, conserve le suivi en arrière-plan. L'étape 10 ajoute le déplacement
 du **vrai curseur Windows**, sur activation explicite après **Start camera**.
 Une première version a été vérifiée sous Windows avec des commandes synthétiques.
-La correction de fluidité de cette même étape est vérifiée avec des cibles
-synthétiques ; son confort avec la vraie webcam reste à valider.
+L’utilisateur a validé et commité ce lot dans `a2449a7`, en reportant les
+itérations restantes de fluidité. L’étape 11 ajoute la pause et la reprise
+volontaires par paume ouverte maintenue **1,5 seconde**, à valider avec la webcam.
 Les clics, le défilement et le clavier appartiennent aux étapes suivantes ;
 l'installeur de distribution reste prévu à l'étape 27.
 
@@ -70,6 +71,24 @@ main en pointage, puis au suivi de la main principale. **Stop Windows pointer**
 ou **Ctrl + Alt + Esc** désactive le contrôle tout en gardant la caméra active.
 Ce raccourci est enregistré pendant le démarrage du contrôle et son activation,
 puis libéré à l'arrêt. Si son enregistrement échoue, le contrôle reste arrêté.
+
+Le panneau **Gesture control** affiche l’état commun au Playground et au PC.
+Maintenir la paume ouverte confirmée pendant **1,5 seconde** met le moteur en
+pause et le main dans l’état `paused`. La caméra et les diagnostics restent
+actifs ; repointer ou perdre la main ne reprend pas les déplacements. Replier
+les doigts ou repointer brièvement, puis refaire le maintien permet de reprendre.
+La main principale effectue ce geste ; sans principale, montrer une seule main.
+Garder la paume ouverte ne produit qu’un basculement jusqu’à des doigts
+nettement repliés ou une autre posture confirmée, même après une disparition. Un maintien interrompu repart de zéro.
+
+`PointerUpdate.paused` transmet cet état sans recopier de reconnaissance dans
+le bureau. Le main valide ce booléen et la commande avant de changer d’état,
+efface la cible, le trajet et les timers à la pause, et conserve la même session
+et son raccourci d’arrêt. Une reprise n’envoie aucune ancienne destination.
+Un appel natif déjà engagé peut se terminer ; il ne relance pas le trajet.
+**Ctrl + Alt + Esc** et **Stop Windows pointer** désactivent aussi un contrôle
+en pause ; un geste ne les réactive pas. **Stop camera** remet la pause commune
+à zéro et exige de nouveau le bouton Windows après redémarrage de la caméra.
 
 L'écran visé est **l'écran principal Windows entier**, barre des tâches comprise.
 Le main convertit ses dimensions DIP en pixels physiques avant d'appliquer les
@@ -242,6 +261,17 @@ avaient dépassé 120 ms dans un relevé de même durée. Ces essais ciblent le
 ralentissement de calcul ; ils ne garantissent pas l’absence de tout retard sur
 un autre matériel et le confort webcam doit être confirmé par l’utilisateur.
 
+À l’étape 11, **421 tests passent**, ainsi que lint, formatage et builds web/bureau.
+Le navigateur a vérifié le parcours avec le vrai moteur et des observations
+synthétiques : maintien court, progression, pause, pointage bloqué, perte,
+reprise avec une main unique retrouvée, mouvement frais et remise à zéro.
+Les captures aux largeurs 1440 et 390 px ont été inspectées, sans débordement ni
+erreur JavaScript. Electron Windows a vérifié avec des paquets synthétiques la
+pause persistante fenêtre réduite, le numéro de session conservé, le rejet des
+reprises anciennes/étrangères, la reprise volontaire, le raccourci global pendant
+la pause, le rechargement et la fermeture avec nettoyage. La reconnaissance du
+geste avec la vraie webcam reste à valider.
+
 ## Vérifications manuelles
 
 1. Lancer `npm run dev:desktop` depuis WSL2. **Start camera** est proposé,
@@ -307,3 +337,18 @@ la fenêtre est réduite : cette valeur ne prouve pas son état natif. Les essai
 doivent réellement changer d'application ou réduire la fenêtre Windows.
 Le compteur de commandes peut rester fixe pendant un suivi valide ; utiliser
 **Images processed** pour observer le traitement des nouvelles images.
+
+Pour l’étape 11, compléter ces essais :
+
+- En contrôle actif, ouvrir brièvement la main puis repointer avant 1,5 seconde :
+  le mouvement reprend sans pause persistante. Cela vérifie le délai choisi.
+- Maintenir les cinq doigts ouverts pendant 1,5 seconde : **Gesture control** et
+  **Windows pointer** indiquent la pause. Garder la paume ouverte, puis repointer
+  ou retirer la main : les curseurs restent figés, la caméra continue. Répéter
+  fenêtre réduite pour vérifier la persistance hors premier plan.
+- Montrer un pointage ou replier les doigts brièvement, puis maintenir à nouveau
+  la paume ouverte 1,5 seconde : le contrôle redevient prêt ; seul un nouveau
+  pointage déplace les curseurs. Cela vérifie une reprise explicite sans replay.
+- Pendant la pause, utiliser **Ctrl + Alt + Esc** : le contrôle Windows passe à
+  `off`. Refaire le geste ne doit pas l’activer ; le bouton reste nécessaire.
+  Cela vérifie que la pause ne remplace pas la désactivation d’urgence.

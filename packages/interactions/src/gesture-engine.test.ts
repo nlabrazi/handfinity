@@ -58,6 +58,100 @@ function hand(
 }
 
 describe("Shared gesture engine", () => {
+	it("pauses and resumes with real confirmed palms while keeping pointing observations", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (kind: HandPoseKind, timestamp: number) =>
+			engine.update(identities.update([hand(kind, timestamp)], timestamp));
+		observe("pointing", 0);
+		expect(observe("pointing", 80).commands).toHaveLength(1);
+		observe("open-palm", 100);
+		observe("open-palm", 180);
+		for (let time = 230; time <= 1630; time += 50)
+			expect(observe("open-palm", time).control.paused).toBe(false);
+		expect(observe("open-palm", 1680).control.paused).toBe(true);
+		for (let time = 1730; time <= 3380; time += 50)
+			expect(observe("open-palm", time).control.paused).toBe(true);
+		observe("pointing", 3400);
+		const pausedPoint = observe("pointing", 3480);
+		expect(pausedPoint.pointers.pointers[0]?.active).toBe(true);
+		expect(pausedPoint.commands).toEqual([]);
+		expect(pausedPoint.control).toMatchObject({
+			paused: true,
+			requiresRelease: false,
+		});
+		observe("open-palm", 3500);
+		observe("open-palm", 3580);
+		for (let time = 3630; time <= 5030; time += 50)
+			expect(observe("open-palm", time).control.paused).toBe(true);
+		expect(observe("open-palm", 5080).control.paused).toBe(false);
+		observe("pointing", 5100);
+		const resumed = observe("pointing", 5180);
+		expect(resumed.commands).toMatchObject([{ timestamp: 5180, handId: 1 }]);
+		expect(engine.update(resumed.tracking).commands).toEqual([]);
+		engine.reset();
+		expect(engine.getControlState()).toEqual({
+			paused: false,
+			handId: null,
+			holdProgress: 0,
+			requiresRelease: false,
+		});
+	});
+
+	it("discards a partial palm hold after loss and requires fresh confirmation", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (timestamp: number) =>
+			engine.update(
+				identities.update([hand("open-palm", timestamp)], timestamp),
+			);
+		observe(0);
+		observe(80);
+		for (let time = 130; time <= 780; time += 50) observe(time);
+		expect(engine.update(identities.update([], 800)).control.holdProgress).toBe(
+			0,
+		);
+		observe(830);
+		observe(910);
+		for (let time = 960; time <= 2360; time += 50)
+			expect(observe(time).control.paused).toBe(false);
+		expect(observe(2410).control.paused).toBe(true);
+	});
+
+	it("can resume with a sole newly identified hand after pointing and tracking loss", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (kind: HandPoseKind, timestamp: number) =>
+			engine.update(identities.update([hand(kind, timestamp)], timestamp));
+		observe("open-palm", 0);
+		observe("open-palm", 80);
+		for (let time = 130; time <= 1580; time += 50) observe("open-palm", time);
+		expect(engine.getControlState().paused).toBe(true);
+		observe("pointing", 1600);
+		observe("pointing", 1680);
+		expect(engine.update(identities.advance(1900)).control.paused).toBe(true);
+		observe("open-palm", 2000);
+		observe("open-palm", 2080);
+		for (let time = 2130; time <= 3530; time += 50)
+			expect(observe("open-palm", time).control.paused).toBe(true);
+		const resumed = observe("open-palm", 3580);
+		expect(resumed.control.paused).toBe(false);
+		expect(resumed.tracking.hands[0]?.id).toBe(2);
+		expect(resumed.pointers.primaryHandId).toBeNull();
+	});
+
+	it("does not use a long pinch as a pause gesture", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		for (let timestamp = 0; timestamp <= 3000; timestamp += 50) {
+			const result = engine.update(
+				identities.update([hand("pinch", timestamp)], timestamp),
+			);
+			expect(result.control.paused).toBe(false);
+			expect(result.control.holdProgress).toBe(0);
+		}
+	});
+
 	it.each([1, 16 / 9])(
 		"connects real pose transitions to pointers at aspect ratio %s",
 		(aspectRatio) => {

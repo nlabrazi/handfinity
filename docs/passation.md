@@ -55,7 +55,7 @@ Dépôt : `/home/kaox/code/bricolage/handfinity`.
 Le dernier commit constaté lors de cette passation est :
 
 ```text
-9804677 docs: update documentation for background tracking and timer scheduling
+a2449a7 docs: update README with current status and implementation details
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -71,8 +71,11 @@ testées, revues et validées par l'utilisateur. `9c0de98` contient le socle
 Electron de l'étape 8, accepté et commité par l'utilisateur. `9804677` contient
 l'étape 9 : l'utilisateur a confirmé que ses essais avec la vraie webcam
 fonctionnent, puis qu'il a commité et poussé ce lot. Le dépôt était propre sur
-`staging` avant les modifications de l'étape 10. Celles-ci restent à valider
-et à commiter par l'utilisateur. À chaque reprise, vérifier `git status --short`
+`staging` avant les modifications de l’étape 10. L’utilisateur a maintenant
+validé et commité ce lot dans `a2449a7`. Il juge le résultat meilleur, encore
+perfectible, et demande de reporter les itérations de fluidité pour avancer.
+Aucun push de ce commit n’a été confirmé. Le dépôt était propre avant l’étape 11,
+qui reste à valider et à commiter par l’utilisateur. À chaque reprise, vérifier `git status --short`
 et `git log` pour connaître l'état réel.
 
 ## Existant conservé
@@ -108,8 +111,8 @@ caméra vidéo. Le renderer est isolé et sandboxé, sans intégration Node.js.
 Le preload expose un pont IPC limité au contrôle du pointeur, validé dans le
 processus principal avant toute exécution Windows.
 
-**Le déplacement du curseur Windows est implémenté à l'étape 10, à valider avec
-la vraie webcam. Les boutons, le défilement, le clavier et une bibliothèque
+**Le déplacement du curseur Windows de l’étape 10 est accepté dans `a2449a7`.
+La pause/reprise de l’étape 11 est implémentée, à valider avec la vraie webcam. Les boutons, le défilement, le clavier et une bibliothèque
 publiée ne sont pas implémentés.**
 
 ## Étape 8 — livrée dans `9c0de98`
@@ -188,7 +191,7 @@ désormais les essais du contrôle du curseur ajouté à l'étape 10.
 
 Les commandes restaient simulées à l'issue de l'étape 9.
 
-## Étape 10 — implémentée, à valider
+## Étape 10 — validée et commitée dans `a2449a7`
 
 ```text
 feat(desktop): execute system pointer commands
@@ -241,12 +244,52 @@ s'il est indisponible, l'activation échoue. **Stop camera**, le rechargement,
 la perte du renderer et la fermeture désactivent le contrôle et terminent le
 helper. Un changement de focus ou une réduction conserve le contrôle activé.
 
-Les essais automatisés et natifs sont décrits plus bas. La vraie webcam et le
-confort du déplacement restent à valider par l'utilisateur. Livrer uniquement
-l'étape 10 et attendre sa validation : la pause gestuelle appartient à l'étape
-11, la calibration à l'étape 13, puis viennent les boutons, le défilement et le
-clavier. Ne pas commencer ces étapes dans ce lot. L'utilisateur réalise le
-commit et le push.
+Les essais automatisés et natifs sont décrits plus bas. L’utilisateur a validé
+et commité l’étape 10 dans `a2449a7`, tout en gardant des réserves de confort.
+Il a explicitement demandé d’avancer et de revenir plus tard sur la fluidité.
+Ne pas relancer ce chantier au sein du lot de pause/reprise.
+
+## Étape 11 — implémentée, à valider
+
+```text
+feat(control): add gesture-based pause and resume
+```
+
+L’utilisateur a choisi **1,5 seconde** de maintien pour limiter les déclenchements
+accidentels. Le geste retenu est la paume ouverte, cinq doigts tendus ; le
+pincement reste disponible pour le futur clic de l’étape 14.
+
+`gesture-control.ts` dans `interactions` interprète les postures existantes du
+moteur, avec `CONTROL_HOLD_MS = 1500`. Le résultat du moteur contient maintenant
+`{ tracking, poses, pointers, control, commands }`. `control` expose `paused`,
+`holdProgress`, `handId` et `requiresRelease`. Le maintien commence après la
+confirmation de la paume (80 ms existants), ce qui ajoute cette courte
+confirmation au délai choisi. Seules les nouvelles observations le font avancer.
+Une absence, ambiguïté, autre candidate ou changement de main annule un maintien
+incomplet. La main principale est utilisée ; si aucune principale n’existe,
+une seule main visible peut effectuer le geste. L’étape 12 n’est pas commencée.
+
+Chaque maintien complet bascule la pause une fois. Il faut montrer une autre
+posture claire (pointage/pincement confirmé ou quatre doigts nettement repliés)
+avant un nouveau maintien ; une
+simple disparition ne réarme pas le geste. Le pointage, les absences, les
+changements d’identité et les ambiguïtés ne retirent pas une pause acquise.
+Une posture incertaine, y compris sur une nouvelle identité, ne réarme pas le
+geste. L’état est partagé et la caméra continue. Les pointeurs de diagnostic peuvent
+rester actifs pendant une pause, mais aucune commande de déplacement ne sort.
+
+Le panneau partagé **Gesture control** affiche état, progression et instruction
+de relâchement. Le bureau transmet le booléen `PointerUpdate.paused` au main.
+Le contrôleur valide les données, conserve l’état `paused` et le numéro de
+session, annule cible/trajectoire/watchdog et ignore les ACK tardifs. Un appel
+natif déjà engagé peut se terminer. Une reprise valide attend une nouvelle
+commande ; elle ne rejoue pas de cible. Le helper et le raccourci restent actifs
+pendant la pause. Les boutons d’arrêt et **Ctrl + Alt + Esc** désactivent aussi
+une session en pause ; un geste ne peut pas réactiver une session arrêtée.
+**Stop camera** remet le moteur à zéro et désactive le contrôle Windows.
+
+Livrer uniquement l’étape 11 et attendre sa validation avant l’étape 12.
+L’utilisateur réalise `git add`, `git commit` et le push.
 
 ## Plan de progression
 
@@ -254,8 +297,9 @@ commit et le push.
 - **6–7 — réalisé** : interprétation commune, commandes de pointeur et simulation.
 - **8 — réalisé** : socle Electron Windows réutilisant le moteur et l'interface.
 - **9 — réalisé** : suivi hors premier plan, validé et livré dans `9804677`.
-- **10 — implémentée, à valider** : véritable curseur Windows sur activation explicite.
-- **11–18** : pause, main principale, calibration, boutons, défilement et réglages.
+- **10 — réalisée** : véritable curseur Windows, accepté et commité dans `a2449a7`.
+- **11 — implémentée, à valider** : pause/reprise par paume ouverte maintenue 1,5 seconde.
+- **12–18** : main principale, calibration, boutons, défilement et réglages.
 - **19–24** : clavier superposé, invocation, touches, saisie, édition et raccourcis.
 - **25–27** : parcours complets, CI Windows et distribution.
 
@@ -341,7 +385,8 @@ erreur JavaScript interceptée. La capture de l'interface a été inspectée.
 Ces essais prouvent l'intégration IPC et le déplacement Windows avec des
 commandes synthétiques. Le déplacement par les vrais gestes, sa précision,
 la perte et le retour d'une main et le confort restent à valider avec la webcam.
-Les changements de l'étape 10 sont non commités ; l'étape 11 n'est pas commencée.
+À ce stade historique, l’étape 10 n’était pas commitée ; elle a depuis été
+acceptée dans `a2449a7`. L’étape 11 est maintenant le lot courant.
 
 Après le retour sur les saccades, **336 tests passent**, lint, formatage et builds
 web/bureau réussis. Les nouveaux cas couvrent le budget de vision incluant les
@@ -364,14 +409,15 @@ le rechargement et la fermeture du main et du helper, sans erreur JavaScript
 interceptée. Pendant la réduction, la caméra simulée réglée à 20 images/s a
 fourni 51 traitements sur environ trois secondes ; ce relevé est distinct du
 benchmark des positions du curseur. La validation du confort avec les vrais
-gestes reste à réaliser. Aucun changement de l'étape 11 n'est ajouté.
+gestes restait à réaliser lors de cette première correction.
 
 Le retour utilisateur suivant confirme le mouvement « beaucoup plus fluide » au
 premier plan, puis signale deux problèmes encore dans l’étape 10 : des coupures
 par salves fenêtre réduite et des pertes de pointage devant le torse dans le
 Playground comme avec Windows. Il n’avait pas encore relevé `Hand poses` lors
 du blocage. Ne pas attribuer avec certitude ce dernier symptôme au fond ou aux
-vêtements, ni considérer ces corrections comme validées avec sa webcam.
+vêtements. Ces corrections ont depuis été acceptées, avec des réserves de
+confort et une demande explicite de reporter les itérations de fluidité.
 
 Corrections supplémentaires implémentées :
 
@@ -424,8 +470,31 @@ physiques ont été perturbées par d’autres entrées, détectées avec
 absence et immobilité après désactivation. Elles sont déclarées non concluantes,
 pas validées. Les états d’arrêt et les sorties des processus restent contrôlés ;
 l’immobilité réelle après perte/arrêt doit être retestée avec la webcam.
-Les essais et le confort avec la vraie webcam restent à faire. L’étape 11 reste
-hors périmètre et aucun commit/push n’est exécuté par l’agent.
+Ces observations décrivent la validation technique de l’étape 10 avant son
+acceptation par l’utilisateur. Aucun commit/push n’est exécuté par l’agent.
+
+Validation de l’étape 11 : **421 tests passent** (31 cas supplémentaires), lint,
+formatage et builds web/bureau réussis. Les cas ajoutés couvrent maintien de
+1 500 ms à plusieurs cadences, relâchement, bruit de pose, perte/ambiguïté,
+main éligible, pointeurs actifs mais commandes bloquées, pause native persistante,
+trajets annulés et intégration du vrai moteur vers simulation et contrôleur.
+Le contrôle `check` global conserve six tris d’importations préexistants hors
+fichiers modifiés (cinq fichiers hub et `core/src/index.ts`). L’index interactions,
+modifié pour exporter le nouvel état, est désormais organisé.
+
+Le navigateur a testé le vrai moteur avec observations synthétiques : maintien
+court annulé, progression affichée, pause, pointage bloqué, perte sans reprise,
+reprise avec une seule nouvelle main puis mouvement frais, arrêt et reset.
+Captures 1440/390 px inspectées, aucun débordement ni erreur JavaScript.
+Electron Windows a vérifié via son vrai pont IPC et son exécuteur la pause
+fenêtre réduite, session conservée, rejet des reprises anciennes/étrangères,
+reprise volontaire, raccourci global pendant la pause, rechargement et fermeture
+avec arrêt des processus. Curseur restauré après l’essai. Un premier passage
+natif avait atteint `error` après réduction sans détail capturé ; la relance
+avec relevé de l’état passe sans reproduire cette erreur. Ne pas prétendre avoir
+corrigé ce cas non identifié ni modifier les timeouts pour le masquer.
+Ces essais restent synthétiques ; le geste avec webcam réelle est à valider.
+Aucun commit de l’étape 11 n’est effectué.
 
 ```bash
 npm test
@@ -456,3 +525,9 @@ séparé → `Pointing`, pointeur `active`, cercle plein dans la vidéo. Ouvrir 
 cinq doigts ou pincer retire ce cercle après confirmation de la posture, sans
 nécessairement retirer les numéros d'identité. Deux mains en pointage donnent
 un cercle plein et un pointillé. `Main hand` change le rôle principal.
+
+Pour valider l’étape 11 : comparer une ouverture brève et un maintien de 1,5 seconde,
+garder la paume ouverte plusieurs secondes (un seul basculement), repointer puis
+retirer la main (pause conservée), refaire le maintien après relâchement (reprise),
+et désactiver avec **Ctrl + Alt + Esc** pendant la pause. Refaire le parcours
+fenêtre réduite. La caméra continue et aucune désactivation n’est annulée par geste.

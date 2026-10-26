@@ -9,6 +9,7 @@ export function toPointerUpdate(
 ): PointerUpdate | null {
 	const command = frame.commands.at(-1);
 	if (
+		!frame.control.paused &&
 		command === undefined &&
 		frame.pointers.pointers.some(
 			(pointer) => pointer.isPrimary && pointer.active,
@@ -18,6 +19,7 @@ export function toPointerUpdate(
 	return {
 		sessionId,
 		capturedAt: timeOrigin + frame.tracking.timestamp,
-		command: command ?? null,
+		paused: frame.control.paused,
+		command: frame.control.paused ? null : (command ?? null),
 	};
 }
