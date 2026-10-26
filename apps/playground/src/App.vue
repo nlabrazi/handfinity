@@ -7,6 +7,7 @@ import type {
 } from "@handfinity/core";
 import {
 	createGestureEngine,
+	type GestureEngineFrame,
 	type HandPointerFrame,
 } from "@handfinity/interactions";
 import {
@@ -21,6 +22,10 @@ import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vu
 import { createPointerSimulation } from "./pointer-simulation";
 
 const props = defineProps<{ trackingOptions?: TrackingSessionOptions }>();
+const emit = defineEmits<{
+	"gesture-frame": [frame: GestureEngineFrame];
+	"tracking-stop": [];
+}>();
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -184,6 +189,7 @@ function handleTrackingFrame({
 	handPoses.value = frame.poses;
 	pointerFrame.value = frame.pointers;
 	pointerSimulation.value = simulator.execute(frame.commands);
+	emit("gesture-frame", frame);
 	const visible = frame.tracking.hands
 		.filter((hand) => hand.status === "tracked")
 		.map((hand) => hand.observation);
@@ -198,6 +204,7 @@ function choosePrimaryHand(event: Event) {
 
 function stop() {
 	sessionGeneration += 1;
+	emit("tracking-stop");
 	session.stop();
 
 	const canvas = canvasRef.value;
@@ -261,9 +268,11 @@ onBeforeUnmount(() => {
 					Hand tracking, poses and pointer command simulation.
 				</p>
 				<p class="mt-2 text-sm text-slate-400">
-					Hand pointers appear in the camera preview; shared move commands drive
-					the simulation. System mouse and keyboard control is not implemented
-					yet.
+					<slot name="description">
+						Hand pointers appear in the camera preview; shared move commands
+						drive the simulation. This web view does not control the system
+						mouse or keyboard.
+					</slot>
 				</p>
 			</header>
 
@@ -314,6 +323,7 @@ onBeforeUnmount(() => {
 							>Images processed: {{ processedFrames }}</span
 						>
 					</div>
+					<slot name="controls" :is-running="isRunning" />
 					<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
 
 					<section

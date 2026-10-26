@@ -1,4 +1,4 @@
-import { createPinchDetector } from "../gestures/pinch";
+import { createPinchDetector, measurePinch } from "../gestures/pinch";
 import {
 	PINCH_END_THRESHOLD,
 	PINCH_START_THRESHOLD,
@@ -15,7 +15,7 @@ export type FingerExtension = "extended" | "folded" | "uncertain";
 
 export type HandPoseMeasurements = {
 	readonly fingers: Readonly<Record<HandFinger, FingerExtension>>;
-	/** Distance pouce/index divisée par la taille de la paume, en projection 2D. */
+	/** Distance pouce/index divisée par la paume, dans le repère XYZ estimé. */
 	readonly pinchRatio: number;
 };
 
@@ -98,16 +98,16 @@ function measure(
 	const indexBase = points[5];
 	const middleBase = points[9];
 	if (!wrist || !thumb || !index || !indexBase || !middleBase) return null;
-	const palmSize = Math.hypot(
-		(wrist.x - middleBase.x) * aspectRatio,
-		wrist.y - middleBase.y,
+	const pinch = measurePinch(
+		{ wrist, thumbTip: thumb, indexTip: index, middleBase },
+		aspectRatio,
 	);
-	if (palmSize < EPSILON) return null;
+	if (!pinch) return null;
 	let thumbState = fingerState(points, 1, aspectRatio);
 	// Un pouce rectiligne posé contre la paume ne suffit pas à une paume ouverte.
 	if (
 		thumbState === "extended" &&
-		length(vector(thumb, indexBase, aspectRatio)) / palmSize < 0.45
+		length(vector(thumb, indexBase, aspectRatio)) / pinch.palmSize < 0.45
 	)
 		thumbState = "uncertain";
 	return {
@@ -118,9 +118,7 @@ function measure(
 			ring: fingerState(points, 13, aspectRatio),
 			pinky: fingerState(points, 17, aspectRatio),
 		},
-		pinchRatio:
-			Math.hypot((thumb.x - index.x) * aspectRatio, thumb.y - index.y) /
-			palmSize,
+		pinchRatio: pinch.ratio,
 	};
 }
 

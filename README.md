@@ -21,20 +21,20 @@
 
 **Handfinity** est un projet d'**interface gestuelle par webcam** visant à remplacer progressivement la **souris et le clavier sur PC**, dans les applications existantes. Le smartphone, puis les lunettes de réalité augmentée, seront étudiés après validation de l'usage sur PC.
 
-**État actuel :** le [site d'accueil](apps/hub/README.md), le [Playground](apps/playground/README.md) et le socle de l'[application bureau Electron](apps/desktop/README.md) sont présents. La fenêtre bureau réutilise les diagnostics et la simulation du Playground, avec le même moteur partagé ; **le contrôle de la souris et du clavier du système n'est pas encore implémenté**.
+**État actuel :** le [site d'accueil](apps/hub/README.md), le [Playground](apps/playground/README.md) et l'[application bureau Electron](apps/desktop/README.md) sont présents. Le bureau réutilise le même moteur et ajoute le **déplacement du vrai curseur Windows sur l'écran principal**, après démarrage de la caméra et activation explicite. Cette étape 10 est implémentée et reste à valider ; le navigateur conserve la simulation. **Clics, défilement et saisie clavier restent à construire.**
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur, avec démarrage et arrêt explicites.
 - 🎮 **Un accueil et un laboratoire** :
   - **Accueil** : Présentation de Handfinity et accès au laboratoire sur `/playground`, avec une identité visuelle animée.
   - **Vision Playground** : Diagnostic des identités, des postures et des pointeurs, avec aperçu vidéo en miroir, journal des commandes et curseur simulé.
-  - **Application bureau** : Fenêtre Electron **Handfinity Desktop**, utilisant directement la vue du Playground et ses packages partagés. Windows 11 x64 est la première cible de validation.
+  - **Application bureau** : Fenêtre Electron **Handfinity Desktop**, utilisant la vue du Playground et ses packages partagés, avec commandes d'activation et d'arrêt du pointeur Windows. Windows 11 x64 est la première cible de validation.
   - **Packages partagés** : `@handfinity/core` pour les modèles et la reconnaissance, `@handfinity/vision` pour la session caméra, `@handfinity/interactions` pour le moteur commun et ses commandes de déplacement.
 - 👓 **Objectif d'interaction sans contact** : Pointer, cliquer, déplacer, défiler et invoquer un clavier pour écrire dans l'application utilisée.
 - ⚡ **Stack actuelle** : Vue 3, Vite, TypeScript, Tailwind CSS v4, Electron 45.0.0 et npm Workspaces avec Node.js 24. Un projet commun, avec de futures adaptations de contrôle propres à Windows et Linux.
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
 - 🔊 **Retour visuel en direct** : Posture confirmée et candidate, estimation des doigts, coordonnées et rôle de chaque main.
 - 🧹 **Outillage** : Biome v2 pour le lint et le formatage, y compris les fichiers Vue.
-- 🧪 **Qualité & Tests** : Tests Vitest du socle et des transitions de page, exécutés par les commandes utilisées en CI Jenkins. Les essais avec la webcam complètent ces tests.
+- 🧪 **Qualité & Tests** : 390 tests passent pour l'étape 10 et ses corrections de fluidité, d'arrière-plan et de posture, ainsi que lint, formatage et builds web/bureau. Les commandes web sont utilisées en CI Jenkins ; les essais natifs Windows et la vraie webcam complètent les tests automatisés.
 - 🐳 **Développement Docker** : Deux services conservés, sources montées en volumes et hot reload Vite avec polling.
 
 Le [cadrage technique](docs/architecture.md) décrit les responsabilités et limites actuelles. Le [découpage en commits](docs/roadmap.md) précise la suite.
@@ -62,7 +62,7 @@ Le socle actuel repose sur MediaPipe et trois packages internes :
 - 🌐 **Packages partagés** : `core` définit les modèles et la reconnaissance ; `vision` possède la session caméra, la détection et les identités ; `interactions` assemble les postures et les pointeurs dans le moteur commun.
 - ⚡ **Actualisation continue** : Analyse des nouvelles images ; les images répétées ne confirment pas de nouvelle posture et ne sont pas lissées à nouveau.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt, fermeture du détecteur et nettoyage des états.
-- ⌨️ **Commandes de déplacement partagées** : Le moteur produit `pointer:move` pour la main principale en pointage ; le Playground exécute ces commandes en simulation. L'exécuteur système reste prévu dans la roadmap.
+- ⌨️ **Commandes de déplacement partagées** : Le moteur produit `pointer:move` pour la main principale en pointage ; le Playground les exécute en simulation et le bureau peut les transmettre au curseur Windows après activation.
 
 ### 🏆 Vision Playground & Diagnostics
 
@@ -75,7 +75,7 @@ Le **Playground** permet d'observer ce que reconnaissent les briques partagées 
 - **Pointeurs** : L'index tendu, les trois autres doigts repliés et le pouce séparé activent un cercle dans la vidéo. Le contour plein désigne la main principale ; le pointillé la seconde main.
 - **Choix de la main principale** : Le sélecteur **Main hand** permet de choisir une identité ou de revenir au mode automatique.
 - **Commandes et simulation** : **Pointer commands** affiche un curseur dans une zone dédiée, les huit dernières commandes et le nombre total reçu.
-- **Limite actuelle** : Le cercle vidéo et le curseur simulé restent dans le laboratoire ; ils ne déplacent pas le pointeur du système.
+- **Limite du navigateur** : Le cercle vidéo et le curseur simulé restent dans le laboratoire web. Le déplacement du pointeur Windows demande l'application bureau et son activation explicite.
 
 ### ⏱️ Réactivité & Fiabilité de la Détection
 - **Analyse vidéo continue** : Le Playground traite les nouvelles images de la caméra et dessine les connexions entre les points de repère pour visualiser les mouvements.
@@ -143,7 +143,8 @@ par main, avec sa candidate, son état de confirmation et les mesures des doigts
 
 Pointage et paume ouverte demandent 80 ms d'observations cohérentes. Les angles
 des doigts utilisent les repères `{ x, y, z }` corrigés du format vidéo ; le
-pincement conserve sa mesure 2D relative à la taille de la paume. Ces heuristiques
+pincement utilise également la profondeur relative, pour ne pas confondre une
+superposition à l’image avec un contact des doigts. Ces heuristiques
 doivent être éprouvées avec la webcam, notamment lorsque la main est inclinée
 ou partiellement cachée.
 
@@ -173,8 +174,9 @@ pour la main manquante. Une identité perdue ou ambiguë libère le choix princi
 
 Le [Playground](apps/playground/README.md#diagnostics) affiche ces pointeurs dans
 la vidéo. Les coordonnées **Source x/y** du panneau restent celles de l'image
-avant miroir. Les règles décrites ici sont celles du diagnostic actuel ; les
-états de contrôle du PC restent à ajouter au moteur commun.
+avant miroir. L'activation du contrôle Windows est gérée par l'application
+bureau ; les états de pause et de reprise volontaires par geste seront ajoutés
+au moteur commun à l'étape 11.
 
 ### Commandes PC et moteur commun — à construire
 
@@ -195,7 +197,7 @@ Seule une nouvelle observation de la main principale en pointage confirmé
 produit une commande, au plus une fois par image. Une image répétée, une main
 au repos, manquante ou ambiguë n'en produit pas. Le curseur simulé conserve sa
 dernière position sans commande ; l'arrêt efface sa position, le journal et le
-compteur. La future application PC utilisera ces mêmes commandes :
+compteur. L'application bureau utilise ces mêmes commandes :
 
 ```text
 Observations → Interprétation commune → Commandes
@@ -204,9 +206,10 @@ Observations → Interprétation commune → Commandes
 ```
 
 La simulation permet de diagnostiquer les commandes effectivement produites.
-L'exécuteur système reste à construire et devra être validé sur le système cible, notamment pour le
-traitement des entrées maintenues et la destination de la
-saisie. Ces fonctionnalités ne sont pas encore présentes.
+L'exécuteur Windows de l'étape 10 convertit leurs destinations en pixels
+physiques de l'écran principal entier, sans second miroir. Il reste à valider
+sur le poste cible. La calibration de la zone des mains est prévue à l'étape 13 ;
+les boutons, le défilement et la saisie clavier viendront ensuite.
 
 Windows 11 x64 et Electron sont retenus pour la première application bureau.
 Le développement se fait sous WSL2 ; la fenêtre Electron s'exécute directement
@@ -219,8 +222,31 @@ Après **Start camera**, la fenêtre bureau maintient le suivi lorsqu'elle perd
 le focus ou est réduite. **Images processed** compte les nouvelles images
 analysées puis transmises au moteur, même sans main détectée. **Stop camera**
 remet ce compteur à zéro et libère la caméra ; fermer l'application arrête le
-suivi. Les essais avec la vraie webcam restent nécessaires ; le navigateur web
-conserve sa gestion habituelle des onglets en arrière-plan.
+suivi. L'utilisateur a validé ce suivi en arrière-plan avec sa vraie webcam,
+puis commité et poussé l'étape 9 dans `9804677`. Le navigateur web conserve sa
+gestion habituelle des onglets en arrière-plan.
+
+Dans le bureau, **Enable Windows pointer** active séparément le vrai curseur
+après **Start camera**. **Stop Windows pointer** ou **Ctrl + Alt + Esc** l'arrête,
+y compris dans une autre application. Le repos ou la perte de suivi suspend les
+déplacements ; une nouvelle commande valide les reprend tant que le contrôle
+reste activé. **Stop camera** et la fermeture désactivent aussi le contrôle.
+Les essais natifs Windows avec caméra simulée et commandes synthétiques ont
+vérifié le déplacement réel, les arrêts et le nettoyage. La validation du
+pointage avec la vraie webcam reste nécessaire.
+
+Le curseur interpole des positions intermédiaires entre les cibles du moteur,
+sans prédiction et en conservant les arrêts sur perte de suivi. Dans une
+comparaison Windows avec 30 cibles synthétiques en environ 3,4 secondes, la
+première correction produit 195 positions distinctes au lieu de 30, soit environ 57
+positions par seconde contre 9. Cela ne garantit ni 120 ni 244 Hz ; la cadence
+de capture et la fluidité du curseur sont deux mesures différentes. L’utilisateur
+a confirmé cette amélioration au premier plan, puis signalé des coupures fenêtre
+réduite et des pertes de pointage près du torse. Le bureau conserve désormais
+la vitesse de calcul de son processus de vision en arrière-plan via une politique
+de performance Windows propre à ce processus ; le moteur corrige aussi
+les faux pincements liés à la rotation de la main. Ces corrections restent à
+éprouver avec la vraie webcam.
 
 ### Sessions de suivi communes
 
@@ -231,9 +257,14 @@ création de la session, y compris pendant un démarrage en attente. Une même
 instance peut être arrêtée puis redémarrée.
 
 L'option facultative `scheduling: "timer"` permet au bureau de programmer chaque
-passage avec un délai de `1000 / 30` ms après le traitement précédent. Sans
-option, le web utilise `requestAnimationFrame`. Le traitement des images, les
-identités et le nettoyage restent dans la même session.
+passage avec un budget de `1000 / 30` ms incluant le traitement précédent.
+Seul le temps restant est attendu, sans rattrapage si l'analyse dépasse ce
+budget. Sans option, le web utilise `requestAnimationFrame`. Le traitement des images, les
+identités et le nettoyage restent dans la même session. Lorsque le navigateur
+expose un compteur `getVideoPlaybackQuality` positif pour le flux, ce compteur
+distingue les nouvelles images : `currentTime` peut avancer sans qu’une image
+arrive. La session conserve le contrôle par `currentTime` si ce compteur est
+absent ou reste nul depuis le démarrage, notamment pour les flux Firefox.
 
 Le callback `onFrame` reçoit les observations, le suivi des identités, le ratio
 d'image et `hasNewFrame`. Ce dernier distingue une nouvelle image d'une simple
@@ -307,8 +338,8 @@ la distribution reste prévu à l'étape 27.
   - [x] Centralisation de la chaîne postures → pointeurs consommée par le Playground
   - [x] Commandes de déplacement partagées et simulation dans le Playground
   - [x] Socle de l'application Electron Windows réutilisant le Playground
-  - [ ] Suivi en arrière-plan implémenté, à valider avec la vraie webcam
-  - [ ] Véritable curseur Windows
+  - [x] Suivi en arrière-plan validé avec la vraie webcam
+  - [ ] Déplacement du vrai curseur Windows implémenté, à valider
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [ ] Pause, reprise, choix de main et calibration
   - [ ] Clic principal, déplacement avec maintien, clic secondaire et défilement
@@ -336,6 +367,12 @@ validation utilisateur.
 2. **Observer le suivi** : présenter une ou deux mains séparées pour lire leurs numéros, états et postures dans les diagnostics.
 3. **Activer un pointeur** : tendre l'index, replier majeur, annulaire et auriculaire et séparer le pouce de l'index. Un cercle apparaît dans la vidéo ; son contour plein désigne la main principale. Cette main déplace aussi le curseur de **Pointer commands** et alimente son journal.
 4. **Choisir et arrêter** : utiliser **Main hand** pour changer de main principale et **Stop camera** pour libérer la session. Quitter le laboratoire coupe également la caméra.
+
+**Dans l'application Windows :** après **Start camera**, cliquer sur
+**Enable Windows pointer** pour déplacer le vrai curseur de l'écran principal.
+**Stop Windows pointer** et **Ctrl + Alt + Esc** désactivent ce contrôle tout en
+gardant la caméra active. Le [guide Desktop](apps/desktop/README.md#vérifications-manuelles)
+précise les essais et leurs résultats attendus.
 
 **Caméra et aide :** le laboratoire n'est pas conservé en cache à la navigation.
 Y revenir demande un nouveau démarrage explicite. Un message s'affiche en cas
@@ -417,8 +454,8 @@ Webcam → Navigateur → MediaPipe / vision → Suivi et postures → Diagnosti
 
 Un hébergement web peut servir les fichiers statiques sans recevoir les images
 de la webcam. Il faut distinguer l'hébergement des pages, le traitement vidéo
-local et le futur contrôle des entrées du PC, qui nécessitera une application
-locale adaptée au système choisi.
+local et le contrôle des entrées du PC. Le déplacement du curseur Windows
+utilise l'application bureau exécutée sur le poste de l'utilisateur.
 
 ```text
 Navigateur utilisateur                  Hébergement web
@@ -447,7 +484,7 @@ web reste distincte de l'application bureau Electron.
 | `npm run dev -w playground` | Démarre le laboratoire autonome sur le port 3002 |
 | `npm run build` | Compile le Playground autonome puis le hub intégré |
 | `npm run dev:desktop` | Compile et lance la fenêtre Electron ; depuis WSL2, exécute la version Windows |
-| `npm run build:desktop` | Compile le processus Electron et son interface partagée |
+| `npm run build:desktop` | Compile le processus Electron, le preload et l'interface partagée |
 | `npm run start:desktop` | Lance la dernière compilation bureau, sans reconstruire |
 | `npm run lint` | Exécute le linter Biome |
 | `npm run format` | Formate le code avec Biome |
@@ -459,8 +496,8 @@ web reste distincte de l'application bureau Electron.
 | `docker compose up --build playground` | Démarre le laboratoire autonome dans Docker |
 
 Les commandes `npm test`, `npm run lint`, `npm run format:check` et `npm run build`
-constituent les vérifications utilisées en CI. Les essais webcam et, à terme,
-les essais sur le système PC cible complètent les tests automatisés.
+constituent les vérifications utilisées en CI. Les essais webcam et les essais
+natifs sur le système PC cible complètent les tests automatisés.
 
 ---
 

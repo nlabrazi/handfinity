@@ -1,6 +1,15 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, dialog, net, protocol, session } from "electron";
+import {
+	app,
+	BrowserWindow,
+	dialog,
+	globalShortcut,
+	net,
+	protocol,
+	screen,
+	session,
+} from "electron";
 import {
 	APP_SCHEME,
 	APP_URL,
@@ -9,6 +18,10 @@ import {
 	isAppUrl,
 	resolveRendererFile,
 } from "./application-policy.js";
+import { createPointerController } from "./pointer-controller.js";
+import { POINTER_STATE_CHANNEL, registerPointerIpc } from "./pointer-ipc.js";
+import { createWindowsPointer } from "./windows-pointer.js";
+import { configureWindowsTracking } from "./windows-tracking-performance.js";
 
 protocol.registerSchemesAsPrivileged([
 	{
@@ -18,9 +31,33 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.setName("Handfinity");
+// La vision reste une tâche interactive même lorsque sa fenêtre est réduite.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
 let mainWindow: BrowserWindow | null = null;
 
 async function start() {
+	const stopShortcut = "Control+Alt+Escape";
+	const pointer = createPointerController({
+		supported: process.platform === "win32",
+		driver: createWindowsPointer(),
+		getBounds: () =>
+			screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds),
+		registerStop: (stop) => globalShortcut.register(stopShortcut, stop),
+		unregisterStop: () => globalShortcut.unregister(stopShortcut),
+		onState: (state) => {
+			if (
+				mainWindow &&
+				!mainWindow.isDestroyed() &&
+				!mainWindow.webContents.isDestroyed()
+			)
+				mainWindow.webContents.send(POINTER_STATE_CHANNEL, state);
+		},
+	});
+	const disposePointerIpc = registerPointerIpc(() => mainWindow, pointer);
+	app.on("before-quit", () => {
+		pointer.disable();
+		disposePointerIpc();
+	});
 	const appSession = session.fromPartition("handfinity");
 	const rendererRoot = join(import.meta.dirname, "renderer");
 	appSession.protocol.handle(APP_SCHEME, async (request) => {
@@ -63,6 +100,7 @@ async function start() {
 	async function createWindow() {
 		const window = new BrowserWindow({
 			title: "Handfinity Desktop",
+			show: false,
 			width: 1280,
 			height: 900,
 			minWidth: 360,
@@ -71,6 +109,7 @@ async function start() {
 			autoHideMenuBar: true,
 			webPreferences: {
 				session: appSession,
+				preload: join(import.meta.dirname, "preload.cjs"),
 				// La vidéo et les timers de suivi doivent continuer fenêtre réduite.
 				backgroundThrottling: false,
 				nodeIntegration: false,
@@ -79,16 +118,65 @@ async function start() {
 			},
 		});
 		mainWindow = window;
+		const preparation = new AbortController();
+		let shown = false;
+		let configuredPid: number | null = null;
+		const pendingPreparations = new Map<number, Promise<void>>();
+		async function prepareTracking(): Promise<void> {
+			if (preparation.signal.aborted || window.isDestroyed()) return;
+			const pid = window.webContents.getOSProcessId();
+			if (pid === configuredPid) return;
+			let pending = pendingPreparations.get(pid);
+			if (!pending) {
+				pending = configureWindowsTracking(pid, preparation.signal);
+				pendingPreparations.set(pid, pending);
+			}
+			try {
+				await pending;
+			} catch (error) {
+				if (preparation.signal.aborted || window.isDestroyed()) return;
+				if (pid !== window.webContents.getOSProcessId())
+					return prepareTracking();
+				throw error;
+			} finally {
+				pendingPreparations.delete(pid);
+			}
+			if (preparation.signal.aborted || window.isDestroyed()) return;
+			if (pid !== window.webContents.getOSProcessId()) return prepareTracking();
+			configuredPid = pid;
+		}
+		window.webContents.on("dom-ready", () => {
+			if (shown)
+				void prepareTracking().catch((error) => {
+					if (!preparation.signal.aborted) reportFailure(error);
+				});
+		});
 		window.setMenu(null);
 		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 		window.webContents.on("will-navigate", (event) => event.preventDefault());
 		window.webContents.on("will-attach-webview", (event) =>
 			event.preventDefault(),
 		);
-		window.on("closed", () => {
-			if (mainWindow === window) mainWindow = null;
+		window.webContents.on("did-start-navigation", (details) => {
+			if (details.isMainFrame && !details.isSameDocument) pointer.disable();
 		});
-		await window.loadURL(APP_URL);
+		window.webContents.on("render-process-gone", () => pointer.disable());
+		window.webContents.on("destroyed", () => pointer.disable());
+		window.on("closed", () => {
+			preparation.abort();
+			if (mainWindow === window) mainWindow = null;
+			pointer.disable();
+		});
+		try {
+			await window.loadURL(APP_URL);
+			await prepareTracking();
+			if (!preparation.signal.aborted && !window.isDestroyed()) {
+				shown = true;
+				window.show();
+			}
+		} catch (error) {
+			if (!preparation.signal.aborted) throw error;
+		}
 	}
 
 	await createWindow();

@@ -1,7 +1,5 @@
-import Playground from "playground/view";
 import { createApp } from "vue";
+import App from "./App.vue";
 import "./style.css";
 
-createApp(Playground, {
-	trackingOptions: { scheduling: "timer" },
-}).mount("#app");
+createApp(App).mount("#app");

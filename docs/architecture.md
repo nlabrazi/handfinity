@@ -39,6 +39,10 @@ vus par sa caméra frontale. Cette intégration native n'est pas implémentée.
 | Commandes de déplacement | `packages/interactions/src/pointer-commands.ts` et moteur commun | Simulation du Playground |
 | Exécution simulée et journal | `apps/playground/src/pointer-simulation.ts` | Diagnostics des commandes |
 | Fenêtre Electron, origine locale et permissions | `apps/desktop/src/main.ts` | Application bureau |
+| Contrat, preload et validation IPC du pointeur | `apps/desktop/src/pointer-contract.ts`, `preload.cts` et `pointer-ipc.ts` | Interface bureau et main Electron |
+| Activation, suspension et exécution des déplacements | `apps/desktop/src/pointer-controller.ts` | Processus principal Electron |
+| Politique de performance du renderer Windows | `apps/desktop/src/windows-tracking-performance.ts` | Préparation par le main, sans accès renderer natif |
+| Appels natifs Windows du curseur | `apps/desktop/src/windows-pointer.ts` | Contrôleur du pointeur bureau |
 | Lancement Electron de la plateforme, Windows depuis WSL2 | `apps/desktop/scripts/start.mjs` | Commandes bureau |
 | Interface bureau réutilisée | `playground/view` via `apps/desktop/src/renderer/` | Fenêtre Handfinity Desktop |
 | Présentation et navigation | `apps/hub/` | Accueil et route du laboratoire |
@@ -63,6 +67,9 @@ contrôleur sans consommateur pour un éventuel usage futur.
   identité, avec posture candidate et mesures de diagnostic. Le pointage et
   l'ouverture des cinq doigts demandent 80 ms de stabilité ; le pincement
   conserve ses confirmations de 40 ms à la fermeture et 60 ms au relâchement.
+  Son ratio utilise la distance pouce/index et la taille de paume dans le même
+  repère XYZ estimé, corrigé du ratio vidéo ; une superposition en projection
+  seule ne suffit plus à déclencher un pincement.
 - `createHandPointerTracker` : position de l'index, état actif en pointage,
   lissage par identité et choix automatique ou manuel de la main principale.
 - `createGestureEngine` : enchaînement postures → pointeurs à partir du suivi
@@ -75,6 +82,13 @@ contrôleur sans consommateur pour un éventuel usage futur.
 - `createTrackingSession` : démarrage, arrêt, libération des ressources et
   traitement des nouvelles images, avec expiration des identités même sans
   nouvelle image tant que la boucle s'exécute.
+- `SystemPointerBridge` : capacités fixes de consultation, activation, arrêt,
+  transmission d'une commande et abonnement aux états du contrôle Windows.
+  `PointerUpdate` transporte le numéro de session d'activation, l'instant de
+  capture et une commande `pointer:move`, ou `null` pour suspendre l'exécution.
+- `NativePointer` : démarrage du helper, déplacement en pixels physiques avec
+  une date d'expiration, puis arrêt. Le résultat confirme l'appel Win32 réel ;
+  une commande expirée retourne `false`.
 
 Les coordonnées des observations et des pointeurs précèdent le miroir d'affichage. La profondeur relative au
 poignet n'est pas une distance métrique. L'ordre des observations et la
@@ -99,17 +113,22 @@ Il orchestre les trackers existants dans cet ordre, transmet le choix principal
 via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
 Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
 
-L'application bureau importe directement `playground/view` et compile cette
-interface avec Vite. Elle réutilise donc les mêmes packages `core`, `vision`
-et `interactions`, ainsi que l'exécuteur de simulation. Le processus principal
+L'interface bureau dans `apps/desktop/src/renderer/App.vue` importe
+`playground/view` et ajoute ses contrôles via un slot. La vue partagée transmet
+chaque résultat du moteur avec `gesture-frame` et signale son arrêt avec
+`tracking-stop`. Elle réutilise les mêmes packages `core`, `vision` et
+`interactions`, ainsi que l'exécuteur de simulation. Le processus principal
 Electron crée la fenêtre et sert les fichiers compilés depuis
-`handfinity://app/` ; il ne reconnaît aucun geste.
+`handfinity://app/` ; il exécute les commandes sans reconnaître de geste.
 
 Cette page locale est le seul contexte autorisé à demander la caméra vidéo,
 dans la fenêtre principale. Le microphone, la capture d'écran, les navigations
 et les nouvelles fenêtres sont refusés. Le renderer utilise l'isolation de
-contexte et le sandbox, sans intégration Node.js ni pont IPC sans consommateur.
-Le confinement des fichiers et les permissions sont testés séparément.
+contexte et le sandbox, sans intégration Node.js. Le preload CommonJS expose
+une API fixe avec `contextBridge`, sans accès générique à `ipcRenderer`.
+Chaque message est limité à la frame principale de la fenêtre locale, avec
+validation de son origine et de ses données dans le main. Le confinement des
+fichiers et les permissions restent testés séparément.
 
 Le Playground consomme chaque résultat de la session, y compris sans nouvelle
 image pour traiter les expirations. Les trackers dédupliquent les observations
@@ -118,34 +137,120 @@ sur une image répétée. Vue conserve le rendu et les diagnostics et réinitial
 le moteur à l'arrêt. Les commandes de déplacement sont émises uniquement pour
 une nouvelle observation de la main principale en pointage confirmé, une fois
 par image. Une image répétée ou un diagnostic conservé jusqu'à l'expiration
-ne produit aucun déplacement.
+ne produit aucune nouvelle commande.
 
 La destination de `pointer:move` utilise la position déjà lissée :
 `x = 1 - pointer.position.x`, `y = pointer.position.y`, entre 0 et 1.
 `createPointerSimulation` consomme ces commandes sans réinterprétation ni
 second miroir. Il conserve la dernière position sans commande, borne son
 journal à huit entrées, compte les commandes reçues et efface ces états à
-l'arrêt. Les états de contrôle et l'exécuteur système restent à construire.
+l'arrêt. Le navigateur conserve uniquement cette simulation.
+
+L'étape 10 ajoute un exécuteur de déplacement Windows après une activation
+explicite **Enable Windows pointer**, disponible après **Start camera**. Le main
+porte les états `disabled`, `starting`, `waiting`, `moving`, `error` et
+`unsupported`. Chaque activation possède un numéro de session ; les messages
+d'une activation précédente sont ignorés. **Stop Windows pointer** et le
+raccourci global **Ctrl + Alt + Esc** désactivent le contrôle. Le raccourci
+est réservé pendant le démarrage et l'activation, puis libéré à l'arrêt ;
+un échec d'enregistrement empêche l'activation.
+
+La destination vise l'écran principal Windows entier, avec ses limites
+converties de DIP en pixels physiques par
+`screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds)`. Le calcul
+utilise `x = bounds.x + round(position.x * (bounds.width - 1))`, et de même
+pour `y`, sans second miroir. Le helper PowerShell persistant reçoit uniquement
+des données JSON et appelle `SetPhysicalCursorPos`. Il confirme le résultat
+de chaque appel ; aucun processus n'est lancé par image et aucune politique
+de sécurité n'est désactivée.
+
+Le contrôleur conserve au plus une commande en cours et la destination la plus
+récente en attente. Il interpole des positions physiques entre la dernière
+position confirmée et la cible, sans extrapolation ni reconnaissance supplémentaire.
+La durée du trajet suit l'intervalle entre les mesures, borné entre `1000 / 60` ms
+et 100 ms. Une nouvelle cible remplace le trajet précédent. Après activation ou
+suspension, le premier point est appliqué directement ; aucune ancienne position
+de main n'est réutilisée comme départ.
+
+Le timer de présentation reste actif uniquement pendant un trajet. Son intervalle
+demandé est de `1000 / 120` ms, mais une mesure Node Windows a montré des réveils
+espacés d'environ 15,6 ms, soit environ 64 Hz. Ni 120 Hz ni 244 Hz ne sont garantis.
+La cadence des positions du curseur est distincte de celle des observations,
+qui reste limitée par la caméra et l'inférence CPU. L'interpolation ne crée
+aucune nouvelle observation.
+
+Une comparaison native Windows sur 30 cibles synthétiques en environ 3,4 secondes
+passe de 30 à 195 positions distinctes, dont 180 intermédiaires : environ 9 puis
+57 positions par seconde. La médiane entre sorties est de 15,6 ms et le p95 de
+30,8 ms ; cette mesure n'est pas une garantie de cadence ni un essai webcam.
+
+Le wrapper bureau ne transmet rien lorsque le moteur ne produit pas de commande
+sur une image répétée avec un pointeur principal encore actif. Ce silence
+ne rafraîchit pas le watchdog. Le repos, la perte d'une main, une ambiguïté ou
+l'expiration du suivi transmettent toujours `null` : le contrôleur supprime la
+destination en attente et le trajet, puis immobilise le curseur. Un watchdog
+suspend aussi l'exécution après 250 ms sans commande fraîche ; l'interpolation
+ne prolonge pas cette durée et le helper abandonne les commandes expirées.
+Une nouvelle commande valide permet la reprise tant que le contrôle reste activé.
+
+L'arrêt caméra, le rechargement de la page, la perte du renderer et la fermeture
+désactivent le contrôle et terminent le helper. Un changement d'application ou
+une réduction conserve l'activation. Cette étape livre uniquement le
+déplacement ; la pause/reprise volontaire par geste est prévue à l'étape 11,
+la calibration de la zone des mains à l'étape 13, puis les boutons, le défilement
+et le clavier aux étapes suivantes.
 
 L'étape 9 règle `backgroundThrottling: false` dès la création de la fenêtre
 Electron pour désactiver la limitation des timers en arrière-plan. Ce réglage
 seul n'a pas suffi : lors de l'essai Windows réduit, la boucle d'animation
 ne traitait qu'environ une image par seconde.
 
+Le main ajoute également `disable-renderer-backgrounding` avant le démarrage
+d’Electron : la vision doit conserver sa priorité quand la fenêtre est réduite.
+Ce réglage est distinct de la limitation des timers
+([documentation Electron](https://www.electronjs.org/docs/latest/api/command-line-switches#--disable-renderer-backgrounding)).
+Ce seul flag n’a pas supprimé le ralentissement mesuré. Avant le premier affichage,
+le main lance donc un programme PowerShell statique ponctuel, avec le PID renderer
+obtenu par `webContents.getOSProcessId()`. `GetProcessInformation` puis
+`SetProcessInformation(ProcessPowerThrottling)` désactivent explicitement
+`PROCESS_POWER_THROTTLING_EXECUTION_SPEED` pour ce processus, en préservant les
+autres bits ; une seconde lecture confirme le résultat. Ce réglage HighQoS de
+gestion d’énergie conserve la classe de priorité CPU
+([documentation Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessinformation)).
+Le helper ferme le handle puis quitte ; le renderer conserve cette politique
+jusqu’à sa sortie. Le main mémorise le PID préparé, partage une préparation en
+cours et reprend si le PID change lors d’un rechargement. Une erreur d’un ancien
+renderer ne fait pas échouer son remplaçant. La fermeture annule la préparation.
+Aucun PID n’est accepté par IPC et les protections Electron restent en place.
+Les délais de perte de suivi et de fraîcheur des commandes restent inchangés.
+
 Le renderer bureau transmet donc `trackingOptions: { scheduling: "timer" }`
 à la vue partagée. Celle-ci appelle `createTrackingSession` avec ces options :
 `scheduling: "timer"` réarme `window.setTimeout` après chaque traitement, avec
-un délai de `1000 / 30` ms. La cadence maximale visée est de 30 itérations par
-seconde ; le coût du traitement s'ajoute au délai et aucune cadence n'est
-garantie. La boucle reste ainsi indépendante de `requestAnimationFrame`.
-Sans option, la session web conserve sa cadence par frames d'animation.
+un budget de `1000 / 30` ms incluant la vision, le moteur et le rendu. Chaque tick
+est horodaté avec `performance.now()` ; le délai suivant vaut
+`max(0, 1000 / 30 - temps écoulé depuis le début du tick)`. Il n'y a ni rattrapage
+des retards ni traitements concurrents. La cadence visée est de 30 itérations
+par seconde, sans garantie. Ce budget corrige, au sein de l'étape 10, le délai
+fixe de 33,3 ms ajouté après le traitement dans la version de l'étape 9.
+La boucle reste indépendante de `requestAnimationFrame`. Sans option, la
+session web conserve sa cadence par frames d'animation.
 
 La session conserve sa vidéo HTML, une seule boucle et son unique suivi
 d'identités ; la vue alimente toujours le même moteur commun. L'arrêt annule
 le callback avec `clearTimeout` ou
 `cancelAnimationFrame` selon la cadence choisie, puis libère les ressources.
-Les protections du renderer et les permissions restent inchangées ; aucun
-pont IPC ni seconde chaîne d'interprétation n'est ajouté.
+Les protections du renderer et les permissions sont conservées. Le pont IPC
+ajouté à l'étape 10 transporte les commandes de ce même moteur.
+
+La déduplication utilise `getVideoPlaybackQuality().totalVideoFrames` lorsque
+cette API fournit une première valeur positive. L’horloge `currentTime` seule peut avancer sur un flux
+live sans nouvelle image. La session utilise encore cette horloge en repli si
+l’API de qualité est absente ou reste nulle depuis le démarrage, ce qui préserve
+les flux Firefox. Après une valeur positive, le compteur reste autoritaire même
+s’il revient à zéro : le gel de la source ne réactive pas le repli. Une vidéo en pause ne produit aucune nouvelle
+observation. Le compteur indique des frames affichées ou abandonnées par le
+navigateur ; il ne mesure pas toutes les captures physiques de la webcam.
 
 Le diagnostic **Images processed** augmente uniquement lorsqu'une nouvelle image
 a été traitée par la vision puis le moteur, y compris lorsqu'aucune main n'est
@@ -157,13 +262,40 @@ Les essais natifs Windows avec caméra simulée ont vérifié la continuité :
 388 images traitées pendant 30 secondes de réduction, avec progression des
 images décodées et changement des pixels vidéo. L'arrêt, la reprise et la
 fermeture du processus ont aussi été vérifiés. Le parcours avec une vraie
-webcam, dont la perte et le retour d'une main, reste à valider.
+webcam, dont la perte et le retour d'une main, a ensuite été validé par
+l'utilisateur. L'étape 9 est commitée et poussée dans `9804677`.
 Avec ce réglage Electron, `visibilityState` reste
 `visible` même lorsque la fenêtre est réduite : les essais doivent vérifier son
 état Windows réel et la progression des images traitées. La réduction conserve
 le suivi ; **Stop camera** libère les ressources et la fermeture quitte
-l'application. Les entrées système commencent à l'étape 10 et l'installeur de
+l'application.
+
+Avant la correction de fluidité de l'étape 10, 310 tests passaient et un scénario
+natif Windows avec caméra simulée et commandes synthétiques a confirmé le déplacement physique du curseur sur
+l'écran principal, y compris hors focus et fenêtre réduite. Le raccourci global,
+l'arrêt caméra, le rechargement et la fermeture avec libération du helper ont
+été vérifiés, sans erreur JavaScript interceptée. Le parcours avec les vrais
+gestes et son confort restent à valider avec la webcam. L'installeur de
 distribution reste prévu à l'étape 27.
+
+Une mesure isolée du helper persistant a donné un délai de confirmation au
+95e percentile de 0,48 ms ; il n'était pas le goulot observé dans cet essai.
+Les 336 tests de la correction passent, ainsi que lint, formatage et builds
+web/bureau. Les arrêts ont été revérifiés dans Electron Windows. Le parcours
+webcam doit encore éprouver les mouvements lents, les courbes, les
+arrêts et la reprise, y compris fenêtre réduite.
+
+Le retour utilisateur confirme une amélioration au premier plan, mais les
+coupures en réduction ont demandé les corrections de politique Windows et de
+déduplication. Un profilage séparé a mesuré le ralentissement du calcul, alors
+que la capture continuait à 20 images/s. Après correction intégrée, un essai
+Windows de 30 secondes réduit traite environ 594 images, sans longue tâche de
+plus de 50 ms ; deux retards entre traitements dépassent toutefois 120 ms
+(maximum environ 175 ms). Les 390 tests passent, ainsi que les builds et contrôles
+de qualité. Les seuils de suivi restent inchangés ; la régularité réelle avec
+la webcam doit être retestée. Une rotation synthétique du pointage qui provoquait
+un faux pincement conserve maintenant la pose et les commandes ; cela ne prouve
+pas que toutes les pertes de pose devant le torse venaient de ce calcul.
 
 Les règles d'interprétation doivent être partagées : seuils, confirmations,
 choix de main, activation, pause, gestes et transitions. Une interface ne doit
@@ -171,8 +303,8 @@ pas ajouter sa propre détection du pincement ou une autre interprétation du
 même geste. Les commandes seront introduites au rythme de leurs consommateurs
 réels : déplacement, boutons, défilement puis clavier.
 
-La simulation affiche les commandes de déplacement et leurs effets. Le futur
-exécuteur système les traduira en entrées du PC. Le choix d'un champ de texte ou d'un bouton du
+La simulation affiche les commandes de déplacement et leurs effets. L'exécuteur
+Windows les traduit en positions du curseur. Le choix d'un champ de texte ou d'un bouton du
 logiciel utilisé appartiendra au fonctionnement normal de ce logiciel.
 
 Les tests utilisent des observations horodatées et des réglages identiques
@@ -181,13 +313,14 @@ validation de leur exécution réelle sur le système cible.
 
 ## Points à décider ou à éprouver
 
-1. Validation réelle du bootstrap sur Windows 11 x64 : réutilisation du moteur,
-   chargement MediaPipe, accès webcam, arrêt et fermeture. Electron est retenu ;
-   le build et les tests unitaires seuls ne prouvent pas ce parcours Windows.
-2. Suivi continu quand l'utilisateur change d'application ou réduit la fenêtre.
-   Le réglage Electron de l'étape 9 et le compteur d'images traitées sont présents ;
-   vérifier la continuité, les pertes et retours de mains, la restauration et
-   le nettoyage sous Windows, notamment avec la vraie webcam.
+1. Validation avec la vraie webcam de l'exécuteur Windows de l'étape 10 :
+   activation explicite, pointage, arrêt global et nettoyage. Le scénario natif
+   avec commandes synthétiques prouve le déplacement Windows ; il ne valide pas
+   la reconnaissance et le confort des vrais gestes.
+2. Maintien de ce contrôle dans une autre application ou fenêtre réduite,
+   suspension sur perte de suivi, puis reprise. L'étape 9 a validé le suivi
+   vidéo en arrière-plan et le scénario synthétique couvre le curseur ;
+   le parcours par gestes reste à éprouver avec la vraie webcam.
 3. Correspondance entre la zone de mouvement des mains et l'écran, miroir,
    sensibilité et calibration.
 4. Gestes volontaires d'activation, de pause, de clic secondaire, de défilement
@@ -205,9 +338,10 @@ simule les déplacements dans le navigateur, puis ferme la caméra à sa sortie.
 Il ne contrôle aucune autre application. Les commandes de boutons, de
 défilement et de clavier ne sont pas encore implémentées.
 
-Le socle de l'application PC est présent ; il affiche encore les diagnostics
-et la simulation du Playground. Aucun exécuteur système, contrôle Linux,
-intégration Android, interface AR ou bibliothèque publiée n'est livré.
+L'application PC conserve les diagnostics et la simulation du Playground, avec
+un exécuteur de déplacement Windows activable séparément. Les clics, le
+défilement, la saisie clavier, le contrôle Linux, l'intégration Android,
+l'interface AR et une bibliothèque publiée restent ultérieurs.
 
 Un hébergement du site sur VPS ou PC Ubuntu fournit les fichiers web au
 navigateur. Il ne déplace pas automatiquement la reconnaissance vers cet

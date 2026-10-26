@@ -43,9 +43,13 @@ function resources() {
 	};
 }
 
-function setupSession(scheduling?: TrackingSessionOptions["scheduling"]) {
+function setupSession(
+	scheduling?: TrackingSessionOptions["scheduling"],
+	hasVideoQuality = true,
+) {
 	let now = 0;
 	let frameId = 0;
+	let videoFrameCount = 0;
 	const queued = new Map<number, FrameRequestCallback>();
 	vi.spyOn(performance, "now").mockImplementation(() => now);
 	vi.stubGlobal(
@@ -74,7 +78,11 @@ function setupSession(scheduling?: TrackingSessionOptions["scheduling"]) {
 	vi.mocked(createHandTracker).mockResolvedValue(first.tracker);
 	const video = {
 		readyState: 2,
+		paused: false,
 		currentTime: 0,
+		getVideoPlaybackQuality: hasVideoQuality
+			? () => ({ totalVideoFrames: videoFrameCount })
+			: undefined,
 		videoWidth: 1280,
 		videoHeight: 720,
 		srcObject: null,
@@ -90,7 +98,10 @@ function setupSession(scheduling?: TrackingSessionOptions["scheduling"]) {
 
 	function frame(timestamp: number, fresh = true) {
 		now = timestamp;
-		if (fresh) video.currentTime += 1;
+		if (fresh) {
+			video.currentTime += 1;
+			videoFrameCount += 1;
+		}
 		const pending = [...queued.values()];
 		queued.clear();
 		for (const callback of pending) callback(timestamp);
@@ -111,6 +122,12 @@ function setupSession(scheduling?: TrackingSessionOptions["scheduling"]) {
 		video,
 		frame,
 		queued,
+		setVideoFrameCount: (value: number) => {
+			videoFrameCount = value;
+		},
+		advanceTime: (elapsed: number) => {
+			now += elapsed;
+		},
 		replaceResources,
 		...first,
 	};
@@ -133,7 +150,8 @@ it("uses animation frames by default when no scheduling option is provided", asy
 describe.each(["animation-frame", "timer"] as const)(
 	"Shared tracking session (%s)",
 	(scheduling) => {
-		const setup = () => setupSession(scheduling);
+		const setup = (hasVideoQuality = true) =>
+			setupSession(scheduling, hasVideoQuality);
 
 		it("uses only the selected scheduler and cancels its pending work", async () => {
 			const { session, video, queued } = setup();
@@ -155,6 +173,55 @@ describe.each(["animation-frame", "timer"] as const)(
 			expect(cancel).toHaveBeenCalledExactlyOnceWith(1);
 			expect(queued.size).toBe(0);
 		});
+
+		it.each([10, 50])(
+			"accounts for %s ms of processing without overlapping or accumulating catch-up work",
+			async (processingTime) => {
+				const {
+					session,
+					video,
+					frame,
+					tracker,
+					callbacks,
+					queued,
+					advanceTime,
+				} = setup();
+				await session.start(video);
+				tracker.detect.mockImplementationOnce(() => {
+					expect(queued.size).toBe(0);
+					advanceTime(6);
+					return [];
+				});
+				callbacks.onFrame.mockImplementationOnce(() => {
+					expect(queued.size).toBe(0);
+					advanceTime(processingTime - 6);
+				});
+				frame(100);
+				expect(tracker.detect).toHaveBeenCalledExactlyOnceWith(video, 100);
+				expect(queued.size).toBe(1);
+				if (scheduling === "timer") {
+					expect(vi.mocked(window.setTimeout).mock.lastCall?.[1]).toBeCloseTo(
+						Math.max(0, 1000 / 30 - processingTime),
+					);
+					expect(requestAnimationFrame).not.toHaveBeenCalled();
+				} else {
+					expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+					expect(window.setTimeout).not.toHaveBeenCalled();
+				}
+				// Le prochain budget repart de son propre tick, sans dette du précédent.
+				frame(100 + processingTime);
+				expect(tracker.detect).toHaveBeenCalledTimes(2);
+				expect(queued.size).toBe(1);
+				if (scheduling === "timer") {
+					expect(vi.mocked(window.setTimeout).mock.lastCall?.[1]).toBeCloseTo(
+						1000 / 30,
+					);
+				}
+				session.stop();
+				expect(queued.size).toBe(0);
+			},
+		);
+
 		it("starts only on request and processes each video image once", async () => {
 			const { session, video, frame, callbacks, tracker } = setup();
 			expect(startCamera).not.toHaveBeenCalled();
@@ -172,6 +239,119 @@ describe.each(["animation-frame", "timer"] as const)(
 				hasNewFrame: false,
 				observations: [],
 			});
+		});
+
+		it("does not replay images when playback time advances but the video frame count is frozen", async () => {
+			const { session, video, frame, tracker, callbacks } = setup();
+			await session.start(video);
+			tracker.detect.mockReturnValue([observation(0)]);
+			frame(0);
+			video.currentTime += 1;
+			frame(121, false);
+			expect(tracker.detect).toHaveBeenCalledExactlyOnceWith(video, 0);
+			expect(callbacks.onFrame.mock.lastCall?.[0]).toMatchObject({
+				hasNewFrame: false,
+				observations: [],
+				tracking: {
+					hands: [],
+					events: [{ type: "hand:lost", handId: 1, reason: "timeout" }],
+				},
+			});
+		});
+
+		it("processes a changed frame count even when playback time stays the same", async () => {
+			const { session, video, frame, tracker, setVideoFrameCount } = setup();
+			await session.start(video);
+			frame(0);
+			setVideoFrameCount(2);
+			frame(40, false);
+			expect(video.currentTime).toBe(1);
+			expect(tracker.detect).toHaveBeenCalledTimes(2);
+			expect(tracker.detect.mock.lastCall).toEqual([video, 40]);
+		});
+
+		it("processes a 20 Hz video only once per received frame when polled at 30 Hz", async () => {
+			const { session, video, frame, tracker, setVideoFrameCount } = setup();
+			await session.start(video);
+			for (const timestamp of [0, 33, 66, 100, 133, 166, 200, 233, 266, 300]) {
+				video.currentTime = timestamp / 1000;
+				setVideoFrameCount(1 + Math.floor(timestamp / 50));
+				frame(timestamp, false);
+			}
+			expect(tracker.detect.mock.calls.map((call) => call[1])).toEqual([
+				0, 66, 100, 166, 200, 266, 300,
+			]);
+		});
+
+		it("uses playback time as a compatibility fallback when video quality is unavailable", async () => {
+			const { session, video, frame, tracker, callbacks } = setup(false);
+			await session.start(video);
+			frame(0);
+			frame(16, false);
+			expect(tracker.detect).toHaveBeenCalledExactlyOnceWith(video, 0);
+			expect(callbacks.onFrame.mock.lastCall?.[0].hasNewFrame).toBe(false);
+			frame(40);
+			expect(tracker.detect.mock.lastCall).toEqual([video, 40]);
+		});
+
+		it("keeps the playback time fallback when an exposed frame counter has never been positive", async () => {
+			const { session, video, frame, tracker, callbacks } = setup();
+			await session.start(video);
+			frame(0, false);
+			video.currentTime = 0.04;
+			frame(40, false);
+			frame(60, false);
+			expect(tracker.detect.mock.calls.map((call) => call[1])).toEqual([0, 40]);
+			expect(callbacks.onFrame.mock.lastCall?.[0].hasNewFrame).toBe(false);
+		});
+
+		it("distinguishes equal playback time and frame count values when switching to the frame counter", async () => {
+			const { session, video, frame, tracker, callbacks, setVideoFrameCount } =
+				setup();
+			await session.start(video);
+			video.currentTime = 1;
+			frame(0, false);
+			setVideoFrameCount(1);
+			frame(40, false);
+			expect(tracker.detect.mock.calls.map((call) => call[1])).toEqual([0, 40]);
+			video.currentTime = 2;
+			frame(60, false);
+			expect(tracker.detect).toHaveBeenCalledTimes(2);
+			expect(callbacks.onFrame.mock.lastCall?.[0].hasNewFrame).toBe(false);
+		});
+
+		it("never falls back to the playback clock after a positive frame counter returns to zero", async () => {
+			const { session, video, frame, tracker, callbacks, setVideoFrameCount } =
+				setup();
+			await session.start(video);
+			tracker.detect.mockImplementation((_video, timestamp) => [
+				observation(timestamp),
+			]);
+			frame(0);
+			setVideoFrameCount(0);
+			video.currentTime = 2;
+			frame(40, false);
+			video.currentTime = 3;
+			frame(161, false);
+			expect(tracker.detect.mock.calls.map((call) => call[1])).toEqual([0, 40]);
+			expect(callbacks.onFrame.mock.lastCall?.[0]).toMatchObject({
+				hasNewFrame: false,
+				observations: [],
+				tracking: {
+					hands: [],
+					events: [{ type: "hand:lost", handId: 1, reason: "timeout" }],
+				},
+			});
+		});
+
+		it("does not process a paused video even if received frames keep accumulating", async () => {
+			const { session, video, frame, tracker, callbacks } = setup();
+			await session.start(video);
+			frame(0);
+			Object.defineProperty(video, "paused", { value: true });
+			frame(40);
+			expect(tracker.detect).toHaveBeenCalledExactlyOnceWith(video, 0);
+			expect(callbacks.onFrame.mock.lastCall?.[0].hasNewFrame).toBe(false);
 		});
 
 		it("waits for a playable image before invoking the detector", async () => {

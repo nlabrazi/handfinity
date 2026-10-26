@@ -1,13 +1,47 @@
 import { describe, expect, it } from "vitest";
+import type { HandPoint } from "../hand-observation";
 import { createPinchDetector, type HandPose, type PinchEvent } from "./pinch";
 
 function createHand(gap: number): HandPose {
 	return {
-		wrist: { x: 0.5, y: 0.85 },
-		middleBase: { x: 0.5, y: 0.6 },
-		thumbTip: { x: 0.5, y: 0.4 },
-		indexTip: { x: 0.5 + gap, y: 0.4 },
+		wrist: { x: 0.5, y: 0.85, z: 0 },
+		middleBase: { x: 0.5, y: 0.6, z: 0 },
+		thumbTip: { x: 0.5, y: 0.4, z: 0 },
+		indexTip: { x: 0.5 + gap, y: 0.4, z: 0 },
 	};
+}
+
+function transformHand(
+	hand: HandPose,
+	transform: (point: HandPoint) => HandPoint,
+): HandPose {
+	return {
+		wrist: transform(hand.wrist),
+		middleBase: transform(hand.middleBase),
+		thumbTip: transform(hand.thumbTip),
+		indexTip: transform(hand.indexTip),
+	};
+}
+
+function rotateHand(hand: HandPose, axis: "x" | "y"): HandPose {
+	const angle = (85 * Math.PI) / 180;
+	const cosine = Math.cos(angle);
+	const sine = Math.sin(angle);
+	return transformHand(hand, (point) => {
+		const x = point.x - 0.5;
+		const y = point.y - 0.5;
+		return axis === "x"
+			? {
+					x: point.x,
+					y: 0.5 + y * cosine - point.z * sine,
+					z: y * sine + point.z * cosine,
+				}
+			: {
+					x: 0.5 + x * cosine + point.z * sine,
+					y: point.y,
+					z: -x * sine + point.z * cosine,
+				};
+	});
 }
 
 function startPinch() {
@@ -81,7 +115,7 @@ describe("Pinch detector", () => {
 	it("follows the index when only the thumb moves", () => {
 		const detector = startPinch();
 		const hand = createHand(0.04);
-		hand.thumbTip.x += 0.02;
+		hand.thumbTip = { ...hand.thumbTip, x: hand.thumbTip.x + 0.02 };
 		expect(detector.update(hand, 1, 80)?.position).toEqual({ x: 0.54, y: 0.4 });
 	});
 
@@ -92,6 +126,68 @@ describe("Pinch detector", () => {
 		detector.update(createHand(0.03), 2, 120);
 		expect(detector.update(createHand(0.03), 2, 160)?.type).toBe("pinch:start");
 	});
+
+	it("does not pinch when separated fingertips only overlap in the image", () => {
+		const hand = rotateHand(createHand(0.2), "y");
+		expect(
+			Math.hypot(
+				hand.thumbTip.x - hand.indexTip.x,
+				hand.thumbTip.y - hand.indexTip.y,
+			),
+		).toBeLessThan(0.02);
+		const detector = createPinchDetector();
+		for (const timestamp of [0, 40, 80]) {
+			expect(detector.update(hand, 1, timestamp)).toBeNull();
+		}
+	});
+
+	it.each(["x", "y"] as const)(
+		"keeps a true pinch and its release timing after a depth rotation around %s",
+		(axis) => {
+			const detector = createPinchDetector();
+			const pinched = rotateHand(createHand(0.04), axis);
+			expect(detector.update(pinched, 1, 0)).toBeNull();
+			const started = detector.update(pinched, 1, 40);
+			expect(started?.type).toBe("pinch:start");
+			expect(started?.ratio).toBeCloseTo(0.16);
+			expect(started?.position).toEqual({
+				x: pinched.indexTip.x,
+				y: pinched.indexTip.y,
+			});
+			const moved = detector.update(pinched, 1, 60);
+			expect(moved?.type).toBe("pinch:move");
+			expect(moved?.position).toEqual(started?.position);
+			const released = rotateHand(createHand(0.2), axis);
+			expect(detector.update(released, 1, 80)).toBeNull();
+			expect(detector.update(released, 1, 139)).toBeNull();
+			expect(detector.update(released, 1, 140)).toMatchObject({
+				type: "pinch:end",
+				reason: "released",
+				position: started?.position,
+			});
+		},
+	);
+
+	it.each([0.75, 1, 16 / 9, 2])(
+		"keeps the depth-aware pinch ratio across scales at image aspect %s",
+		(aspectRatio) => {
+			for (const scale of [0.5, 1, 1.5]) {
+				const hand = transformHand(
+					rotateHand(createHand(0.04), "y"),
+					(point) => ({
+						x: 0.5 + ((point.x - 0.5) * scale) / aspectRatio,
+						y: 0.5 + (point.y - 0.5) * scale,
+						z: (point.z * scale) / aspectRatio,
+					}),
+				);
+				const detector = createPinchDetector();
+				detector.update(hand, aspectRatio, 0);
+				const started = detector.update(hand, aspectRatio, 40);
+				expect(started?.type).toBe("pinch:start");
+				expect(started?.ratio).toBeCloseTo(0.16);
+			}
+		},
+	);
 
 	it("treats a degenerate palm as tracking loss", () => {
 		const detector = startPinch();

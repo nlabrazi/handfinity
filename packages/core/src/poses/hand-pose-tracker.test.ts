@@ -303,6 +303,58 @@ describe("Hand pose recognition", () => {
 		}
 	});
 
+	it.each([0.75, 1, 16 / 9, 2])(
+		"preserves poses through a rigid depth tilt and scale at image aspect %s",
+		(aspectRatio) => {
+			const tilt = (85 * Math.PI) / 180;
+			for (const kind of ["pointing", "open-palm", "pinch"] as const) {
+				const original = hand(kind, 0);
+				const baseline = createHandPoseTracker().update(
+					frame(0, [track(original)]),
+				)[0]?.measurements?.pinchRatio;
+				const thumb = original.landmarks[4];
+				const index = original.landmarks[8];
+				if (!thumb || !index) throw new Error("Missing fixture fingertip");
+				const gap = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+				const axisX = -(index.y - thumb.y) / gap;
+				const axisY = (index.x - thumb.x) / gap;
+				for (const scale of [0.5, 1, 1.5]) {
+					const tracker = createHandPoseTracker();
+					for (const timestamp of [0, 80]) {
+						const observation = hand(kind, timestamp);
+						const landmarks = observation.landmarks.map((point) => {
+							const x = point.x - 0.5;
+							const y = point.y - 0.5;
+							const dot = axisX * x + axisY * y;
+							return {
+								x:
+									0.5 +
+									(scale *
+										(x * Math.cos(tilt) + axisX * dot * (1 - Math.cos(tilt)))) /
+										aspectRatio,
+								y:
+									0.5 +
+									scale *
+										(y * Math.cos(tilt) + axisY * dot * (1 - Math.cos(tilt))),
+								z:
+									(scale * (axisX * y - axisY * x) * Math.sin(tilt)) /
+									aspectRatio,
+							};
+						});
+						const result = tracker.update(
+							frame(timestamp, [track({ ...observation, landmarks })]),
+							aspectRatio,
+						)[0];
+						expect(result?.measurements?.pinchRatio).toBeCloseTo(
+							baseline ?? -1,
+						);
+						if (timestamp === 80) expect(result?.pose).toBe(kind);
+					}
+				}
+			}
+		},
+	);
+
 	it.each([0.75, 16 / 9, 2])(
 		"corrects distances and angles for image aspect ratio %s",
 		(aspectRatio) => {

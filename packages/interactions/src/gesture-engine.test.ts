@@ -162,6 +162,68 @@ describe("Shared gesture engine", () => {
 		});
 	});
 
+	it("keeps pointer commands when a rigid depth rotation overlaps the fingertips in 2D", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const norm = Math.hypot(0.27, 0.24);
+		const axisX = 0.27 / norm;
+		const axisY = 0.24 / norm;
+		for (const [timestamp = 0, degrees = 0] of [
+			[0, 0],
+			[80, 0],
+			[100, 20],
+			[120, 40],
+			[140, 60],
+			[160, 80],
+			[180, 85],
+			[220, 85],
+			[260, 85],
+		]) {
+			const observation = hand("pointing", timestamp);
+			const angle = (degrees * Math.PI) / 180;
+			const landmarks = observation.landmarks.map((point) => {
+				const x = point.x - 0.5;
+				const y = point.y - 0.5;
+				const dot = axisX * x + axisY * y;
+				return {
+					x:
+						0.5 +
+						0.5 * (x * Math.cos(angle) + axisX * dot * (1 - Math.cos(angle))),
+					y:
+						0.5 +
+						0.5 * (y * Math.cos(angle) + axisY * dot * (1 - Math.cos(angle))),
+					z: 0.5 * (axisX * y - axisY * x) * Math.sin(angle),
+				};
+			});
+			const result = engine.update(
+				identities.update([{ ...observation, landmarks }], timestamp),
+			);
+			if (timestamp < 80) continue;
+			expect(result.tracking.hands[0]?.id).toBe(1);
+			expect(result.poses[0]).toMatchObject({
+				pose: "pointing",
+				candidate: "pointing",
+			});
+			expect(result.poses[0]?.measurements?.pinchRatio).toBeCloseTo(
+				Math.hypot(0.24, 0.27) / 0.25,
+			);
+			expect(result.pointers.pointers[0]?.active).toBe(true);
+			expect(result.commands).toMatchObject([{ handId: 1, timestamp }]);
+			if (degrees === 85) {
+				const thumb = landmarks[4];
+				const index = landmarks[8];
+				const wrist = landmarks[0];
+				const middle = landmarks[9];
+				if (!thumb || !index || !wrist || !middle)
+					throw new Error("Missing fixture landmark");
+				const projectedRatio =
+					Math.hypot(thumb.x - index.x, thumb.y - index.y) /
+					Math.hypot(wrist.x - middle.x, wrist.y - middle.y);
+				expect(projectedRatio).toBeLessThan(0.32);
+			}
+		}
+	});
+
 	it("keeps both hands independent and applies explicit and automatic choices", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();

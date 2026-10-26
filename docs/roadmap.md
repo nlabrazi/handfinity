@@ -40,6 +40,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `352f8e4` | Moteur commun des postures et pointeurs, étape 6 | Testé et validé par l'utilisateur |
 | `d18d337` | Commandes de déplacement partagées et simulation, étape 7 | Testé, revu et validé par l'utilisateur |
 | `9c0de98` | Socle Electron Windows et lancement depuis WSL2, étape 8 | Accepté et commité par l'utilisateur |
+| `9804677` | Suivi bureau en arrière-plan et cadence par timer, étape 9 | Testé avec la vraie webcam, validé, commité et poussé par l'utilisateur |
 
 ## Recadrage et suppressions — réalisé
 
@@ -83,20 +84,36 @@ du travail fonctionnel repris à l'étape 6.
    premier plan et l'exécution système ne sont pas inclus.
 9. **`feat(desktop): keep hand tracking active in the background`** — Vérifier la
    caméra et le moteur quand l'utilisateur change d'application ou réduit la fenêtre.
-   Implémentée, à valider avec la vraie webcam : cadence par timer dans la session
-   partagée pour le bureau, throttling Electron désactivé et compteur d'images
-   traitées. Le web conserve sa cadence par défaut. Vérifier la continuité,
-   la perte et le retour des mains, la restauration et le nettoyage à l'arrêt.
-   Les commandes restent simulées jusqu'à l'étape 10.
+   Livrée dans `9804677`, validée avec la vraie webcam puis commitée et poussée
+   par l'utilisateur : cadence par timer dans la session partagée pour le bureau,
+   throttling Electron désactivé et compteur d'images traitées. Le web conserve
+   sa cadence par défaut. Cette étape prépare l'exécution Windows de l'étape 10.
 10. **`feat(desktop): execute system pointer commands`** — Déplacer le vrai curseur,
     avec activation explicite, arrêt et suspension sur perte de suivi.
+    Implémentée, en attente de validation utilisateur avec la vraie webcam :
+    **Enable Windows pointer** après **Start camera**, écran principal entier,
+    miroir unique, pont IPC limité et exécuteur PowerShell persistant.
+    **Stop Windows pointer**, **Ctrl + Alt + Esc**, l'arrêt caméra et la fermeture
+    désactivent le contrôle. Le repos ou la perte de suivi suspend les commandes.
+    **390 tests passent**, lint, formatage et builds web/bureau réussis ; les
+    essais natifs avec commandes synthétiques confirment le déplacement et les
+    arrêts, y compris hors focus et fenêtre réduite. Attendre la validation de cette étape
+    avant de commencer l'étape 11. Clics, défilement et clavier restent ultérieurs.
+    Les premiers essais ont demandé une correction de fluidité : budget caméra
+    incluant le traitement, absence de faux arrêt entre images et interpolation
+    des positions. Une comparaison native avec les mêmes cibles passe d'environ
+    9 à 57 positions distinctes par seconde ; l’utilisateur a confirmé cette
+    amélioration au premier plan. Les coupures fenêtre réduite ont ensuite demandé
+    une politique de performance Windows pour le renderer et une déduplication
+    vidéo compatible avec Firefox. Les pertes près du torse ont révélé un faux
+    pincement lié à la projection 2D ; sa mesure utilise maintenant XYZ. Ces
+    corrections restent à valider avec la vraie webcam.
 
 Décisions de l'étape 8 : Windows 11 x64 et Electron, avec édition et compilation
 sous WSL2 puis exécution directe sous Windows. Les essais web de l'utilisateur
-restent possibles dans Firefox Windows. La réutilisation du socle et l'accès
-caméra sont à vérifier dans la fenêtre bureau ; l'exécution hors premier plan
-appartient à l'étape 9. Le premier contrôle réel sera validé dans une autre
-application à l'étape 10.
+restent possibles dans Firefox Windows. Le suivi hors premier plan a été validé
+à l'étape 9 ; le parcours par gestes avec la vraie webcam reste à valider pour
+l'étape 10. La calibration de la zone des mains est prévue à l'étape 13.
 
 ## Souris utilisable — à réaliser
 
@@ -153,4 +170,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l'étape 9 pour reprendre dans une nouvelle discussion.
+périmètre de l'étape 10 pour reprendre dans une nouvelle discussion.

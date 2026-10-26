@@ -51,11 +51,12 @@ export function createTrackingSession(
 	let current: SessionRun | null = null;
 	const useTimer = options.scheduling === "timer";
 
-	function schedule(tick: () => void) {
+	function schedule(tick: () => void, startedAt?: number) {
 		// Une fenêtre réduite peut recevoir très peu de frames d'animation.
-		return useTimer
-			? window.setTimeout(tick, 1000 / 30)
-			: requestAnimationFrame(tick);
+		if (!useTimer) return requestAnimationFrame(tick);
+		// Le budget inclut la vision et les callbacks, sans rattraper les retards.
+		const elapsed = startedAt === undefined ? 0 : performance.now() - startedAt;
+		return window.setTimeout(tick, Math.max(0, 1000 / 30 - elapsed));
 	}
 
 	function stop() {
@@ -104,18 +105,30 @@ export function createTrackingSession(
 				throw run.abort.signal.reason;
 			}
 			run.tracker = tracker;
-			let lastVideoTime = -1;
+			let hasFrameCounter = false;
+			let lastFrameToken: string | null = null;
 			let aspectRatio = 1;
 
 			function tick() {
 				if (current !== run) return;
+				const timestamp = performance.now();
 				try {
-					const timestamp = performance.now();
+					// currentTime peut avancer sans nouvelle image pour un flux en direct.
+					const frameCount = video.getVideoPlaybackQuality?.().totalVideoFrames;
+					// Firefox peut exposer un compteur toujours nul pour un MediaStream.
+					// Après une première valeur positive, il reste la seule référence.
+					if (frameCount !== undefined && frameCount > 0)
+						hasFrameCounter = true;
+					const frameToken = hasFrameCounter
+						? `frames:${frameCount}`
+						: `time:${video.currentTime}`;
 					const hasNewFrame =
-						video.readyState >= 2 && video.currentTime !== lastVideoTime;
+						video.readyState >= 2 &&
+						!video.paused &&
+						frameToken !== lastFrameToken;
 					let observations: HandObservation[] = [];
 					if (hasNewFrame) {
-						lastVideoTime = video.currentTime;
+						lastFrameToken = frameToken;
 						aspectRatio = video.videoWidth / video.videoHeight;
 						observations = tracker.detect(video, timestamp);
 					}
@@ -138,7 +151,7 @@ export function createTrackingSession(
 					}
 					return;
 				}
-				if (current === run) run.frameId = schedule(tick);
+				if (current === run) run.frameId = schedule(tick, timestamp);
 			}
 
 			run.frameId = schedule(tick);

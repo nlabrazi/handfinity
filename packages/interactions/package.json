@@ -4,7 +4,8 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./pointer-commands": "./src/pointer-commands.ts"
 	},
 	"scripts": {
 		"test": "vitest run"

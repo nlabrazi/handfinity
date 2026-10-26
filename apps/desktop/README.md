@@ -1,15 +1,18 @@
 # Handfinity — Desktop
 
-Ce socle Electron 45.0.0 ouvre une fenêtre **Handfinity Desktop** sur Windows 11
-x64. Elle utilise directement `playground/view` : même caméra, mêmes diagnostics,
+Cette application Electron 45.0.0 ouvre une fenêtre **Handfinity Desktop** sur
+Windows 11 x64. Elle réutilise `playground/view` : même caméra, mêmes diagnostics,
 même moteur et même simulation. Le curseur simulé suit le bout de l'index de la
 main principale lorsque le pointage est confirmé.
 
-Le contrôle de la souris et du clavier Windows n'est pas encore implémenté.
-L'étape 9 ajoute le suivi en arrière-plan, vérifié sous Windows avec une caméra
-simulée et restant à valider avec la vraie webcam.
-Les déplacements système appartiennent à l'étape 10 et l'installeur de
-distribution à l'étape 27.
+L'étape 9, validée par l'utilisateur avec sa vraie webcam et livrée dans
+`9804677`, conserve le suivi en arrière-plan. L'étape 10 ajoute le déplacement
+du **vrai curseur Windows**, sur activation explicite après **Start camera**.
+Une première version a été vérifiée sous Windows avec des commandes synthétiques.
+La correction de fluidité de cette même étape est vérifiée avec des cibles
+synthétiques ; son confort avec la vraie webcam reste à valider.
+Les clics, le défilement et le clavier appartiennent aux étapes suivantes ;
+l'installeur de distribution reste prévu à l'étape 27.
 
 ## Responsabilités
 
@@ -18,23 +21,71 @@ distribution à l'étape 27.
   Node.js. La page locale de l'application peut demander la caméra vidéo ; les
   autres permissions sont refusées. `backgroundThrottling: false` est réglé dès
   la création de la fenêtre pour désactiver la limitation des timers en
-  arrière-plan. Aucun pont IPC n'est ajouté à cette étape.
+  arrière-plan. Un preload sandboxé expose les seules capacités nécessaires au
+  pointeur ; le main valide la fenêtre, la frame principale, l'origine locale
+  et les données de chaque échange IPC.
 - **La vue partagée du Playground** utilise `core`, `vision` et `interactions`
   pour analyser les images et simuler les commandes. Aucune reconnaissance des
   gestes n'est recopiée dans le code bureau. Le renderer bureau configure
   `trackingOptions: { scheduling: "timer" }` ; le navigateur conserve
   `requestAnimationFrame` par défaut. La session de vision possède toujours
   une seule boucle et un seul suivi d'identités.
+- **L'interface bureau** reçoit les résultats du moteur via les événements de
+  la vue partagée et ajoute les commandes **Enable Windows pointer** et
+  **Stop Windows pointer**. Elle transmet les commandes existantes au main,
+  sans interpréter de nouveau les gestes.
+- **L'exécuteur Windows** transforme la destination normalisée en pixels
+  physiques de l'écran principal. Un helper PowerShell persistant appelle
+  `SetPhysicalCursorPos` et confirme chaque déplacement exécuté. Le même
+  processus traite les commandes successives ; aucun processus n'est créé
+  pour chaque image et aucune politique de sécurité n'est désactivée.
 - **Le lanceur** utilise Electron Windows quand la commande part de WSL2.
   WSL2 compile le projet ; la caméra et les calculs fonctionnent dans la fenêtre
   Electron exécutée sur Windows.
 
-Le suivi bureau utilise `window.setTimeout` avec un délai de `1000 / 30` ms après
-chaque traitement. La cadence maximale visée est de 30 itérations par seconde ;
-le coût du traitement s'ajoute au délai, sans cadence garantie. Cette boucle
-reste indépendante des frames d'animation, qui descendaient à environ une par
-seconde dans l'essai Windows réduit malgré `backgroundThrottling: false`.
+Le suivi bureau utilise `window.setTimeout` avec un budget de `1000 / 30` ms
+incluant la vision, le moteur et le rendu. Après chaque traitement, il attend
+uniquement le temps restant, borné à zéro, sans rattraper les retards. La cadence
+visée reste de 30 itérations par seconde, sans garantie : caméra et inférence CPU
+limitent le nombre d'images nouvelles réellement traitées. Cette boucle reste
+indépendante des frames d'animation, qui descendaient à environ une par seconde
+dans l'essai Windows réduit malgré `backgroundThrottling: false`.
 **Stop camera** annule le timer puis libère les ressources.
+
+Pour éviter de déplacer le curseur uniquement à l'arrivée de chaque mesure,
+le main produit des positions physiques intermédiaires jusqu'à la dernière cible
+reçue, sans prédire le mouvement de la main. La durée s'adapte à l'intervalle
+entre mesures, entre 16,7 et 100 ms. Le premier point après activation ou perte
+est appliqué directement, sans reprendre une ancienne trajectoire. Le timer de
+déplacement ne tourne que pendant un trajet.
+
+La cadence demandée pour ces positions est de 120 Hz. Une mesure Node Windows
+a toutefois donné des réveils espacés d'environ 15,6 ms, soit environ 64 Hz :
+ni 120 Hz ni la fréquence de l'écran ne sont garantis. Cette cadence de curseur
+est distincte de celle des images et ne crée aucune nouvelle observation caméra.
+
+Le contrôle Windows reste désactivé au lancement. Après **Start camera**, cliquer
+sur **Enable Windows pointer**. Le statut passe de démarrage à attente d'une
+main en pointage, puis au suivi de la main principale. **Stop Windows pointer**
+ou **Ctrl + Alt + Esc** désactive le contrôle tout en gardant la caméra active.
+Ce raccourci est enregistré pendant le démarrage du contrôle et son activation,
+puis libéré à l'arrêt. Si son enregistrement échoue, le contrôle reste arrêté.
+
+L'écran visé est **l'écran principal Windows entier**, barre des tâches comprise.
+Le main convertit ses dimensions DIP en pixels physiques avant d'appliquer les
+coordonnées normalisées, sans ajouter de miroir. La calibration de la zone des
+mains, la sensibilité et le choix d'écran ne sont pas ajoutés à ce lot ; la
+calibration est prévue à l'étape 13.
+
+Une main au repos, absente ou ambiguë suspend les nouvelles commandes et efface
+la destination en attente ainsi que le trajet. Une image répétée avec un pointeur
+principal encore actif ne transmet aucun message et ne suspend pas le trajet ;
+elle ne rafraîchit pas non plus le watchdog. Une absence de commande fraîche
+pendant 250 ms suspend l'exécution. Une seule commande peut être en cours, avec
+au plus une destination plus récente en attente ; les commandes expirées sont
+abandonnées. **Stop camera**, un rechargement, un crash du renderer ou la
+fermeture désactive le contrôle et termine le helper. Perdre le focus ou réduire
+la fenêtre conserve le suivi et le contrôle activé.
 
 Un futur PC Ubuntu utilisera une version Linux issue du même projet, avec une
 adaptation de l'exécuteur système. Son contrôle n'est pas livré ici. Un VPS
@@ -46,7 +97,8 @@ une intégration native spécifique et une étude distincte.
 
 Prérequis : Windows 11 x64, Node.js 24 et npm dans WSL2, l'interopérabilité
 Windows de WSL activée et `unzip` disponible dans la distribution Linux.
-Windows doit autoriser la caméra pour les applications de bureau.
+Windows doit autoriser la caméra pour les applications de bureau. L'adaptateur
+du curseur utilise Windows PowerShell et User32 sur le poste Windows.
 
 Depuis la racine du dépôt :
 
@@ -90,7 +142,8 @@ Conserver ses dépendances séparées de celles installées sous WSL2.
 
 Hors WSL2, le lanceur utilise le binaire Electron correspondant à la plateforme
 courante. Un lancement Linux ne valide pas le comportement Windows ; les
-adaptations de contrôle Linux restent ultérieures.
+adaptations de contrôle Linux restent ultérieures. L'interface y indique que
+le contrôle système demande Windows ; caméra et simulation restent utilisables.
 
 ## Vérifications automatiques
 
@@ -121,52 +174,133 @@ et changement des pixels vidéo. Les prélèvements toutes les deux secondes
 confirment la continuité pendant cet intervalle. Une source mise en pause
 n'augmente plus le compteur ; la reprise, l'arrêt, le redémarrage puis la
 fermeture du processus Windows passent aussi, sans erreur JavaScript interceptée.
-Ces mesures ne garantissent aucune cadence avec un autre matériel. La perte
-et le retour d'une main sont couverts par les tests de session ; ils restent
-à confirmer en arrière-plan avec la vraie webcam, comme le parcours complet.
+Ces mesures ne garantissent aucune cadence avec un autre matériel. L'utilisateur
+a ensuite validé les essais de l'étape 9 avec sa vraie webcam, puis commité et
+poussé `9804677`.
+
+La première validation de l'étape 10, avant la correction de fluidité, couvrait
+**310 tests**, lint, formatage et builds web/bureau. Les tests couvrent le contrat
+IPC et son origine, le preload, l'activation et l'arrêt, la conversion des
+coordonnées, les commandes anciennes,
+la suspension, la file bornée et le cycle de vie du helper. La vérification de
+la correction ajoute le budget de traitement, les images répétées et les trajets
+intermédiaires. Après correction, **336 tests passent**, ainsi que lint,
+formatage et builds web/bureau.
+
+Une comparaison du contrôleur avec le vrai exécuteur Windows utilise 30 cibles
+synthétiques en environ 3,4 secondes : 30 positions distinctes avant correction,
+195 après, dont 180 intermédiaires. Cela correspond à environ 9 puis 57 positions
+distinctes par seconde. Après correction, l'intervalle médian est de 15,6 ms et
+le p95 de 30,8 ms ; cette mesure ne prouve pas une sortie uniforme à 120 ou 244 Hz.
+La suspension et la désactivation sont aussi vérifiées, avec restauration de la
+position initiale du curseur. Le scénario Electron a revérifié les déplacements
+hors focus et fenêtre réduite, le raccourci global, l'arrêt caméra, le
+rechargement et la fermeture, sans erreur JavaScript interceptée.
+
+Avant cette correction, un scénario natif Electron Windows, lancé depuis WSL2
+avec caméra simulée et commandes synthétiques, a vérifié le déplacement réel sur un écran principal
+de 5120 × 1440 pixels, y compris le coin `(5119, 1439)`, la perte de focus et la
+réduction. L'activation explicite, le refus des paquets invalides ou périmés,
+la suspension, l'arrêt global fenêtre réduite, l'arrêt caméra, le redémarrage,
+le rechargement et la fermeture avec libération du helper passent également.
+Aucune erreur JavaScript interceptée ; la position initiale du curseur a été
+restaurée à la fin. Ces essais confirment l'exécution Windows et le pont IPC,
+pas la précision ni le confort des vrais gestes : le parcours webcam ci-dessous
+reste à valider.
+
+Une mesure isolée du helper persistant a donné un délai de confirmation au
+95e percentile de 0,48 ms : PowerShell n'était pas le goulot observé dans cet
+essai. Cette mesure ne valide ni la cadence finale du curseur ni le parcours
+avec la vraie webcam ; la comparaison des positions distinctes est décrite
+ci-dessus et le confort reste à confirmer dans le parcours manuel.
+
+Les retours suivants de l’utilisateur ont confirmé la fluidité au premier plan,
+mais signalé des coupures fenêtre réduite et des pertes de pointage près du torse.
+Le main prépare désormais le processus renderer Windows avant d’afficher la fenêtre.
+Un programme PowerShell ponctuel applique `ProcessPowerThrottling` au seul PID
+fourni par Electron, confirme le réglage puis quitte. Windows doit conserver la
+vitesse d’exécution de ce processus même fenêtre réduite ; la classe de priorité
+CPU reste inchangée. La politique dure jusqu’à la sortie de ce renderer et est
+réappliquée si son PID change après rechargement. La fermeture annule une
+préparation encore en cours. Le helper du curseur reste lancé uniquement à
+l’activation explicite.
+
+La session déduplique les traitements avec `totalVideoFrames` dès qu’une valeur
+positive est disponible ; tant que ce compteur reste nul ou absent, elle conserve
+le repli `currentTime` pour Firefox. Une fois le compteur utilisé, son gel provoque
+l’expiration habituelle du suivi. Le pincement partage maintenant une mesure XYZ
+du rapprochement des doigts et de la taille de paume : une simple superposition
+2D lors d’une rotation ne suffit plus à arrêter le pointage.
+
+Les régressions couvrent ces mesures, la compatibilité Firefox, la configuration
+Windows et son cycle de vie. **390 tests passent**, ainsi que lint, formatage et
+builds web/bureau. Dans la mesure Windows de 30 secondes fenêtre réduite avec
+caméra simulée à 20 images/s, environ 594 images sont analysées. Les intervalles
+entre traitements ont un p95 d’environ 87 ms ; deux retards dépassent 120 ms,
+avec un maximum d’environ 175 ms. Avant la politique Windows, vingt retards
+avaient dépassé 120 ms dans un relevé de même durée. Ces essais ciblent le
+ralentissement de calcul ; ils ne garantissent pas l’absence de tout retard sur
+un autre matériel et le confort webcam doit être confirmé par l’utilisateur.
 
 ## Vérifications manuelles
 
-1. Lancer `npm run dev:desktop` depuis WSL2. Vérifier la fenêtre
-   **Handfinity Desktop**, avec le Playground et **Start camera**. La caméra
-   doit rester arrêtée : cela vérifie le lancement Windows et le démarrage
-   explicite de la caméra.
-2. Cliquer sur **Start camera**, tendre l'index, replier les trois autres doigts
-   et garder le pouce séparé. Après confirmation, déplacer le bout de l'index :
-   le cercle vidéo et le curseur de **Pointer commands** doivent suivre le même
-   sens, et le journal recevoir des `pointer:move`. Cela vérifie la réutilisation
-   réelle de la chaîne partagée dans Electron. **Images processed** doit augmenter,
-   y compris sans main visible : chaque nouvelle image est comptée après son
-   traitement par la vision et le moteur, indépendamment des commandes émises.
-3. Présenter deux mains séparées, puis changer **Main hand**. Les nouvelles
-   commandes doivent porter le numéro sélectionné. Mettre la principale au
-   repos : le curseur simulé garde sa position et le compteur de commandes se
-   fige après confirmation. **Images processed** continue à augmenter : cela
-   vérifie le choix principal et les transitions sans interrompre la vision.
-4. Relever **Images processed**, utiliser une autre application pendant au moins
-   30 secondes, puis revenir. Le compteur doit avoir nettement progressé et la
-   vidéo rester à jour, sans nouveau **Start camera**. Comparer avec une période
-   de même durée au premier plan : cela vérifie la continuité du traitement,
-   même si aucune main ne produit de commande.
-5. Choisir **Main hand: Auto**, relever le compteur et l'identité d'une main,
-   puis réduire Handfinity pendant au moins 30 secondes. Retirer la main du
-   champ plusieurs secondes et la présenter de nouveau pendant la réduction.
-   Restaurer la fenêtre : le compteur doit avoir progressé, la main revenue
-   doit avoir une nouvelle identité et les diagnostics suivre ses mouvements.
-   Cela vérifie le suivi hors premier plan, l'expiration et le retour d'une main,
-   puis la reprise d'affichage.
-6. Répéter trois cycles **Stop camera** / **Start camera**, dont un après une
-   réduction. Vérifier la libération puis la reprise de la webcam, le retour de
-   **Images processed** à zéro et le nettoyage du journal, du compteur de commandes
-   et des postures à l'arrêt : cela vérifie les remises à zéro.
-7. Avec l'accès caméra refusé dans Windows, cliquer sur **Start camera** : un
-   message d'erreur doit apparaître. Rétablir l'autorisation et recommencer.
-   Pendant le suivi, vérifier que seul l'indicateur caméra est actif, sans
-   microphone. Cela vérifie l'erreur utilisateur et le périmètre vidéo.
-8. Fermer la fenêtre pendant le suivi, puis relancer l'application. La webcam
-   doit être libérée à la fermeture, rester arrêtée au retour et le compteur
-   **Images processed** rester à zéro jusqu'à **Start camera** : cela vérifie le
-   cycle de vie du processus et l'absence de démarrage implicite.
+1. Lancer `npm run dev:desktop` depuis WSL2. **Start camera** est proposé,
+   **Enable Windows pointer** est désactivé et la souris reste libre.
+   **But :** vérifier que caméra et contrôle demandent une action explicite.
+2. Cliquer sur **Start camera**. Tendre l'index, replier les trois autres doigts
+   et garder le pouce séparé : le cercle vidéo et la simulation doivent suivre
+   la main, tandis que le vrai curseur reste utilisable avec la souris physique.
+   Déplacer la main devant le torse puis sur les côtés, et tourner progressivement
+   le poignet en gardant les doigts dans la même pose. **Hand poses** doit rester
+   `Pointing` tant que l’index est tendu et les trois autres doigts repliés.
+   Si le pointeur s’arrête, relever `Confirmed`, `Candidate` et les états des
+   doigts : le squelette peut rester visible sans pointage reconnu.
+   **Images processed** augmente, même sans main.
+   **But :** vérifier le moteur partagé avant d'activer l'exécution Windows.
+3. Ouvrir la main, puis cliquer sur **Enable Windows pointer** avec la souris
+   physique. Attendre le statut d'attente, puis repointer et déplacer l'index.
+   Le vrai curseur doit suivre le même sens que la simulation sur l'écran
+   principal. Aucun clic ne doit être produit.
+   Déplacer lentement l'index horizontalement, puis tracer des courbes régulières.
+   Comparer les petits mouvements au comportement avant correction : observer
+   les sauts, le retard et d'éventuelles oscillations, puis immobiliser l'index.
+   Le curseur doit terminer son trajet et rester stable.
+   **But :** vérifier l'activation, le miroir unique, la conversion en pixels
+   et la fluidité des mouvements fins.
+4. Passer dans Firefox ou un éditeur avec **Alt + Tab**, puis déplacer l'index.
+   Répéter après réduction de Handfinity pendant 30 secondes. Le vrai curseur
+   doit rester contrôlable, sans nouveau démarrage. Au retour, la vidéo et les
+   diagnostics doivent être actuels et **Images processed** avoir progressé.
+   Refaire les mouvements lents et les courbes pendant la réduction, sans
+   interruption par salves. Un compteur total qui augmente ne suffit pas à
+   prouver la régularité du curseur.
+   **But :** vérifier la fluidité dans une autre application et en arrière-plan.
+5. Ouvrir la main, puis la retirer du champ plusieurs secondes. Le curseur doit
+   rester à sa dernière position, sans rattraper une ancienne trajectoire.
+   Présenter de nouveau une main en pointage : les déplacements doivent reprendre
+   directement depuis la nouvelle mesure, sans rejoindre l'ancienne cible.
+   Avec **Main hand: Auto**, une main perdue puis retrouvée reçoit un nouveau
+   numéro. **But :** vérifier suspension, expiration et reprise sans replay.
+6. Cliquer sur **Stop Windows pointer**, puis repointer : le vrai curseur reste
+   libre et la caméra continue. Réactiver le contrôle, passer dans une autre
+   application et appuyer sur **Ctrl + Alt + Esc** : même résultat ; une nouvelle
+   activation explicite est nécessaire pour reprendre.
+   Répéter le raccourci pendant un mouvement, fenêtre Handfinity réduite : aucun
+   trajet ne doit continuer après l'arrêt.
+   **But :** vérifier les deux arrêts, dont celui accessible hors de la fenêtre.
+7. Pendant le contrôle, cliquer sur **Stop camera** : la webcam se libère et le
+   contrôle Windows s'arrête. Répéter trois cycles caméra ; chaque arrêt remet
+   les compteurs à zéro et chaque nouveau démarrage demande de nouveau
+   **Enable Windows pointer**.
+   **But :** vérifier le nettoyage et l'absence de réactivation automatique.
+8. Fermer la fenêtre pendant le contrôle, puis relancer l'application. La webcam
+   doit se libérer et le contrôle rester arrêté au retour. Si la page est
+   rechargée pendant le contrôle, une nouvelle activation doit aussi être requise.
+   **But :** vérifier l'arrêt réel et l'abandon de l'ancienne session.
+9. Arrêter la caméra bureau, puis ouvrir le Playground dans Firefox Windows.
+   La caméra et la simulation doivent fonctionner ; les commandes Windows
+   restent propres à l'application bureau.
+   **But :** vérifier que le navigateur conserve son fonctionnement.
 
 Avec ce réglage Electron, `document.visibilityState` reste `visible` même lorsque
 la fenêtre est réduite : cette valeur ne prouve pas son état natif. Les essais
