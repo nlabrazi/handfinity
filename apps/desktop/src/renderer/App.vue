@@ -5,6 +5,7 @@ import {
 	type GestureEngineFrame,
 	type HandObservation,
 	type HandPointerFrame,
+	type PointerActionCommand,
 	type TrackedHand,
 	type TrackedHandPose,
 } from "@handfinity/engine";
@@ -15,6 +16,7 @@ import {
 } from "@handfinity/vision";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import type { PointerControlState } from "../pointer-contract";
+import VirtualKeyboard from "./components/VirtualKeyboard.vue";
 import { toPointerUpdate } from "./pointer-update";
 
 const bridge = window.handfinityPointer;
@@ -29,6 +31,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 const isRunning = ref(false);
 const isLoading = ref(false);
+const showKeyboard = ref(true);
 const handCount = ref(0);
 const processedFrames = ref(0);
 const cameraError = ref("");
@@ -46,6 +49,8 @@ const pointerFrame = shallowRef(emptyPointers);
 
 const engine = createGestureEngine();
 const controlFrame = shallowRef(engine.getControlState());
+const actionState = shallowRef(engine.getActionState());
+const lastActionLabel = ref("None");
 
 const enabled = computed(() => state.value.sessionId !== null);
 const starting = computed(() => state.value.phase === "starting");
@@ -97,6 +102,11 @@ const pointerReadiness = computed(() => {
 		return "Point or fold your fingers before holding your palm to pause again.";
 	if (pointerFrame.value.selectionStatus !== "tracked")
 		return "Show a pointing hand to control the pointer.";
+	if (actionState.value.dragging) return "Dragging — pinch held while moving.";
+	if (actionState.value.leftButtonDown)
+		return "Left button held — release pinch to click or move to drag.";
+	if (actionState.value.scrolling)
+		return "Scroll mode — move two fingers up or down.";
 	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
 	if (pointer?.active) return "Pointing detected — pointer active.";
 	const pose = handPoses.value.find(
@@ -158,11 +168,37 @@ async function togglePointer() {
 	}
 }
 
+function formatAction(action: PointerActionCommand): string {
+	switch (action.type) {
+		case "pointer:down":
+			return `${action.button} button down`;
+		case "pointer:up":
+			return `${action.button} button up`;
+		case "pointer:click":
+			return `${action.button} click`;
+		case "pointer:scroll":
+			return `scroll (${action.deltaY > 0 ? "+" : ""}${action.deltaY.toFixed(2)})`;
+	}
+}
+
 function submit(frame: GestureEngineFrame) {
 	const sessionId = state.value.sessionId;
 	if (!bridge || sessionId === null) return;
 	const update = toPointerUpdate(frame, sessionId, performance.timeOrigin);
 	if (update) bridge.submit(update);
+}
+
+function sendVirtualKey(key: string) {
+	const sessionId = state.value.sessionId;
+	lastActionLabel.value = `key: ${key}`;
+	if (!bridge || sessionId === null) return;
+	bridge.submit({
+		sessionId,
+		capturedAt: performance.timeOrigin + performance.now(),
+		paused: controlFrame.value.paused,
+		command: null,
+		keys: [key],
+	});
 }
 
 function handColor(id: number) {
@@ -223,13 +259,21 @@ function drawHands(hands: readonly HandObservation[]) {
 	}
 
 	for (const pointer of pointerFrame.value.pointers) {
-		if (!pointer.active) continue;
+		if (
+			!pointer.active &&
+			!(pointer.isPrimary && actionState.value.leftButtonDown)
+		)
+			continue;
 		ctx.save();
 		ctx.translate(
 			pointer.position.x * canvas.width,
 			pointer.position.y * canvas.height,
 		);
-		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
+		ctx.strokeStyle = actionState.value.leftButtonDown
+			? "#4ade80"
+			: pointer.isPrimary
+				? "#ffffff"
+				: "#fb923c";
 		ctx.fillStyle = "#020617dd";
 		ctx.lineWidth = 3;
 		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
@@ -253,6 +297,11 @@ function handleTrackingFrame({
 	handPoses.value = frame.poses;
 	pointerFrame.value = frame.pointers;
 	controlFrame.value = frame.control;
+	actionState.value = frame.actionState;
+	const latestAction = frame.actions.at(-1);
+	if (latestAction) {
+		lastActionLabel.value = formatAction(latestAction);
+	}
 	submit(frame);
 	const visible = frame.tracking.hands
 		.filter((hand) => hand.status === "tracked")
@@ -278,6 +327,8 @@ function stopCamera() {
 	trackedHands.value = [];
 	engine.reset();
 	controlFrame.value = engine.getControlState();
+	actionState.value = engine.getActionState();
+	lastActionLabel.value = "None";
 	handPoses.value = [];
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
@@ -336,14 +387,25 @@ onBeforeUnmount(() => {
 				<div>
 					<h1 class="text-2xl font-bold">Handfinity Desktop</h1>
 					<p class="text-sm text-slate-400">
-						Start the camera, then enable the Windows pointer to control your
-						primary display.
+						Hands-free mouse (move, left/right click, drag, scroll) and virtual
+						keyboard.
 					</p>
 				</div>
-				<p class="text-xs text-slate-400">
-					Emergency stop:
-					<kbd class="rounded bg-slate-800 px-1.5 py-0.5">Ctrl + Alt + Esc</kbd>
-				</p>
+				<div class="flex items-center gap-3 text-xs text-slate-400">
+					<button
+						type="button"
+						@click="showKeyboard = !showKeyboard"
+						class="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200 hover:bg-slate-800"
+					>
+						{{ showKeyboard ? "Hide keyboard" : "Show keyboard" }}
+					</button>
+					<span>
+						Emergency stop:
+						<kbd class="rounded bg-slate-800 px-1.5 py-0.5"
+							>Ctrl + Alt + Esc</kbd
+						>
+					</span>
+				</div>
 			</header>
 
 			<section
@@ -388,6 +450,10 @@ onBeforeUnmount(() => {
 					>
 						{{ pointerReadiness }}
 					</p>
+					<p class="text-xs text-slate-400">
+						Last input action:
+						<span class="font-mono text-cyan-300">{{ lastActionLabel }}</span>
+					</p>
 					<p v-if="cameraError" role="alert" class="text-sm text-red-400">
 						{{ cameraError }}
 					</p>
@@ -402,7 +468,7 @@ onBeforeUnmount(() => {
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div class="min-w-0">
 							<h2 id="system-pointer-title" class="font-medium">
-								Windows pointer
+								Windows pointer & keyboard
 							</h2>
 							<p
 								role="status"
@@ -425,6 +491,20 @@ onBeforeUnmount(() => {
 							}}
 						</button>
 					</div>
+					<div
+						class="grid grid-cols-2 gap-1.5 text-xs text-slate-400 sm:grid-cols-4"
+					>
+						<span class="rounded bg-slate-900 px-2 py-1">☝️ Index: Move</span>
+						<span class="rounded bg-slate-900 px-2 py-1"
+							>🤏 Thumb+Index: Click/Drag</span
+						>
+						<span class="rounded bg-slate-900 px-2 py-1"
+							>👌 Thumb+Middle: Right-click</span
+						>
+						<span class="rounded bg-slate-900 px-2 py-1"
+							>✌️ 2 Fingers: Scroll</span
+						>
+					</div>
 					<p
 						v-if="bridge && state.phase !== 'unsupported' && !enabled && !starting && !isRunning"
 						class="text-xs text-amber-300"
@@ -434,13 +514,19 @@ onBeforeUnmount(() => {
 				</section>
 			</section>
 
+			<VirtualKeyboard
+				v-if="showKeyboard"
+				:disabled="!enabled"
+				@press-key="sendVirtualKey"
+			/>
+
 			<section
 				aria-label="Camera preview"
 				class="space-y-2 rounded-lg bg-slate-900 p-3"
 			>
 				<h2 class="font-medium">Camera preview</h2>
 				<div
-					class="relative aspect-video max-h-[28rem] overflow-hidden rounded-lg bg-black"
+					class="relative aspect-video max-h-[26rem] overflow-hidden rounded-lg bg-black"
 				>
 					<video
 						ref="videoRef"

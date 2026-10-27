@@ -44,10 +44,11 @@ const { moveLight, resetLight } = useHomeAnimations(scene);
 					<h1>Vos mains.<br><em>Votre interface.</em></h1>
 				</div>
 				<p class="welcome-note">
-					Objectif : utiliser votre PC<br>avec les mains.
+					Contrôlez votre PC<br>avec vos mains.
 					<span
-						>Le suivi gestuel est disponible dans le laboratoire.<br>Le contrôle
-						du PC reste à construire.</span
+						>Souris gestuelle (pointage, clic, glisser-déposer, défilement) et
+						clavier virtuel sur Windows, ou test direct dans le
+						laboratoire.</span
 					>
 				</p>
 			</header>
