@@ -1,11 +1,9 @@
 import {
-	createHandIdentityTracker,
-	type HandObservation,
-} from "@handfinity/core";
-import {
 	createGestureEngine,
+	createHandIdentityTracker,
 	type GestureEngineFrame,
-} from "@handfinity/interactions";
+	type HandObservation,
+} from "@handfinity/engine";
 import { describe, expect, it, vi } from "vitest";
 import { createPointerSimulation } from "../../../playground/src/pointer-simulation";
 import { createPointerController } from "../pointer-controller";

@@ -1,4 +1,4 @@
-import type { PointerMoveCommand } from "@handfinity/interactions/pointer-commands";
+import type { PointerMoveCommand } from "@handfinity/engine/commands";
 
 export type PointerControlState = {
 	readonly phase:

@@ -1,4 +1,4 @@
-import type { Handedness, HandObservation } from "@handfinity/core";
+import type { Handedness, HandObservation } from "@handfinity/engine";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 
 export type HandTracker = {

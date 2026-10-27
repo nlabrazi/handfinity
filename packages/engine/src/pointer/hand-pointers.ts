@@ -1,10 +1,7 @@
-import {
-	createPointSmoother,
-	type HandPoseKind,
-	type HandTrackingFrame,
-	type Point,
-	type TrackedHandPose,
-} from "@handfinity/core";
+import type { Point } from "../gestures/pinch";
+import type { HandPoseKind, TrackedHandPose } from "../poses/hand-pose-tracker";
+import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
+import { createPointSmoother } from "./point-smoother";
 
 export type HandPointer = {
 	readonly handId: number;

@@ -11,7 +11,7 @@
 	},
 	"license": "ISC",
 	"dependencies": {
-		"@handfinity/core": "1.0.0",
+		"@handfinity/engine": "1.0.0",
 		"@mediapipe/tasks-vision": "^1.1.1"
 	},
 	"devDependencies": {

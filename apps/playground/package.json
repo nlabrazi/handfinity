@@ -13,8 +13,7 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
-		"@handfinity/core": "1.0.0",
-		"@handfinity/interactions": "1.0.0",
+		"@handfinity/engine": "1.0.0",
 		"@handfinity/vision": "1.0.0",
 		"vue": "^3.5.42"
 	},

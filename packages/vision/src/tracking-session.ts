@@ -2,7 +2,7 @@ import {
 	createHandIdentityTracker,
 	type HandObservation,
 	type HandTrackingFrame,
-} from "@handfinity/core";
+} from "@handfinity/engine";
 import { startCamera, stopCamera } from "./camera";
 import { createHandTracker, type HandTracker } from "./hand-tracker";
 

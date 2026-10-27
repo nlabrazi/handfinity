@@ -1,9 +1,6 @@
-import type {
-	HandPoseKind,
-	HandTrackingFrame,
-	TrackedHandPose,
-} from "@handfinity/core";
 import { describe, expect, it } from "vitest";
+import type { HandPoseKind, TrackedHandPose } from "../poses/hand-pose-tracker";
+import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
 import { CONTROL_HOLD_MS, createGestureControl } from "./gesture-control";
 
 function tracking(

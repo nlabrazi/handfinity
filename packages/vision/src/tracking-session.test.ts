@@ -1,4 +1,4 @@
-import type { HandObservation } from "@handfinity/core";
+import type { HandObservation } from "@handfinity/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startCamera, stopCamera } from "./camera";
 import { createHandTracker, type HandTracker } from "./hand-tracker";

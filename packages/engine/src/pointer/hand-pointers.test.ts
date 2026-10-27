@@ -1,10 +1,9 @@
+import { describe, expect, it } from "vitest";
+import type { HandPoseKind, TrackedHandPose } from "../poses/hand-pose-tracker";
 import type {
-	HandPoseKind,
 	HandTrackingFrame,
 	TrackedHand,
-	TrackedHandPose,
-} from "@handfinity/core";
-import { describe, expect, it } from "vitest";
+} from "../tracking/hand-identity-tracker";
 import { createHandPointerTracker } from "./hand-pointers";
 
 function hand(

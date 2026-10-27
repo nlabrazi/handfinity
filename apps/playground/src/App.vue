@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import type {
-	HandObservation,
-	HandTrackingFrame,
-	TrackedHand,
-	TrackedHandPose,
-} from "@handfinity/core";
 import {
 	createGestureEngine,
 	type GestureEngineFrame,
+	type HandObservation,
 	type HandPointerFrame,
-} from "@handfinity/interactions";
+	type HandTrackingFrame,
+	type TrackedHand,
+	type TrackedHandPose,
+} from "@handfinity/engine";
 import {
 	createTrackingSession,
 	HAND_CONNECTIONS,

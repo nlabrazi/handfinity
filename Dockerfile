@@ -10,8 +10,7 @@ COPY package*.json ./
 COPY apps/playground/package.json ./apps/playground/
 COPY apps/hub/package.json ./apps/hub/
 COPY apps/desktop/package.json ./apps/desktop/
-COPY packages/core/package.json ./packages/core/
-COPY packages/interactions/package.json ./packages/interactions/
+COPY packages/engine/package.json ./packages/engine/
 COPY packages/vision/package.json ./packages/vision/
 
 RUN npm ci

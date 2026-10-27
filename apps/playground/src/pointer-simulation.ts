@@ -1,4 +1,4 @@
-import type { PointerMoveCommand } from "@handfinity/interactions";
+import type { PointerMoveCommand } from "@handfinity/engine";
 
 export type PointerSimulationFrame = {
 	readonly position: PointerMoveCommand["position"] | null;

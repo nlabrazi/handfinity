@@ -11,7 +11,7 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@handfinity/interactions": "1.0.0",
+		"@handfinity/engine": "1.0.0",
 		"playground": "0.0.0",
 		"vue": "^3.5.42"
 	},

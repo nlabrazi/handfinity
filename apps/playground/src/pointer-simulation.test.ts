@@ -1,4 +1,4 @@
-import type { PointerMoveCommand } from "@handfinity/interactions";
+import type { PointerMoveCommand } from "@handfinity/engine";
 import { describe, expect, it } from "vitest";
 import { createPointerSimulation } from "./pointer-simulation";
 

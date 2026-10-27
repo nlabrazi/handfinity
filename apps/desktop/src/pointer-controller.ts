@@ -1,4 +1,4 @@
-import type { PointerMoveCommand } from "@handfinity/interactions/pointer-commands";
+import type { PointerMoveCommand } from "@handfinity/engine/commands";
 import type { PointerControlState } from "./pointer-contract.js";
 import type { NativePointer } from "./windows-pointer.js";
 

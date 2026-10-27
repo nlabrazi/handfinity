@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import {
-	CONTROL_HOLD_MS,
-	type GestureEngineFrame,
-} from "@handfinity/interactions";
+import { CONTROL_HOLD_MS, type GestureEngineFrame } from "@handfinity/engine";
 import Playground from "playground/view";
 import { computed, onBeforeUnmount, onMounted, shallowRef } from "vue";
 import type { PointerControlState } from "../pointer-contract";

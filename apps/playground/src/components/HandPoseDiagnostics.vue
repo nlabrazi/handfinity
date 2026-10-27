@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HandPoseKind, TrackedHandPose } from "@handfinity/core";
+import type { HandPoseKind, TrackedHandPose } from "@handfinity/engine";
 
 defineProps<{ hands: readonly TrackedHandPose[] }>();
 

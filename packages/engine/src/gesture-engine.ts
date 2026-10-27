@@ -1,17 +1,17 @@
-import {
-	createHandPoseTracker,
-	type HandTrackingFrame,
-	type TrackedHandPose,
-} from "@handfinity/core";
+import type { PointerMoveCommand } from "./commands";
 import {
 	createGestureControl,
 	type GestureControlFrame,
-} from "./gesture-control";
+} from "./control/gesture-control";
 import {
 	createHandPointerTracker,
 	type HandPointerFrame,
-} from "./hand-pointers";
-import type { PointerMoveCommand } from "./pointer-commands";
+} from "./pointer/hand-pointers";
+import {
+	createHandPoseTracker,
+	type TrackedHandPose,
+} from "./poses/hand-pose-tracker";
+import type { HandTrackingFrame } from "./tracking/hand-identity-tracker";
 
 export type GestureEngineFrame = {
 	readonly tracking: HandTrackingFrame;

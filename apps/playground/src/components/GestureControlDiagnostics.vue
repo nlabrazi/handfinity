@@ -3,7 +3,7 @@ import {
 	CONTROL_HOLD_MS,
 	type GestureControlFrame,
 	type HandPointerFrame,
-} from "@handfinity/interactions";
+} from "@handfinity/engine";
 
 defineProps<{
 	state: GestureControlFrame;

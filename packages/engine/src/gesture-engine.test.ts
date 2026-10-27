@@ -1,10 +1,11 @@
+import { describe, expect, it } from "vitest";
 import {
+	createGestureEngine,
 	createHandIdentityTracker,
 	type HandObservation,
 	type HandPoseKind,
-} from "@handfinity/core";
-import { describe, expect, it } from "vitest";
-import { createGestureEngine, type PointerMoveCommand } from "./index";
+	type PointerMoveCommand,
+} from "./index";
 
 function hand(
 	kind: HandPoseKind,

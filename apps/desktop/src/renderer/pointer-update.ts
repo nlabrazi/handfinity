@@ -1,4 +1,4 @@
-import type { GestureEngineFrame } from "@handfinity/interactions";
+import type { GestureEngineFrame } from "@handfinity/engine";
 import type { PointerUpdate } from "../pointer-contract";
 
 /** Une image répétée ne déplace ni ne suspend un pointeur encore actif. */

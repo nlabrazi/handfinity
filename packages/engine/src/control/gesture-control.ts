@@ -1,4 +1,5 @@
-import type { HandTrackingFrame, TrackedHandPose } from "@handfinity/core";
+import type { TrackedHandPose } from "../poses/hand-pose-tracker";
+import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
 
 export const CONTROL_HOLD_MS = 1500;
 
