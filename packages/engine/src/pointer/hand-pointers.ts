@@ -1,12 +1,16 @@
 import type { Point } from "../gestures/pinch";
+import type { HandObservation } from "../hand-observation";
 import type { HandPoseKind, TrackedHandPose } from "../poses/hand-pose-tracker";
 import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
+import { createOneEuroFilter } from "./one-euro-filter";
 import { createPointSmoother } from "./point-smoother";
 
 export type HandPointer = {
 	readonly handId: number;
 	/** Coordonnées normalisées de l'image source, avant miroir ou projection. */
 	readonly position: Readonly<Point>;
+	/** Centre stable de la paume filtré par One Euro Filter (insensible aux mouvements des doigts). */
+	readonly palmPosition: Readonly<Point>;
 	readonly pose: HandPoseKind;
 	readonly active: boolean;
 	readonly isPrimary: boolean;
@@ -24,10 +28,35 @@ export type HandPointerFrame = {
 
 type PointerState = {
 	smoother: ReturnType<typeof createPointSmoother>;
+	palmFilter: ReturnType<typeof createOneEuroFilter>;
 	timestamp: number | null;
 	active: boolean;
 	position: Readonly<Point>;
+	palmPosition: Readonly<Point>;
 };
+
+const PALM_LANDMARK_INDICES = [0, 5, 9, 13, 17] as const;
+
+export function computePalmCenter(observation: HandObservation): Point | null {
+	let sumX = 0;
+	let sumY = 0;
+	for (const index of PALM_LANDMARK_INDICES) {
+		const landmark = observation.landmarks[index];
+		if (
+			!landmark ||
+			!Number.isFinite(landmark.x) ||
+			!Number.isFinite(landmark.y)
+		) {
+			return null;
+		}
+		sumX += landmark.x;
+		sumY += landmark.y;
+	}
+	return {
+		x: sumX / PALM_LANDMARK_INDICES.length,
+		y: sumY / PALM_LANDMARK_INDICES.length,
+	};
+}
 
 /** Un filtre par identité ; une seule main principale dans les diagnostics. */
 export function createHandPointerTracker() {
@@ -55,9 +84,11 @@ export function createHandPointerTracker() {
 		const pointers: Omit<HandPointer, "isPrimary">[] = [];
 		for (const hand of tracking.ambiguous ? [] : tracking.hands) {
 			const point = hand.observation.landmarks[8];
+			const rawPalm = computePalmCenter(hand.observation);
 			if (
 				hand.status !== "tracked" ||
 				!point ||
+				!rawPalm ||
 				!Number.isFinite(point.x) ||
 				!Number.isFinite(point.y)
 			) {
@@ -78,9 +109,11 @@ export function createHandPointerTracker() {
 			if (!state) {
 				state = {
 					smoother: createPointSmoother(),
+					palmFilter: createOneEuroFilter({ minCutoff: 1.2, beta: 0.04 }),
 					timestamp: null,
 					active: false,
 					position: { x: point.x, y: point.y },
+					palmPosition: rawPalm,
 				};
 				states.set(hand.id, state);
 			}
@@ -95,12 +128,17 @@ export function createHandPointerTracker() {
 							hand.observation.timestamp,
 						)
 					: { x: point.x, y: point.y };
+				state.palmPosition = state.palmFilter.update(
+					rawPalm,
+					hand.observation.timestamp,
+				);
 				state.timestamp = hand.observation.timestamp;
 			}
 			state.active = active;
 			pointers.push({
 				handId: hand.id,
 				position: state.position,
+				palmPosition: state.palmPosition,
 				pose: pose?.pose ?? "unknown",
 				active,
 				timestamp: hand.observation.timestamp,

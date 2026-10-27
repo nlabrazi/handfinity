@@ -58,7 +58,6 @@ export function createGestureEngine() {
 			poses,
 			pointers,
 			control.paused,
-			aspectRatio,
 		);
 		const hasNewObservation = tracking.hands.some(
 			(hand) =>
@@ -76,7 +75,9 @@ export function createGestureEngine() {
 		);
 		let commands: readonly PointerMoveCommand[] = [];
 		if (fresh && !control.paused) {
-			if (main) {
+			if (actionResult.dragMove) {
+				commands = [actionResult.dragMove];
+			} else if (main && !actionResult.freezeCursor) {
 				commands = [
 					{
 						type: "pointer:move",
@@ -85,8 +86,6 @@ export function createGestureEngine() {
 						position: { x: 1 - main.position.x, y: main.position.y },
 					},
 				];
-			} else if (actionResult.dragMove) {
-				commands = [actionResult.dragMove];
 			}
 		}
 		return {

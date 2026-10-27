@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-	CLICK_FREEZE_MS,
+	CHORD_HOLD_MS,
 	createGestureEngine,
 	createHandIdentityTracker,
+	GRAB_HOLD_MS,
 	type HandObservation,
 	SCROLL_HOLD_MS,
-	SECONDARY_PINCH_HOLD_MS,
 } from "../index";
 
 type TestFixtureKind =
 	| "pointing"
+	| "fist"
+	| "two-fingers"
+	| "three-fingers"
 	| "pinch"
-	| "open-palm"
-	| "secondary-pinch"
-	| "scroll";
+	| "open-palm";
 
 function makeHand(
 	kind: TestFixtureKind,
@@ -46,11 +47,15 @@ function makeHand(
 	].map(([x = 0, y = 0]) => ({ x: x + dx, y: y + dy, z: 0 }));
 
 	const foldBases =
-		kind === "pointing" || kind === "secondary-pinch"
-			? [9, 13, 17]
-			: kind === "scroll"
-				? [13, 17]
-				: [];
+		kind === "fist"
+			? [5, 9, 13, 17]
+			: kind === "pointing" || kind === "pinch"
+				? [9, 13, 17]
+				: kind === "two-fingers"
+					? [13, 17]
+					: kind === "three-fingers"
+						? [17]
+						: [];
 
 	for (const base of foldBases) {
 		const root = landmarks[base];
@@ -62,10 +67,6 @@ function makeHand(
 
 	if (kind === "pinch") {
 		landmarks[4] = { x: 0.43 + dx, y: 0.28 + dy, z: 0 };
-	} else if (kind === "secondary-pinch") {
-		const middleTip = landmarks[12];
-		if (!middleTip) throw new Error("Missing middle tip");
-		landmarks[4] = { x: middleTip.x + 0.01, y: middleTip.y, z: 0 };
 	}
 
 	return {
@@ -76,8 +77,8 @@ function makeHand(
 	};
 }
 
-describe("Pointer actions (click, drag, right-click, scroll)", () => {
-	it("emits pointer:down and pointer:up for a primary click after pointing, freezing cursor during click onset", () => {
+describe("Palm-anchored pointer actions (fist grab, finger chords, joystick scroll)", () => {
+	it("progresses grabProgress over 600 ms of closed fist, freezes cursor, drags with palm, and releases on open", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
 		const observe = (
@@ -95,83 +96,112 @@ describe("Pointer actions (click, drag, right-click, scroll)", () => {
 		const targetPos = pointed.commands[0]?.position;
 		expect(targetPos).toBeDefined();
 
-		observe("pinch", 100, 0.02, 0.01);
-		const down = observe("pinch", 140, 0.02, 0.01);
-		expect(down.actionState.leftButtonDown).toBe(true);
-		expect(down.actions).toEqual([
+		// Début du poing fermé à t = 100 ms : le curseur est immédiatement figé
+		const startFist = observe("fist", 100, 0.02, 0.01);
+		expect(startFist.commands).toEqual([]);
+		expect(startFist.actionState.leftButtonDown).toBe(false);
+
+		for (let t = 200; t < 100 + GRAB_HOLD_MS; t += 100) {
+			const mid = observe("fist", t, 0.02, 0.01);
+			expect(mid.commands).toEqual([]);
+			expect(mid.actionState.leftButtonDown).toBe(false);
+			expect(mid.actionState.grabProgress).toBeCloseTo(
+				(t - 100) / GRAB_HOLD_MS,
+				2,
+			);
+		}
+
+		// À 100 + 600 = 700 ms, la saisie est verrouillée (pointer:down)
+		const grabbed = observe("fist", 100 + GRAB_HOLD_MS, 0.02, 0.01);
+		expect(grabbed.actionState.leftButtonDown).toBe(true);
+		expect(grabbed.actionState.dragging).toBe(true);
+		expect(grabbed.actionState.grabProgress).toBe(1);
+		expect(grabbed.actions).toEqual([
 			{
 				type: "pointer:down",
 				button: "left",
 				handId: 1,
-				timestamp: 140,
+				timestamp: 100 + GRAB_HOLD_MS,
 				position: targetPos,
 			},
 		]);
-		// Pendant CLICK_FREEZE_MS, aucun déplacement parasite n'est émis
-		const frozen = observe("pinch", 140 + CLICK_FREEZE_MS - 10, 0.04, 0.02);
-		expect(frozen.commands).toEqual([]);
 
-		// Relâchement du pinch -> pointer:up
-		observe("pointing", 260);
-		const up = observe("pointing", 320);
-		expect(up.actionState.leftButtonDown).toBe(false);
-		expect(up.actions).toEqual([
+		// Déplacement de la paume poing fermé -> pointer:move
+		observe("fist", 760, 0.08, 0.05);
+		const dragged = observe("fist", 820, 0.14, 0.09);
+		expect(dragged.commands).toHaveLength(1);
+		expect(dragged.commands[0]?.type).toBe("pointer:move");
+
+		// Réouverture de la main -> pointer:up
+		const released = observe("pointing", 880, 0.14, 0.09);
+		expect(released.actionState.leftButtonDown).toBe(false);
+		expect(released.actionState.grabProgress).toBe(0);
+		expect(released.actions).toMatchObject([
 			{
 				type: "pointer:up",
 				button: "left",
 				handId: 1,
-				timestamp: 320,
-				position: targetPos,
+				timestamp: 880,
 			},
 		]);
 	});
 
-	it("emits drag move commands when holding pinch past the freeze window and moving", () => {
-		const identities = createHandIdentityTracker();
-		const engine = createGestureEngine();
-		const observe = (
-			kind: TestFixtureKind,
-			timestamp: number,
-			dx = 0,
-			dy = 0,
-		) =>
-			engine.update(
-				identities.update([makeHand(kind, timestamp, dx, dy)], timestamp),
-			);
-
-		observe("pointing", 0);
-		observe("pointing", 80);
-		observe("pinch", 100);
-		const down = observe("pinch", 140);
-		expect(down.actions[0]?.type).toBe("pointer:down");
-
-		observe("pinch", 200, 0.04, 0.03);
-		observe("pinch", 250, 0.08, 0.05);
-		const dragged = observe("pinch", 140 + CLICK_FREEZE_MS + 40, 0.12, 0.08);
-		expect(dragged.actionState.dragging).toBe(true);
-		expect(dragged.commands).toHaveLength(1);
-		expect(dragged.commands[0]?.type).toBe("pointer:move");
-	});
-
-	it("automatically releases a held left button when the hand is lost", () => {
+	it("automatically releases a held fist grab when the hand is lost", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
 		engine.update(identities.update([makeHand("pointing", 0)], 0));
 		engine.update(identities.update([makeHand("pointing", 80)], 80));
-		engine.update(identities.update([makeHand("pinch", 100)], 100));
-		const down = engine.update(
-			identities.update([makeHand("pinch", 140)], 140),
-		);
-		expect(down.actionState.leftButtonDown).toBe(true);
+		for (let t = 100; t <= 100 + GRAB_HOLD_MS; t += 100) {
+			engine.update(identities.update([makeHand("fist", t)], t));
+		}
+		expect(engine.getActionState().leftButtonDown).toBe(true);
 
-		const lost = engine.update(identities.update([], 180));
+		const lost = engine.update(identities.update([], 760));
 		expect(lost.actionState.leftButtonDown).toBe(false);
 		expect(lost.actions).toMatchObject([
-			{ type: "pointer:up", button: "left", handId: 1, timestamp: 180 },
+			{ type: "pointer:up", button: "left", handId: 1, timestamp: 760 },
 		]);
 	});
 
-	it("emits a single right-click on secondary pinch (thumb + middle) and requires release", () => {
+	it("emits a single left-click on a 2-finger chord (index + middle) and requires returning to 1 finger", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (kind: TestFixtureKind, timestamp: number) =>
+			engine.update(identities.update([makeHand(kind, timestamp)], timestamp));
+
+		observe("pointing", 0);
+		const pointed = observe("pointing", 80);
+		const targetPos = pointed.commands[0]?.position;
+
+		const pending = observe("two-fingers", 100);
+		expect(pending.commands).toEqual([]);
+		expect(pending.actionState.pendingChord).toBe("left-click");
+
+		observe("two-fingers", 180);
+		const clicked = observe("two-fingers", 100 + CHORD_HOLD_MS);
+		expect(clicked.actions).toEqual([
+			{
+				type: "pointer:click",
+				button: "left",
+				handId: 1,
+				timestamp: 100 + CHORD_HOLD_MS,
+				position: targetPos,
+			},
+		]);
+
+		// Maintenir les 2 doigts ne déclenche pas de second clic
+		expect(observe("two-fingers", 320).actions).toEqual([]);
+
+		// Retour au pointage à 1 doigt réarme l'accord
+		observe("pointing", 380);
+		observe("two-fingers", 440);
+		observe("two-fingers", 520);
+		expect(observe("two-fingers", 440 + CHORD_HOLD_MS).actions).toMatchObject([
+			{ type: "pointer:click", button: "left", handId: 1 },
+		]);
+	});
+
+	it("emits a right-click on a 3-finger chord without firing a false left-click during transition", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
 		const observe = (kind: TestFixtureKind, timestamp: number) =>
@@ -179,19 +209,26 @@ describe("Pointer actions (click, drag, right-click, scroll)", () => {
 
 		observe("pointing", 0);
 		observe("pointing", 80);
-		observe("secondary-pinch", 100);
-		const clicked = observe("secondary-pinch", 100 + SECONDARY_PINCH_HOLD_MS);
-		expect(clicked.actions).toMatchObject([
-			{ type: "pointer:click", button: "right", handId: 1 },
-		]);
 
-		// Maintenir la posture ne déclenche pas de second clic droit
-		expect(
-			observe("secondary-pinch", 100 + SECONDARY_PINCH_HOLD_MS + 60).actions,
-		).toEqual([]);
+		// Passage transitoire par 2 doigts (< CHORD_HOLD_MS) avant d'ouvrir le 3e doigt
+		observe("two-fingers", 100);
+		const pendingRight = observe("three-fingers", 160);
+		expect(pendingRight.actions).toEqual([]);
+		expect(pendingRight.actionState.pendingChord).toBe("right-click");
+
+		observe("three-fingers", 240);
+		const rightClicked = observe("three-fingers", 160 + CHORD_HOLD_MS);
+		expect(rightClicked.actions).toMatchObject([
+			{
+				type: "pointer:click",
+				button: "right",
+				handId: 1,
+				timestamp: 160 + CHORD_HOLD_MS,
+			},
+		]);
 	});
 
-	it("emits vertical scroll commands when holding the two-finger scroll pose and moving vertically", () => {
+	it("emits continuous joystick scroll commands when holding pinch and offsetting the palm vertically", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
 		const observe = (kind: TestFixtureKind, timestamp: number, dy = 0) =>
@@ -201,16 +238,25 @@ describe("Pointer actions (click, drag, right-click, scroll)", () => {
 
 		observe("pointing", 0);
 		observe("pointing", 80);
-		observe("scroll", 100, 0);
-		const ready = observe("scroll", 100 + SCROLL_HOLD_MS, 0);
-		expect(ready.actionState.scrolling).toBe(true);
 
-		const scrolled = observe("scroll", 100 + SCROLL_HOLD_MS + 40, 0.05);
-		expect(scrolled.actions).toMatchObject([
+		// Entrée en pincement et confirmation après SCROLL_HOLD_MS
+		observe("pinch", 100, 0);
+		observe("pinch", 140, 0);
+		observe("pinch", 200, 0);
+		const anchored = observe("pinch", 140 + SCROLL_HOLD_MS, 0);
+		expect(anchored.actionState.scrolling).toBe(true);
+		expect(anchored.actionState.scrollVelocity).toBe(0);
+		expect(anchored.actions).toEqual([]);
+
+		// Main abaissée à dy = +0.06 et maintenue fixe : défilement continu à chaque frame !
+		const tick1 = observe("pinch", 300, 0.06);
+		const tick2 = observe("pinch", 360, 0.06);
+		expect(tick1.actions).toMatchObject([
 			{ type: "pointer:scroll", handId: 1 },
 		]);
-		if (scrolled.actions[0]?.type === "pointer:scroll") {
-			expect(scrolled.actions[0].deltaY).toBeGreaterThan(0);
-		}
+		expect(tick2.actions).toMatchObject([
+			{ type: "pointer:scroll", handId: 1 },
+		]);
+		expect(tick2.actionState.scrollVelocity).toBeGreaterThan(0);
 	});
 });

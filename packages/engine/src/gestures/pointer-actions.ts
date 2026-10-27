@@ -1,70 +1,68 @@
 import type { PointerActionCommand, PointerMoveCommand } from "../commands";
-import type { HandObservation } from "../hand-observation";
 import type { HandPointerFrame } from "../pointer/hand-pointers";
-import { createOneEuroFilter } from "../pointer/one-euro-filter";
 import type { TrackedHandPose } from "../poses/hand-pose-tracker";
 import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
-import { measurePinch, type Point } from "./pinch";
-import { PINCH_END_THRESHOLD, PINCH_START_THRESHOLD } from "./pinch-config";
+import type { Point } from "./pinch";
 
-export const CLICK_FREEZE_MS = 120;
-export const SECONDARY_PINCH_HOLD_MS = 60;
-export const SCROLL_HOLD_MS = 80;
-const SCROLL_DEADZONE = 0.004;
+/** Durée de maintien du poing fermé avant de verrouiller la saisie (Grab & Drag). */
+export const GRAB_HOLD_MS = 600;
+/** Durée de confirmation d'un accord à 2 doigts (clic gauche) ou 3 doigts (clic droit). */
+export const CHORD_HOLD_MS = 140;
+/** Durée de maintien avant d'activer le défilement continu type joystick. */
+export const SCROLL_HOLD_MS = 100;
+/** Zone morte verticale autour du point d'ancrage du défilement joystick. */
+export const SCROLL_DEADZONE = 0.012;
 
 export type PointerActionState = {
 	readonly leftButtonDown: boolean;
 	readonly dragging: boolean;
+	/** Progression de verrouillage du poing fermé de 0 à 1 (sur GRAB_HOLD_MS). */
+	readonly grabProgress: number;
 	readonly scrolling: boolean;
-	readonly secondaryPinchPending: boolean;
+	/** Vitesse de défilement courante (négative = haut, positive = bas, 0 = zone morte). */
+	readonly scrollVelocity: number;
+	readonly pendingChord: "left-click" | "right-click" | null;
 };
 
 export type PointerActionUpdate = {
 	readonly state: PointerActionState;
 	readonly actions: readonly PointerActionCommand[];
 	readonly dragMove: PointerMoveCommand | null;
+	readonly freezeCursor: boolean;
 };
 
 function clamp01(value: number): number {
 	return Math.max(0, Math.min(1, value));
 }
 
-function stableHandAnchor(observation: HandObservation): Point | null {
-	const indexMcp = observation.landmarks[5];
-	const indexTip = observation.landmarks[8];
-	if (
-		!indexMcp ||
-		!indexTip ||
-		![indexMcp.x, indexMcp.y, indexTip.x, indexTip.y].every(Number.isFinite)
-	) {
-		return null;
+function isClosedFist(pose: TrackedHandPose): boolean {
+	const fingers = pose.measurements?.fingers;
+	if (!fingers || pose.pose === "pinch" || pose.candidate === "pinch") {
+		return false;
 	}
-	return {
-		x: indexMcp.x * 0.7 + indexTip.x * 0.3,
-		y: indexMcp.y * 0.7 + indexTip.y * 0.3,
-	};
-}
-
-function secondaryPinchRatio(
-	observation: HandObservation,
-	aspectRatio: number,
-): number | null {
-	const wrist = observation.landmarks[0];
-	const thumbTip = observation.landmarks[4];
-	const middleBase = observation.landmarks[9];
-	const middleTip = observation.landmarks[12];
-	if (!wrist || !thumbTip || !middleBase || !middleTip) return null;
 	return (
-		measurePinch(
-			{ wrist, thumbTip, indexTip: middleTip, middleBase },
-			aspectRatio,
-		)?.ratio ?? null
+		fingers.index === "folded" &&
+		fingers.middle === "folded" &&
+		fingers.ring === "folded" &&
+		fingers.pinky === "folded"
 	);
 }
 
-function isScrollFingerLayout(pose: TrackedHandPose): boolean {
+function shouldReleaseGrab(pose: TrackedHandPose): boolean {
 	const fingers = pose.measurements?.fingers;
-	if (!fingers) return false;
+	if (!fingers) return true;
+	return (
+		pose.pose === "open-palm" ||
+		fingers.index === "extended" ||
+		fingers.middle === "extended"
+	);
+}
+
+function isTwoFingerChord(pose: TrackedHandPose): boolean {
+	const fingers = pose.measurements?.fingers;
+	if (!fingers || pose.pose === "pinch" || pose.candidate === "pinch") {
+		return false;
+	}
 	return (
 		fingers.index === "extended" &&
 		fingers.middle === "extended" &&
@@ -73,46 +71,75 @@ function isScrollFingerLayout(pose: TrackedHandPose): boolean {
 	);
 }
 
+function isThreeFingerChord(pose: TrackedHandPose): boolean {
+	const fingers = pose.measurements?.fingers;
+	if (!fingers || pose.pose === "pinch" || pose.candidate === "pinch") {
+		return false;
+	}
+	return (
+		fingers.index === "extended" &&
+		fingers.middle === "extended" &&
+		fingers.ring === "extended" &&
+		fingers.pinky === "folded"
+	);
+}
+
 /**
- * Gère le cycle clic gauche / glisser-déposer, clic secondaire (pouce + majeur)
- * et défilement à deux doigts (index + majeur tendus), avec relâchement garanti.
+ * Modèle ergonomique multimodal ancré sur la paume :
+ * - ✊ Poing fermé (600 ms) : Saisir & Glisser (Grab & Drag piloté par le centre de la paume)
+ * - ✌️ 2 doigts tendus (Index + Majeur) : Clic gauche
+ * - 🤟 3 doigts tendus (Index + Majeur + Annulaire) : Clic droit
+ * - 🤏 Pincement maintenu + déplacement vertical : Défilement continu type "Joystick"
  */
 export function createPointerActionTracker() {
-	const dragFilter = createOneEuroFilter({ minCutoff: 1.4, beta: 0.05 });
 	let activeHandId: number | null = null;
-	let armedFromPointing = false;
 	let lastMirroredPosition: Point = { x: 0.5, y: 0.5 };
+
+	let grabSince: number | null = null;
+	let grabProgress = 0;
 	let leftButtonDown = false;
 	let dragging = false;
-	let pinchStartedAt: number | null = null;
-	let dragOriginAnchor: Point | null = null;
+	let dragOriginPalm: Point | null = null;
 	let dragStartScreenPos: Point | null = null;
 
-	let secondarySince: number | null = null;
-	let secondaryRequiresRelease = false;
+	let leftClickSince: number | null = null;
+	let rightClickSince: number | null = null;
+	let chordRequiresRelease = false;
 
 	let scrollSince: number | null = null;
 	let scrolling = false;
-	let lastScrollY: number | null = null;
+	let scrollAnchorY: number | null = null;
+	let scrollVelocity = 0;
 
 	let lastProcessedTimestamp: number | null = null;
 
 	function getState(): PointerActionState {
+		const pendingChord =
+			!chordRequiresRelease && rightClickSince !== null
+				? "right-click"
+				: !chordRequiresRelease && leftClickSince !== null
+					? "left-click"
+					: null;
 		return {
 			leftButtonDown,
 			dragging,
+			grabProgress,
 			scrolling,
-			secondaryPinchPending:
-				secondarySince !== null && !secondaryRequiresRelease,
+			scrollVelocity,
+			pendingChord,
 		};
 	}
 
 	function clearGestureTimers() {
-		secondarySince = null;
-		secondaryRequiresRelease = false;
+		grabSince = null;
+		grabProgress = 0;
+		leftClickSince = null;
+		rightClickSince = null;
+		chordRequiresRelease = false;
 		scrollSince = null;
 		scrolling = false;
-		lastScrollY = null;
+		scrollAnchorY = null;
+		scrollVelocity = 0;
 	}
 
 	function releaseLeftButton(
@@ -129,10 +156,10 @@ export function createPointerActionTracker() {
 		});
 		leftButtonDown = false;
 		dragging = false;
-		pinchStartedAt = null;
-		dragOriginAnchor = null;
+		grabSince = null;
+		grabProgress = 0;
+		dragOriginPalm = null;
 		dragStartScreenPos = null;
-		dragFilter.reset();
 	}
 
 	function update(
@@ -140,7 +167,6 @@ export function createPointerActionTracker() {
 		poses: readonly TrackedHandPose[],
 		pointers: HandPointerFrame,
 		paused: boolean,
-		aspectRatio = 1,
 	): PointerActionUpdate {
 		const actions: PointerActionCommand[] = [];
 		let dragMove: PointerMoveCommand | null = null;
@@ -155,11 +181,15 @@ export function createPointerActionTracker() {
 			(activeHandId !== null && primaryId !== activeHandId)
 		) {
 			releaseLeftButton(tracking.timestamp, actions);
-			armedFromPointing = false;
 			activeHandId = primaryId;
 			clearGestureTimers();
 			if (paused || tracking.ambiguous || primaryId === null) {
-				return { state: getState(), actions, dragMove };
+				return {
+					state: getState(),
+					actions,
+					dragMove,
+					freezeCursor: false,
+				};
 			}
 		}
 
@@ -174,64 +204,65 @@ export function createPointerActionTracker() {
 
 		if (!hand || !pose || !pointer) {
 			releaseLeftButton(tracking.timestamp, actions);
-			armedFromPointing = false;
 			clearGestureTimers();
-			return { state: getState(), actions, dragMove };
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor: false,
+			};
 		}
 
 		const isFresh =
 			hand.observation.timestamp === tracking.timestamp &&
 			lastProcessedTimestamp !== tracking.timestamp;
 		if (!isFresh) {
-			return { state: getState(), actions, dragMove };
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor:
+					leftButtonDown ||
+					grabSince !== null ||
+					leftClickSince !== null ||
+					rightClickSince !== null ||
+					scrolling,
+			};
 		}
 		lastProcessedTimestamp = tracking.timestamp;
+
+		const fist = isClosedFist(pose);
+		const twoFinger = isTwoFingerChord(pose);
+		const threeFinger = isThreeFingerChord(pose);
+		const pinchScroll = pose.pose === "pinch" || pose.candidate === "pinch";
 
 		if (
 			pointer.active &&
 			pose.pose === "pointing" &&
-			pose.candidate === "pointing"
+			pose.candidate === "pointing" &&
+			!fist &&
+			!twoFinger &&
+			!threeFinger &&
+			!pinchScroll &&
+			!leftButtonDown
 		) {
 			lastMirroredPosition = {
 				x: clamp01(1 - pointer.position.x),
 				y: clamp01(pointer.position.y),
 			};
-			armedFromPointing = true;
 		}
 
-		// 1. Cycle clic gauche & glisser-déposer (pinch pouce + index depuis un pointage)
-		if (pose.pose === "pinch" && (armedFromPointing || leftButtonDown)) {
-			clearGestureTimers();
-			const anchor = stableHandAnchor(hand.observation);
-			if (!leftButtonDown) {
-				leftButtonDown = true;
-				dragging = false;
-				pinchStartedAt = tracking.timestamp;
-				dragOriginAnchor = anchor
-					? dragFilter.update(anchor, tracking.timestamp)
-					: null;
-				dragStartScreenPos = { ...lastMirroredPosition };
-				actions.push({
-					type: "pointer:down",
-					button: "left",
-					handId: primaryId,
-					timestamp: tracking.timestamp,
-					position: lastMirroredPosition,
-				});
-			} else if (
-				anchor &&
-				dragOriginAnchor &&
-				dragStartScreenPos &&
-				pinchStartedAt !== null
-			) {
-				const filteredAnchor = dragFilter.update(anchor, tracking.timestamp);
-				if (tracking.timestamp - pinchStartedAt > CLICK_FREEZE_MS) {
-					const dx = -(filteredAnchor.x - dragOriginAnchor.x);
-					const dy = filteredAnchor.y - dragOriginAnchor.y;
-					if (Math.hypot(dx, dy) > 0.003) {
+		// 1. Saisir & Glisser (Grab & Drag) : poing fermé maintenu 600 ms, puis déplacement par la paume
+		if (leftButtonDown) {
+			if (shouldReleaseGrab(pose)) {
+				releaseLeftButton(tracking.timestamp, actions);
+			} else {
+				grabProgress = 1;
+				if (dragOriginPalm && dragStartScreenPos) {
+					const dx = -(pointer.palmPosition.x - dragOriginPalm.x);
+					const dy = pointer.palmPosition.y - dragOriginPalm.y;
+					if (Math.hypot(dx, dy) > 0.002) {
 						dragging = true;
-					}
-					if (dragging) {
 						lastMirroredPosition = {
 							x: clamp01(dragStartScreenPos.x + dx),
 							y: clamp01(dragStartScreenPos.y + dy),
@@ -244,39 +275,61 @@ export function createPointerActionTracker() {
 						};
 					}
 				}
+				return {
+					state: getState(),
+					actions,
+					dragMove,
+					freezeCursor: true,
+				};
 			}
-			return { state: getState(), actions, dragMove };
-		}
-
-		if (leftButtonDown) {
-			releaseLeftButton(tracking.timestamp, actions);
-			// Conserver l'armement si la main revient immédiatement en pointage.
-			armedFromPointing = pose.pose === "pointing" && pointer.active;
-		} else if (pose.pose === "open-palm") {
-			armedFromPointing = false;
-		}
-
-		// 2. Clic droit : pincement pouce + majeur avec l'index tendu
-		const secRatio = secondaryPinchRatio(hand.observation, aspectRatio);
-		const fingers = pose.measurements?.fingers;
-		const isSecondaryPinchCandidate =
-			secRatio !== null &&
-			fingers?.index === "extended" &&
-			fingers.ring === "folded" &&
-			fingers.pinky === "folded" &&
-			(secondaryRequiresRelease
-				? secRatio < PINCH_END_THRESHOLD
-				: secRatio <= PINCH_START_THRESHOLD);
-
-		if (isSecondaryPinchCandidate) {
+		} else if (fist) {
+			leftClickSince = null;
+			rightClickSince = null;
 			scrollSince = null;
 			scrolling = false;
-			lastScrollY = null;
-			if (!secondaryRequiresRelease) {
-				secondarySince ??= tracking.timestamp;
-				if (tracking.timestamp - secondarySince >= SECONDARY_PINCH_HOLD_MS) {
-					secondaryRequiresRelease = true;
-					secondarySince = null;
+			scrollAnchorY = null;
+			scrollVelocity = 0;
+
+			grabSince ??= tracking.timestamp;
+			const elapsed = tracking.timestamp - grabSince;
+			grabProgress = Number(clamp01(elapsed / GRAB_HOLD_MS).toFixed(4));
+			if (elapsed >= GRAB_HOLD_MS) {
+				leftButtonDown = true;
+				dragging = true;
+				grabProgress = 1;
+				dragOriginPalm = { ...pointer.palmPosition };
+				dragStartScreenPos = { ...lastMirroredPosition };
+				actions.push({
+					type: "pointer:down",
+					button: "left",
+					handId: primaryId,
+					timestamp: tracking.timestamp,
+					position: lastMirroredPosition,
+				});
+			}
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor: true,
+			};
+		} else {
+			grabSince = null;
+			grabProgress = 0;
+		}
+
+		// 2. Accord à 3 doigts (Index + Majeur + Annulaire) : Clic droit
+		if (threeFinger) {
+			leftClickSince = null;
+			scrollSince = null;
+			scrolling = false;
+			scrollAnchorY = null;
+			scrollVelocity = 0;
+			if (!chordRequiresRelease) {
+				rightClickSince ??= tracking.timestamp;
+				if (tracking.timestamp - rightClickSince >= CHORD_HOLD_MS) {
+					chordRequiresRelease = true;
+					rightClickSince = null;
 					actions.push({
 						type: "pointer:click",
 						button: "right",
@@ -286,60 +339,103 @@ export function createPointerActionTracker() {
 					});
 				}
 			}
-			return { state: getState(), actions, dragMove };
-		}
-		secondarySince = null;
-		if (secRatio === null || secRatio >= PINCH_END_THRESHOLD) {
-			secondaryRequiresRelease = false;
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor: true,
+			};
 		}
 
-		// 3. Défilement vertical : index + majeur tendus, annulaire + auriculaire repliés
-		if (pose.pose !== "pinch" && isScrollFingerLayout(pose)) {
-			const indexMcp = hand.observation.landmarks[5];
-			const middleMcp = hand.observation.landmarks[9];
-			const currentY =
-				indexMcp && middleMcp ? (indexMcp.y + middleMcp.y) / 2 : null;
-			if (currentY !== null && Number.isFinite(currentY)) {
-				scrollSince ??= tracking.timestamp;
-				if (tracking.timestamp - scrollSince >= SCROLL_HOLD_MS) {
-					scrolling = true;
-					if (lastScrollY !== null) {
-						const dy = currentY - lastScrollY;
-						if (Math.abs(dy) >= SCROLL_DEADZONE) {
-							actions.push({
-								type: "pointer:scroll",
-								handId: primaryId,
-								timestamp: tracking.timestamp,
-								deltaY: Number((dy * 12).toFixed(4)),
-							});
-							lastScrollY = currentY;
-						}
-					} else {
-						lastScrollY = currentY;
-					}
+		// 3. Accord à 2 doigts (Index + Majeur) : Clic gauche
+		if (twoFinger) {
+			rightClickSince = null;
+			scrollSince = null;
+			scrolling = false;
+			scrollAnchorY = null;
+			scrollVelocity = 0;
+			if (!chordRequiresRelease) {
+				leftClickSince ??= tracking.timestamp;
+				if (tracking.timestamp - leftClickSince >= CHORD_HOLD_MS) {
+					chordRequiresRelease = true;
+					leftClickSince = null;
+					actions.push({
+						type: "pointer:click",
+						button: "left",
+						handId: primaryId,
+						timestamp: tracking.timestamp,
+						position: lastMirroredPosition,
+					});
 				}
-				return { state: getState(), actions, dragMove };
 			}
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor: true,
+			};
+		}
+
+		leftClickSince = null;
+		rightClickSince = null;
+		const fingers = pose.measurements?.fingers;
+		if (
+			pose.pose === "open-palm" ||
+			(fingers?.middle === "folded" && fingers.ring === "folded")
+		) {
+			chordRequiresRelease = false;
+		}
+
+		// 4. Défilement continu type "Joystick" (pincement maintenu + écart vertical de la paume)
+		if (pose.pose === "pinch") {
+			scrollSince ??= tracking.timestamp;
+			if (tracking.timestamp - scrollSince >= SCROLL_HOLD_MS) {
+				scrolling = true;
+				scrollAnchorY ??= pointer.palmPosition.y;
+				const dy = pointer.palmPosition.y - scrollAnchorY;
+				if (Math.abs(dy) >= SCROLL_DEADZONE) {
+					const effectiveDy = Math.sign(dy) * (Math.abs(dy) - SCROLL_DEADZONE);
+					const deltaY = Number((effectiveDy * 8).toFixed(4));
+					scrollVelocity = deltaY;
+					actions.push({
+						type: "pointer:scroll",
+						handId: primaryId,
+						timestamp: tracking.timestamp,
+						deltaY,
+					});
+				} else {
+					scrollVelocity = 0;
+				}
+			}
+			return {
+				state: getState(),
+				actions,
+				dragMove,
+				freezeCursor: true,
+			};
 		}
 
 		scrollSince = null;
 		scrolling = false;
-		lastScrollY = null;
+		scrollAnchorY = null;
+		scrollVelocity = 0;
 
-		return { state: getState(), actions, dragMove };
+		return {
+			state: getState(),
+			actions,
+			dragMove,
+			freezeCursor: false,
+		};
 	}
 
 	function reset() {
 		activeHandId = null;
-		armedFromPointing = false;
 		lastMirroredPosition = { x: 0.5, y: 0.5 };
 		leftButtonDown = false;
 		dragging = false;
-		pinchStartedAt = null;
-		dragOriginAnchor = null;
+		dragOriginPalm = null;
 		dragStartScreenPos = null;
 		lastProcessedTimestamp = null;
-		dragFilter.reset();
 		clearGestureTimers();
 	}
 

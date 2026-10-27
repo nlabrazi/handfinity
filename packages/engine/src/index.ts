@@ -18,10 +18,11 @@ export type {
 	PointerActionUpdate,
 } from "./gestures/pointer-actions";
 export {
-	CLICK_FREEZE_MS,
+	CHORD_HOLD_MS,
 	createPointerActionTracker,
+	GRAB_HOLD_MS,
+	SCROLL_DEADZONE,
 	SCROLL_HOLD_MS,
-	SECONDARY_PINCH_HOLD_MS,
 } from "./gestures/pointer-actions";
 export type {
 	Handedness,
@@ -34,7 +35,10 @@ export {
 	DEFAULT_ACTIVE_ZONE,
 } from "./pointer/active-zone";
 export type { HandPointer, HandPointerFrame } from "./pointer/hand-pointers";
-export { createHandPointerTracker } from "./pointer/hand-pointers";
+export {
+	computePalmCenter,
+	createHandPointerTracker,
+} from "./pointer/hand-pointers";
 export type { OneEuroFilterOptions } from "./pointer/one-euro-filter";
 export { createOneEuroFilter } from "./pointer/one-euro-filter";
 export { createPointSmoother } from "./pointer/point-smoother";
