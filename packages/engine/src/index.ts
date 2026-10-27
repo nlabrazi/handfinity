@@ -1,9 +1,28 @@
-export type { PointerMoveCommand } from "./commands";
+export type {
+	InputCommand,
+	MouseButton,
+	PointerActionCommand,
+	PointerButtonDownCommand,
+	PointerButtonUpCommand,
+	PointerClickCommand,
+	PointerMoveCommand,
+	PointerScrollCommand,
+} from "./commands";
 export type { GestureControlFrame } from "./control/gesture-control";
 export { CONTROL_HOLD_MS } from "./control/gesture-control";
 export type { GestureEngineFrame } from "./gesture-engine";
 export { createGestureEngine } from "./gesture-engine";
 export type { Point } from "./gestures/pinch";
+export type {
+	PointerActionState,
+	PointerActionUpdate,
+} from "./gestures/pointer-actions";
+export {
+	CLICK_FREEZE_MS,
+	createPointerActionTracker,
+	SCROLL_HOLD_MS,
+	SECONDARY_PINCH_HOLD_MS,
+} from "./gestures/pointer-actions";
 export type {
 	Handedness,
 	HandObservation,
