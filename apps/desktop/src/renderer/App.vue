@@ -19,19 +19,19 @@ const starting = computed(() => state.value.phase === "starting");
 const status = computed(() => {
 	switch (state.value.phase) {
 		case "unsupported":
-			return "System pointer control requires Windows.";
+			return "Available on Windows only.";
 		case "starting":
-			return "Starting Windows pointer control…";
+			return "Starting…";
 		case "waiting":
-			return "Enabled — waiting for the selected hand to point.";
+			return "On — waiting for a pointing hand.";
 		case "moving":
-			return "Enabled — following your main hand.";
+			return "On — following the pointing hand.";
 		case "paused":
-			return `Paused by gesture — hold your open palm for ${CONTROL_HOLD_MS / 1000} seconds to resume.`;
+			return `Paused — hold your open palm for ${CONTROL_HOLD_MS / 1000} seconds to resume.`;
 		case "error":
 			return state.value.error;
 		default:
-			return "Windows pointer control is off.";
+			return "Off.";
 	}
 });
 let unsubscribe: (() => void) | undefined;
@@ -58,16 +58,13 @@ async function disablePointer() {
 	}
 }
 
-async function togglePointer(
-	cameraRunning: boolean,
-	hasControllingHand: boolean,
-) {
+async function togglePointer(cameraRunning: boolean) {
 	if (!bridge) return;
 	if (enabled.value || starting.value) {
 		await disablePointer();
 		return;
 	}
-	if (!cameraRunning || !hasControllingHand) return;
+	if (!cameraRunning) return;
 	try {
 		showState(await bridge.enable());
 	} catch (error) {
@@ -78,12 +75,7 @@ async function togglePointer(
 function submit(frame: GestureEngineFrame) {
 	const sessionId = state.value.sessionId;
 	if (!bridge || sessionId === null) return;
-	const update = toPointerUpdate(
-		frame,
-		sessionId,
-		performance.timeOrigin,
-		performance.now(),
-	);
+	const update = toPointerUpdate(frame, sessionId, performance.timeOrigin);
 	if (update) bridge.submit(update);
 }
 
@@ -111,51 +103,51 @@ onBeforeUnmount(() => {
 		@tracking-stop="disablePointer"
 	>
 		<template #description>
-			Start the camera, select a hand, then enable the Windows pointer to
-			control your primary display. Clicking and keyboard input are not
-			available yet.
+			Start the camera, then enable the Windows pointer to control your primary
+			display. Clicking and keyboard input are not available yet.
 		</template>
-		<template #controls="{ isRunning, hasControllingHand }">
+		<template #controls="{ isRunning }">
 			<section
 				data-system-pointer
 				:data-phase="state.phase"
 				aria-labelledby="system-pointer-title"
-				class="space-y-3 rounded-lg border border-slate-700 bg-slate-900 p-4 text-sm"
+				class="space-y-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
 			>
-				<h2 id="system-pointer-title" class="font-medium">Windows pointer</h2>
-				<p class="text-slate-400">
-					Point with your main hand to move the cursor on the primary display.
-					Open your hand or remove it from view to stop moving.
-				</p>
-				<button
-					type="button"
-					data-toggle-system-pointer
-					:disabled="!bridge || state.phase === 'unsupported' || ((!isRunning || !hasControllingHand) && !enabled && !starting)"
-					@click="togglePointer(isRunning, hasControllingHand)"
-					class="rounded-lg bg-cyan-700 px-4 py-2 font-medium hover:bg-cyan-600 disabled:opacity-50"
-				>
-					{{
-						enabled || starting
-							? "Stop Windows pointer"
-							: "Enable Windows pointer"
-					}}
-				</button>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div class="min-w-0">
+						<h2 id="system-pointer-title" class="font-medium">
+							Windows pointer
+						</h2>
+						<p
+							role="status"
+							:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"
+						>
+							{{ status }}
+						</p>
+					</div>
+					<button
+						type="button"
+						data-toggle-system-pointer
+						:disabled="!bridge || state.phase === 'unsupported' || (!isRunning && !enabled && !starting)"
+						@click="togglePointer(isRunning)"
+						class="rounded-lg bg-cyan-700 px-4 py-2 font-medium hover:bg-cyan-600 disabled:opacity-50"
+					>
+						{{
+							enabled || starting
+								? "Stop Windows pointer"
+								: "Enable Windows pointer"
+						}}
+					</button>
+				</div>
 				<p
-					v-if="!hasControllingHand && !enabled && !starting"
-					class="text-amber-300"
+					v-if="bridge && state.phase !== 'unsupported' && !enabled && !starting && !isRunning"
+					class="text-xs text-amber-300"
 				>
-					Choose a visible hand in Main hand before enabling Windows control.
+					Start the camera to enable control.
 				</p>
-				<p
-					role="status"
-					:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"
-				>
-					{{ status }}
-				</p>
-				<p class="text-slate-400">
-					Stop control at any time with <kbd>Ctrl + Alt + Esc</kbd>, even in
-					another application. Stopping the camera also turns pointer control
-					off.
+				<p class="text-xs text-slate-400">
+					Emergency stop: <kbd>Ctrl + Alt + Esc</kbd> · Stop camera also turns
+					control off.
 				</p>
 			</section>
 		</template>

@@ -21,7 +21,7 @@
 
 **Handfinity** est un projet d'**interface gestuelle par webcam** visant à remplacer progressivement la **souris et le clavier sur PC**, dans les applications existantes. Le smartphone, puis les lunettes de réalité augmentée, seront étudiés après validation de l'usage sur PC.
 
-**État actuel :** le [site d'accueil](apps/hub/README.md), le [Playground](apps/playground/README.md) et l'[application bureau Electron](apps/desktop/README.md) sont présents. Le bureau réutilise le même moteur et ajoute le **déplacement du vrai curseur Windows sur l'écran principal**, après démarrage de la caméra et activation explicite. L’étape 10 est validée dans `a2449a7` ; le navigateur conserve la simulation. L’étape 11 de pause/reprise par paume ouverte maintenue **1,5 seconde** est validée dans `66efba1`. L’étape 12 rend obligatoire le choix de la main dans **Main hand** et bloque les réattributions automatiques après perte, à valider avec la webcam. **Clics, défilement et saisie clavier restent à construire.**
+**État actuel :** le [site d'accueil](apps/hub/README.md), le [Playground](apps/playground/README.md) et l'[application bureau Electron](apps/desktop/README.md) sont présents. Le bureau réutilise le même moteur et ajoute le **déplacement du vrai curseur Windows sur l'écran principal**, après démarrage de la caméra et activation explicite. L’étape 10 est validée dans `a2449a7` ; le navigateur conserve la simulation. L’étape 11 de pause/reprise est dans `66efba1`, et l’étape 12 de sélection de la main a été commitée par l’utilisateur dans `1785d6c`. La main qui pointe prend désormais le contrôle automatiquement, sans sélection dans un menu. La nouvelle interface et ce comportement restent à valider avec la webcam. **Clics, défilement et saisie clavier restent à construire.**
 
 - 🧭 **Connexion directe** : Accès à la webcam depuis le navigateur, avec démarrage et arrêt explicites.
 - 🎮 **Un accueil et un laboratoire** :
@@ -34,7 +34,7 @@
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
 - 🔊 **Retour visuel en direct** : Posture confirmée et candidate, estimation des doigts, coordonnées et rôle de chaque main.
 - 🧹 **Outillage** : Biome v2 pour le lint et le formatage, y compris les fichiers Vue.
-- 🧪 **Qualité & Tests** : 431 tests passent pour l’étape 12 et le socle conservé, ainsi que lint, formatage et builds web/bureau. Les commandes web sont utilisées en CI Jenkins ; les essais natifs Windows et la vraie webcam complètent les tests automatisés.
+- 🧪 **Qualité & Tests** : 412 tests passent pour l’interface et le socle conservé, ainsi que lint, formatage et builds web/bureau. Les commandes web sont utilisées en CI Jenkins ; les essais natifs Windows et la vraie webcam complètent les tests automatisés.
 - 🐳 **Développement Docker** : Deux services conservés, sources montées en volumes et hot reload Vite avec polling.
 
 Le [cadrage technique](docs/architecture.md) décrit les responsabilités et limites actuelles. Le [découpage en commits](docs/roadmap.md) précise la suite.
@@ -59,7 +59,7 @@ Le socle actuel repose sur MediaPipe et trois packages internes :
 - 🖱️ **Suivi de deux mains** : Détection des repères et association d'identités locales à la session.
 - 🎯 **Postures stabilisées** : Pointage, ouverture des cinq doigts, pincement et posture inconnue.
 - ⏸️ **Pause volontaire** : Maintenir les cinq doigts ouverts pendant 1,5 seconde suspend les commandes ; refaire le geste après avoir replié les doigts permet de reprendre. La caméra reste active.
-- 📌 **Main principale explicite** : Choix obligatoire d’une identité visible dans **Main hand** ; perte définitive ou ambiguïté imposent une nouvelle sélection.
+- 📌 **Main de contrôle automatique** : Une main qui pointe commande ; si deux mains pointent, la main déjà active garde le contrôle.
 - 🌐 **Packages partagés** : `core` définit les modèles et la reconnaissance ; `vision` possède la session caméra, la détection et les identités ; `interactions` assemble les postures et les pointeurs dans le moteur commun.
 - ⚡ **Actualisation continue** : Analyse des nouvelles images ; les images répétées ne confirment pas de nouvelle posture et ne sont pas lissées à nouveau.
 - 🔌 **Gestion du cycle de vie** : Initialisation, arrêt, fermeture du détecteur et nettoyage des états.
@@ -69,14 +69,19 @@ Le socle actuel repose sur MediaPipe et trois packages internes :
 
 Le **Playground** permet d'observer ce que reconnaissent les briques partagées :
 
+La caméra et la simulation sont placées côte à côte sur écran large, avec
+l’état de la main de contrôle et du pointage à proximité. Dans le bureau, les
+contrôles Windows sont dans la même zone. **Tracking and gesture details** et
+le journal des commandes sont repliés par défaut ; ils restent accessibles.
+
 - **Démarrage manuel** : Le bouton **Start camera** demande l'accès à la caméra ; **Stop camera** ferme la session.
 - **Aperçu en miroir** : Vidéo, repères et pointeurs partagent le même affichage.
 - **Identités des mains** : Numéros, latéralité, états `tracked` et `missing`, apparitions, pertes et ambiguïtés.
 - **Postures** : **Hand poses** affiche les postures confirmées et candidates, les estimations des doigts et le ratio de pincement.
 - **Pointeurs** : L'index tendu, les trois autres doigts repliés et le pouce séparé activent un cercle dans la vidéo. Le contour plein désigne la main principale ; le pointillé la seconde main.
-- **Choix de la main principale** : **Main hand** sélectionne une identité visible ou libère le contrôle. Le message distingue une absence brève d’une sélection définitivement perdue.
-- **Pause et reprise** : **Gesture control** affiche l’état commun, la progression du maintien et le besoin de relâcher le geste. La pause bloque la simulation et le contrôle Windows activé.
-- **Commandes et simulation** : **Pointer commands** affiche un curseur dans une zone dédiée, les huit dernières commandes et le nombre total reçu.
+- **Main de contrôle** : le pointage choisit automatiquement la main ; une main revenue après perte peut reprendre sans action dans un menu.
+- **Pause et reprise** : l’état reste visible ; **Gesture control**, dans les détails, affiche la progression du maintien et le besoin de relâcher le geste. La pause bloque la simulation et le contrôle Windows activé.
+- **Commandes et simulation** : **Pointer commands** affiche le curseur et les coordonnées ; son journal replié contient le nombre total et les huit dernières commandes.
 - **Limite du navigateur** : Le cercle vidéo et le curseur simulé restent dans le laboratoire web. Le déplacement du pointeur Windows demande l'application bureau et son activation explicite.
 
 ### ⏱️ Réactivité & Fiabilité de la Détection
@@ -169,18 +174,17 @@ Seul un pointage confirmé dans l'image active le pointeur. Le lissage est isol�
 par identité et réinitialisé après un repos ou une absence ; une image déjà
 traitée n'est pas filtrée une seconde fois.
 
-Aucune main ne commande au démarrage. `setPrimaryHand(id)` choisit explicitement
-une identité actuellement suivie ; `setPrimaryHand(null)` libère le contrôle.
-Une main au repos ou brièvement manquante conserve son rôle. Après expiration
-ou ambiguïté, sa sélection reste marquée `lost` ou `ambiguous` et aucune autre
-identité ne prend le relais. Il faut choisir une main visible dans **Main hand**.
-La latéralité ne réattribue pas le contrôle à une nouvelle identité.
+La main en pointage confirmé prend automatiquement le contrôle. Si deux mains
+pointent, la main déjà active conserve le rôle ; au démarrage simultané, le plus
+petit numéro est choisi. Si elle cesse de pointer et qu’une autre main pointe,
+cette dernière prend le relais. Une main seule visible peut également utiliser
+la pause par paume ouverte. Après perte ou ambiguïté, une nouvelle observation
+confirmée permet de reprendre sans menu. Les identités restent locales : une
+nouvelle main visible peut prendre le contrôle, sans reconnaissance physique
+persistante.
 
-`HandPointerFrame.selectionStatus` distingue `unselected`, `tracked`, `missing`,
-`lost` et `ambiguous`. Le choix perdu reste affiché, avec une invitation à
-sélectionner de nouveau. Les autres pointeurs de diagnostic continuent à suivre
-les mains. Ces identités sont locales et ne garantissent pas une reconnaissance
-physique persistante après occultation.
+`HandPointerFrame.selectionStatus` distingue `unselected`, `tracked`, `missing`
+et `ambiguous`. Une image ancienne ne déclenche pas de transfert ni de mouvement.
 
 Le [Playground](apps/playground/README.md#diagnostics) affiche ces pointeurs dans
 la vidéo. Les coordonnées **Source x/y** du panneau restent celles de l'image
@@ -192,8 +196,7 @@ commun à l’étape 11.
 
 `createGestureEngine`, exporté par `@handfinity/interactions`, centralise déjà
 la chaîne postures → pointeurs consommée par le Playground.
-`update(trackingFrame, aspectRatio)` retourne `{ tracking, poses, pointers, control, commands, selectionChanged }` ;
-`setPrimaryHand(id)` applique le choix et renvoie un instantané sans commande.
+`update(trackingFrame, aspectRatio)` retourne `{ tracking, poses, pointers, control, commands }`.
 `reset()` efface ensemble
 postures, lissage, sélection de main et pause volontaire. Les identités restent fournies par la session
 de vision, sans second suivi dans le moteur.
@@ -204,7 +207,7 @@ avec l'origine en haut à gauche ; le moteur applique déjà le miroir horizonta
 (`x = 1 - Source x`, `y = Source y`). La simulation consomme cette destination
 directement. Le point source reste celui du pointeur lissé.
 
-Seule une nouvelle observation de la main explicitement sélectionnée en pointage confirmé
+Seule une nouvelle observation de la main de contrôle en pointage confirmé
 produit une commande, au plus une fois par image. Une image répétée, une main
 au repos, manquante ou ambiguë n'en produit pas. Le curseur simulé conserve sa
 dernière position sans commande ; l'arrêt efface sa position, le journal et le
@@ -238,7 +241,7 @@ puis commité et poussé l'étape 9 dans `9804677`. Le navigateur web conserve s
 gestion habituelle des onglets en arrière-plan.
 
 Dans le bureau, **Enable Windows pointer** active séparément le vrai curseur
-après **Start camera** et choix d’une main dans **Main hand**. **Stop Windows pointer** ou **Ctrl + Alt + Esc** l'arrête,
+après **Start camera**. **Stop Windows pointer** ou **Ctrl + Alt + Esc** l'arrête,
 y compris dans une autre application. Le repos ou la perte de suivi suspend les
 déplacements ; une nouvelle commande valide les reprend tant que le contrôle
 reste activé. **Stop camera** et la fermeture désactivent aussi le contrôle et
@@ -263,7 +266,7 @@ les faux pincements liés à la rotation de la main. Ces corrections restent à
 Le moteur conserve aussi l’état `control` : `paused`, `holdProgress`, `handId`
 et `requiresRelease`. Une paume ouverte confirmée, maintenue 1 500 ms sur de
 nouvelles observations, bascule la pause. Seule la main principale est prise en
-compte ; sans sélection valide, aucun geste de pause/reprise n’est accepté. Une perte,
+compte ; une main seule visible peut devenir principale même au repos. Une perte,
 une ambiguïté, un changement de main ou une autre posture annule un maintien
 incomplet. Le pointage et la perte de suivi ne retirent jamais une pause acquise.
 
@@ -276,12 +279,9 @@ trajectoires et conserve son état `paused`. Une reprise gestuelle attend un
 nouveau pointage. **Stop camera** remet le moteur à zéro ; **Stop Windows pointer**
 et **Ctrl + Alt + Esc** restent des désactivations exigeant le bouton d’activation.
 
-À l’étape 12, changer **Main hand** annule immédiatement l’ancienne trajectoire,
-sans attendre l’image caméra suivante. Ce résultat porte `selectionChanged` et
-aucune commande. Le renderer date cette annulation avec l’heure du choix ; les
-déplacements conservent l’heure réelle de leur image. Le main ne raccorde pas
-les positions de deux identités par une interpolation. Une pause acquise reste
-active lors du choix d’une autre main.
+Lorsqu’une nouvelle main pointante prend le contrôle, le main annule l’ancien
+trajet avant d’appliquer la nouvelle cible : il n’interpole pas entre deux
+identités. La pause acquise reste active lors du changement de main.
 
 ### Sessions de suivi communes
 
@@ -377,8 +377,9 @@ la distribution reste prévu à l'étape 27.
   - [x] Déplacement du vrai curseur Windows validé dans `a2449a7`
 - [ ] **Souris utilisable — étapes 11 à 18**
   - [x] Pause et reprise gestuelles validées dans `66efba1`
-  - [ ] Sélection de la main implémentée, à valider
-  - [ ] Calibration de la zone de contrôle
+  - [x] Sélection de la main commitée dans `1785d6c`
+  - [ ] Ergonomie Playground/Desktop revue, à tester avec la webcam
+  - [ ] Calibration de la zone de contrôle reportée
   - [ ] Clic principal, déplacement avec maintien, clic secondaire et défilement
   - [ ] Conservation des réglages
 - [ ] **Clavier à la demande — étapes 19 à 24**
@@ -400,14 +401,13 @@ validation utilisateur.
 
 ## Utiliser Handfinity
 
-1. **Ouvrir le laboratoire** : depuis l'accueil, accéder à **Playground**. La caméra reste arrêtée jusqu'à l'action **Start camera** et l'autorisation du navigateur.
-2. **Observer le suivi** : présenter une ou deux mains séparées pour lire leurs numéros, états et postures dans les diagnostics.
-3. **Sélectionner la main de contrôle** : choisir son numéro dans **Main hand**. Sans sélection, les mains restent suivies mais aucune commande n’est émise. Après perte définitive ou ambiguïté, sélectionner une main visible de nouveau.
-4. **Activer un pointeur** : tendre l'index, replier majeur, annulaire et auriculaire et séparer le pouce de l'index. Un cercle apparaît dans la vidéo ; son contour plein désigne la main principale. Cette main déplace aussi le curseur de **Pointer commands** et alimente son journal.
-5. **Mettre en pause et reprendre** : maintenir les cinq doigts ouverts pendant 1,5 seconde. Le panneau **Gesture control** passe à **Paused** ; repointer ne déplace plus le curseur. Replier les doigts ou repointer brièvement, puis refaire le maintien pour reprendre.
-6. **Choisir et arrêter** : utiliser **Main hand** pour changer de main principale et **Stop camera** pour libérer la session. Quitter le laboratoire coupe également la caméra.
+1. **Ouvrir le laboratoire** : accéder à **Playground**, puis démarrer la caméra.
+2. **Pointer** : tendre l’index, replier les trois autres doigts et séparer le pouce. La main est choisie automatiquement et le curseur simulé la suit.
+3. **Essayer deux mains** : la main qui pointe contrôle le curseur ; si les deux pointent, la main déjà active le conserve. Après une sortie du champ, repointer permet de reprendre sans sélection.
+4. **Mettre en pause et reprendre** : maintenir la paume ouverte 1,5 seconde, relâcher le geste et le refaire. La pause est conservée après perte de la main.
+5. **Arrêter** : utiliser **Stop camera** pour libérer la session.
 
-**Dans l'application Windows :** après **Start camera** et le choix dans **Main hand**, cliquer sur
+**Dans l'application Windows :** après **Start camera**, cliquer sur
 **Enable Windows pointer** pour déplacer le vrai curseur de l'écran principal.
 **Stop Windows pointer** et **Ctrl + Alt + Esc** désactivent ce contrôle tout en
 gardant la caméra active. Le [guide Desktop](apps/desktop/README.md#vérifications-manuelles)

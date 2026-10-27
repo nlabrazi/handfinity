@@ -43,6 +43,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `9804677` | Suivi bureau en arrière-plan et cadence par timer, étape 9 | Testé avec la vraie webcam, validé, commité et poussé par l'utilisateur |
 | `a2449a7` | Véritable curseur Windows, corrections de fluidité, suivi réduit et posture, étape 10 | Validé et commité par l’utilisateur ; améliorations de confort reportées |
 | `66efba1` | Pause et reprise gestuelles par paume ouverte maintenue 1,5 seconde, étape 11 | Testée, validée et commitée par l’utilisateur |
+| `1785d6c` | Sélection explicite de la main, étape 12 | Commitée par l’utilisateur, qui a demandé d’avancer ; push non confirmé |
 
 ## Recadrage et suppressions — réalisé
 
@@ -111,6 +112,11 @@ du travail fonctionnel repris à l'étape 6.
     corrections ont été acceptées ; l’utilisateur juge le résultat meilleur,
     encore perfectible, et demande de reporter les itérations de fluidité.
 
+L’utilisateur a demandé d’annuler les modifications non commitées de calibration
+de l’étape 13, qu’il juge peu utiles pour son usage actuel, et de prioriser
+l’ergonomie du Playground et du bureau. La calibration reste reportée ; attendre
+la validation de cette interface et un nouvel essai webcam avant la suite.
+
 Décisions de l'étape 8 : Windows 11 x64 et Electron, avec édition et compilation
 sous WSL2 puis exécution directe sous Windows. Les essais web de l'utilisateur
 restent possibles dans Firefox Windows. Le suivi hors premier plan a été validé
@@ -129,15 +135,20 @@ restent possibles dans Firefox Windows. Le suivi hors premier plan a été valid
     web/bureau réussis. L’étape 12 remplace ensuite le choix automatique par une
     sélection obligatoire ; une main non choisie ne peut plus agir sur la pause.
 12. **`feat(control): select the controlling hand`** — Choix explicite et prévention
-    du transfert involontaire du contrôle. Implémentée, à valider : l’utilisateur
+    Historique : le sélecteur a depuis été remplacé par le contrôle automatique.
+    du transfert involontaire du contrôle. Commitée dans `1785d6c` : l’utilisateur
     conserve **Main hand**, sans nouveau geste. Choix obligatoire d’une identité
     visible, aucun relais automatique après expiration ou ambiguïté, états de
     sélection affichés et conservation de la pause lors d’un changement.
     Le changement annule l’ancienne trajectoire sans rejouer d’image, puis attend
     une observation fraîche de la nouvelle main. **431 tests passent**, lint,
-    formatage et builds web/bureau réussis. Attendre sa validation avant l’étape 13.
+    formatage et builds web/bureau réussis. Un blocage a été signalé ensuite :
+    sa cause reste à déterminer avec la webcam et l’interface réorganisée.
+    Le nouveau contrôle automatique est implémenté et attend l’essai webcam ;
+    ensuite, prioriser le clic par pincement des étapes 14 et 15.
 13. **`feat(pointer): calibrate the hand control area`** — Correspondance avec l'écran,
-    précision, accès aux bords et amplitude de mouvement.
+    précision, accès aux bords et amplitude de mouvement. Modifications non
+    commitées annulées à la demande de l’utilisateur ; étape reportée.
 14. **`feat(input): translate pinch into primary-button commands`** — Appui et
     relâchement testés et observables dans le Playground.
 15. **`feat(desktop): execute primary-button commands`** — Clic et déplacement avec
@@ -185,4 +196,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l’étape 12 pour reprendre dans une nouvelle discussion.
+lot d’ergonomie en cours pour reprendre dans une nouvelle discussion.

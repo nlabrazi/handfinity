@@ -12,8 +12,13 @@ Une première version a été vérifiée sous Windows avec des commandes synthé
 L’utilisateur a validé et commité ce lot dans `a2449a7`, en reportant les
 itérations restantes de fluidité. L’étape 11 ajoute la pause et la reprise
 volontaires par paume ouverte maintenue **1,5 seconde**, validées dans `66efba1`.
-L’étape 12 impose un choix explicite dans **Main hand** et bloque la réattribution
-après perte ou ambiguïté ; ce nouveau lot reste à valider avec la webcam.
+L’étape 12 et son sélecteur ont été commités dans `1785d6c`. À la demande de
+l’utilisateur, la main qui pointe est désormais choisie automatiquement et
+l’interface partagée a été réorganisée
+pour rapprocher vidéo, simulation, état de la main et commande Windows.
+Les détails de suivi et le journal restent accessibles dans des panneaux repliés.
+La cause du blocage n’est pas encore identifiée ; un nouvel essai webcam est
+nécessaire. Le moteur choisit désormais la main de contrôle automatiquement.
 Les clics, le défilement et le clavier appartiennent aux étapes suivantes ;
 l'installeur de distribution reste prévu à l'étape 27.
 
@@ -68,8 +73,7 @@ ni 120 Hz ni la fréquence de l'écran ne sont garantis. Cette cadence de curseu
 est distincte de celle des images et ne crée aucune nouvelle observation caméra.
 
 Le contrôle Windows reste désactivé au lancement. Après **Start camera**,
-présenter une main, choisir son numéro dans **Main hand**, puis cliquer sur
-**Enable Windows pointer**. Ce bouton reste indisponible sans sélection visible. Le statut passe de démarrage à attente d'une
+cliquer sur **Enable Windows pointer**. Le statut passe de démarrage à attente d'une
 main en pointage, puis au suivi de la main principale. **Stop Windows pointer**
 ou **Ctrl + Alt + Esc** désactive le contrôle tout en gardant la caméra active.
 Ce raccourci est enregistré pendant le démarrage du contrôle et son activation,
@@ -80,8 +84,7 @@ Maintenir la paume ouverte confirmée pendant **1,5 seconde** met le moteur en
 pause et le main dans l’état `paused`. La caméra et les diagnostics restent
 actifs ; repointer ou perdre la main ne reprend pas les déplacements. Replier
 les doigts ou repointer brièvement, puis refaire le maintien permet de reprendre.
-Seule la main sélectionnée peut effectuer ce geste ; sans sélection valide,
-il faut d’abord choisir une main dans le menu.
+La main de contrôle effectue ce geste ; une main seule visible peut aussi être choisie automatiquement au repos.
 Garder la paume ouverte ne produit qu’un basculement jusqu’à des doigts
 nettement repliés ou une autre posture confirmée, même après une disparition. Un maintien interrompu repart de zéro.
 
@@ -116,21 +119,13 @@ peut héberger le site et les téléchargements indépendamment de l'application
 installée sur le PC. Le futur contrôle d'Android par caméra frontale demandera
 une intégration native spécifique et une étude distincte.
 
-À l’étape 12, aucune main n’est choisie automatiquement, même si elle pointe.
-**Main hand** sélectionne une identité actuellement `tracked`, ou libère le
-contrôle avec **Choose a hand…**. Une absence brève `missing` réserve l’identité
-choisie et peut reprendre avec elle. Après expiration `lost` ou ambiguïté,
-aucune autre identité ne prend le relais : sélectionner de nouveau une main
-visible, y compris si la même main physique revient sous un nouveau numéro.
-La pause acquise est conservée lors d’un changement de sélection.
-
-Le menu met à jour les rôles et annule immédiatement l’ancienne cible et son
-trajet, sans attendre l’image suivante. Le paquet d’annulation sans commande
-est daté à l’heure du choix explicite ; les déplacements gardent l’heure de
-leur image. Seule une nouvelle observation de la main choisie peut déplacer.
-Le main empêche aussi toute interpolation entre deux identités de commande.
-Le bouton **Stop Windows pointer** et le raccourci restent disponibles si la
-sélection est perdue. **Stop camera** libère aussi la sélection.
+La main en pointage prend automatiquement le contrôle, même si l’autre main
+reste visible. Lorsque les deux pointent, la main active conserve le rôle ;
+si elle ne pointe plus, une autre main en pointage peut prendre le relais.
+Après perte ou ambiguïté, une nouvelle observation confirmée reprend le contrôle
+sans sélection manuelle. La nouvelle identité ne garantit pas qu’il s’agit de la
+même main physique. Le main évite d’interpoler entre deux identités et conserve
+la pause acquise. **Stop camera** réinitialise le moteur et arrête le contrôle.
 
 ## Démarrer depuis WSL2
 
@@ -297,8 +292,7 @@ geste avec la vraie webcam reste à valider.
 1. Lancer `npm run dev:desktop` depuis WSL2. **Start camera** est proposé,
    **Enable Windows pointer** est désactivé et la souris reste libre.
    **But :** vérifier que caméra et contrôle demandent une action explicite.
-2. Cliquer sur **Start camera**, présenter une main puis choisir son numéro dans
-   **Main hand**. Tendre l’index, replier les trois autres doigts
+2. Cliquer sur **Start camera**, présenter une main et tendre l’index, replier les trois autres doigts
    et garder le pouce séparé : le cercle vidéo et la simulation doivent suivre
    la main, tandis que le vrai curseur reste utilisable avec la souris physique.
    Déplacer la main devant le torse puis sur les côtés, et tourner progressivement
@@ -328,10 +322,9 @@ geste avec la vraie webcam reste à valider.
    **But :** vérifier la fluidité dans une autre application et en arrière-plan.
 5. Ouvrir la main, puis la retirer du champ plusieurs secondes. Le curseur doit
    rester à sa dernière position, sans rattraper une ancienne trajectoire.
-   Présenter de nouveau une main en pointage : les déplacements doivent reprendre
-   directement depuis la nouvelle mesure, sans rejoindre l'ancienne cible.
-   Avec **Main hand: Auto**, une main perdue puis retrouvée reçoit un nouveau
-   numéro. **But :** vérifier suspension, expiration et reprise sans replay.
+   Présenter de nouveau une main et repointer : les déplacements doivent reprendre
+   automatiquement depuis une nouvelle mesure, sans rejoindre l’ancienne cible.
+   **But :** vérifier suspension, expiration et reprise sans replay.
 6. Cliquer sur **Stop Windows pointer**, puis repointer : le vrai curseur reste
    libre et la caméra continue. Réactiver le contrôle, passer dans une autre
    application et appuyer sur **Ctrl + Alt + Esc** : même résultat ; une nouvelle
@@ -374,7 +367,7 @@ Pour l’étape 11, compléter ces essais :
   `off`. Refaire le geste ne doit pas l’activer ; le bouton reste nécessaire.
   Cela vérifie que la pause ne remplace pas la désactivation d’urgence.
 
-Pour l’étape 12, **431 tests passent**, ainsi que lint, formatage et builds
+Historiquement, pour l’étape 12, **431 tests passaient**, ainsi que lint, formatage et builds
 web/bureau. Le navigateur a testé les deux mains, la sélection sans replay,
 la perte, le retour sous une nouvelle identité de même latéralité, l’ambiguïté
 et le reset. Le wrapper Desktop et le vrai contrôleur ont également été reliés
@@ -389,15 +382,10 @@ une autre identité, pause en réduction, arrêt global, rechargement et fermetu
 Ces essais utilisent des observations ou paquets synthétiques ; le parcours
 avec la vraie webcam reste nécessaire.
 
-- Pointer avec deux mains sans choisir : aucune commande, bouton Windows
-  indisponible. Choisir un numéro : le bouton devient disponible, puis seul un
-  pointage frais de cette main commande. Cela vérifie le choix explicite.
-- Changer de numéro : arrêt de l’ancien trajet, aucun déplacement déclenché par
-  le menu seul. Reprendre avec la nouvelle main, sans interpolation entre les
-  deux mains. Cela vérifie le transfert volontaire.
-- Retirer la principale jusqu’à `lost` en laissant l’autre pointer : le curseur
-  reste arrêté. Ramener la première puis choisir un numéro visible : le suivi
-  peut reprendre. Cela vérifie l’absence de relais automatique.
-- Pendant une pause, changer de sélection : la pause reste active. Retirer la
-  sélection puis utiliser **Ctrl + Alt + Esc** : le contrôle se désactive.
-  Cela vérifie que le changement de main ne contourne ni pause ni arrêt.
+Pour le comportement actuel de contrôle automatique :
+
+- Pointer avec une main : la simulation puis le vrai curseur suivent sans menu.
+- Ajouter l’autre main et pointer avec les deux : la main qui contrôlait garde le rôle.
+- Retirer la main contrôlante puis la ramener et repointer : le curseur s’arrête
+  pendant l’absence et reprend automatiquement. Tester aussi le relais vers une
+  autre main qui pointe. La pause volontaire doit rester active après une perte.

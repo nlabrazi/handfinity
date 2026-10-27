@@ -72,7 +72,7 @@ contrôleur sans consommateur pour un éventuel usage futur.
   repère XYZ estimé, corrigé du ratio vidéo ; une superposition en projection
   seule ne suffit plus à déclencher un pincement.
 - `createHandPointerTracker` : position de l'index, état actif en pointage,
-  lissage par identité et sélection explicite de la main principale.
+  lissage par identité et attribution automatique de la main principale.
 - `createGestureEngine` : enchaînement postures → pointeurs à partir du suivi
   fourni, commandes de déplacement, choix principal et remise à zéro communs,
   sans Vue ni caméra.
@@ -109,17 +109,16 @@ Commandes indépendantes de l'interface
 
 La session de vision possède l'unique suivi des identités. Le moteur commun
 `createGestureEngine` dans `@handfinity/interactions` reçoit ce suivi via
-`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers, control, commands, selectionChanged }`.
-Il orchestre les trackers existants dans cet ordre, transmet le choix principal
-via `setPrimaryHand(id)` et regroupe leur remise à zéro dans `reset()`.
+`update(trackingFrame, aspectRatio)` et retourne `{ tracking, poses, pointers, control, commands }`.
+Il orchestre les trackers et regroupe leur remise à zéro dans `reset()`.
 Il dépend de `core`, sans dépendre de `vision`, de Vue ou du DOM.
 
 `gesture-control.ts` consomme les postures reconnues et le numéro principal déjà
 choisi. Une paume ouverte confirmée et candidate pendant 1 500 ms de nouvelles
 observations bascule `control.paused`. Le temps d’une image rejouée ne confirme
 rien ; perte, ambiguïté, changement de main ou de candidate annulent un maintien
-incomplet. À l’étape 12, seule la main explicitement sélectionnée et suivie est
-éligible. Sans sélection, ou après sa perte, aucun geste ne bascule la pause.
+incomplet. La main de contrôle est choisie automatiquement ; une main seule
+visible peut aussi effectuer le geste au repos.
 
 Après un basculement, `requiresRelease` reste vrai jusqu’à un pointage ou
 pincement confirmé, ou quatre doigts nettement repliés. Une posture incertaine
@@ -127,23 +126,16 @@ ne réarme pas le geste, même avec une nouvelle identité. Une perte ou une amb
 au moteur après perte d’identité et bloque la production des commandes, tandis
 que les pointeurs de diagnostic restent suivis. `holdProgress` et `handId`
 alimentent uniquement l’affichage du maintien. `reset()` retire pause et maintien ;
-un changement explicite de principale annule le maintien, sans retirer la pause.
+un changement de principale annule le maintien, sans retirer la pause.
 
-Le suivi des pointeurs de l’étape 12 ne choisit plus automatiquement la première
-main en pointage. `setPrimaryHand(id)` exige une identité actuellement `tracked` ;
-`null` libère le rôle. `HandPointerFrame` remplace `preferredHandId` par
-`selectionStatus` (`unselected`, `tracked`, `missing`, `lost`, `ambiguous`).
-L’identité choisie reste mémorisée après perte ; un verrou empêche sa réactivation
-silencieuse et toute attribution aux autres pistes après expiration ou ambiguïté.
-Une absence brève garde la même identité tant que le tracker la conserve.
-
-Le moteur mémorise son dernier résultat de suivi pour rendre immédiatement les
-rôles modifiés par le menu. `setPrimaryHand` renvoie un instantané sans commande,
-avec `selectionChanged` lors d’un vrai changement. Recalculer cet instantané
-ne confirme pas de posture et ne rejoue aucune observation. Le maintien de pause
-incomplet est annulé, mais une pause acquise reste active. Une sélection invalide
-échoue avant toute mutation ; une course avec la disparition d’une main est
-signalée par l’interface. `reset()` efface sélection, filtres et pause.
+Le pointage confirmé détermine automatiquement la main principale. La main active
+reste prioritaire tant qu’elle pointe, même si l’autre pointe aussi. Lorsqu’elle
+ne pointe plus, une autre main pointante avec une observation fraîche peut
+prendre le relais ; une main seule visible au repos peut effectuer la pause.
+L’ambiguïté suspend le contrôle et une nouvelle observation confirmée peut le
+rétablir sans sélection manuelle. Deux pointages simultanés sans propriétaire
+utilisent le plus petit numéro local. Ces numéros ne garantissent pas une
+reconnaissance physique persistante après perte.
 
 L'interface bureau dans `apps/desktop/src/renderer/App.vue` importe
 `playground/view` et ajoute ses contrôles via un slot. La vue partagée transmet
@@ -152,6 +144,12 @@ chaque résultat du moteur avec `gesture-frame` et signale son arrêt avec
 `interactions`, ainsi que l'exécuteur de simulation. Le processus principal
 Electron crée la fenêtre et sert les fichiers compilés depuis
 `handfinity://app/` ; il exécute les commandes sans reconnaître de geste.
+
+L’interface partagée regroupe l’état de la main, du pointage et les
+contrôles caméra et Windows ; sur écran large, vidéo et simulation sont côte à
+côte. Les détails des gestes, identités et pointeurs ainsi que le journal des
+commandes sont repliés par défaut. Cette réorganisation ne modifie ni le moteur,
+ni les conditions d’activation, ni la politique de sélection.
 
 Cette page locale est le seul contexte autorisé à demander la caméra vidéo,
 dans la fenêtre principale. Le microphone, la capture d'écran, les navigations
@@ -216,16 +214,11 @@ passe de 30 à 195 positions distinctes, dont 180 intermédiaires : environ 9 pu
 57 positions par seconde. La médiane entre sorties est de 15,6 ms et le p95 de
 30,8 ms ; cette mesure n'est pas une garantie de cadence ni un essai webcam.
 
-Un changement explicite de sélection transmet immédiatement une annulation sans
-commande, horodatée au moment du choix (`performance.timeOrigin + performance.now()`).
-Réutiliser l’heure de la dernière image ferait rejeter ce message comme doublon
-par le main. Les commandes normales gardent l’heure de leur image ; cette voie
-ne rajeunit aucune capture et ne crée aucun déplacement. Le main supprime aussi
-l’ancien trajet si l’identité d’une nouvelle commande change, sans interpolation
+Un changement automatique de main est produit par une nouvelle image. Le main
+annule l’ancien trajet si l’identité d’une commande change, sans interpolation
 entre les deux mains. Un appel natif déjà engagé peut se terminer.
 
-Hors changement de sélection, le wrapper bureau ne transmet rien lorsque le
-moteur ne produit pas de commande sur une image répétée avec un pointeur principal encore actif. Ce silence
+Le wrapper bureau ne transmet rien lorsque le moteur ne produit pas de commande sur une image répétée avec un pointeur principal encore actif. Ce silence
 ne rafraîchit pas le watchdog. Le repos, la perte d'une main, une ambiguïté ou
 l'expiration du suivi transmettent toujours `null` : le contrôleur supprime la
 destination en attente et le trajet, puis immobilise le curseur. Un watchdog
@@ -367,20 +360,35 @@ passent ; le navigateur et Electron Windows ont vérifié les parcours synthéti
 de pause/reprise et d’arrêt. L’utilisateur a depuis validé et commité ce lot
 dans `66efba1`.
 
-L’étape 12 utilise le sélecteur **Main hand**, conformément au dernier choix de
-l’utilisateur, sans nouveau geste. **431 tests passent**, lint, formatage et
-builds web/bureau réussis. Le navigateur couvre les deux mains, pertes/ambiguïtés,
+L’étape 12 utilisait historiquement le sélecteur **Main hand**, remplacé depuis
+par le choix automatique demandé par l’utilisateur. Lors de sa livraison, **431
+tests passaient**, lint, formatage et builds web/bureau réussis. Le navigateur couvrait les deux mains, pertes/ambiguïtés,
 sélection immédiate, pause et wrapper Desktop relié au vrai contrôleur avec
 exécuteur simulé. Electron Windows couvre les annulations et nouvelles identités
 de commande via IPC, le raccourci, le rechargement et le nettoyage. Ces essais
-synthétiques ne remplacent pas la validation webcam de la nouvelle sélection.
-Les performances et seuils de vision ne sont pas modifiés dans ce lot.
+synthétiques ne remplacent pas un essai webcam. L’utilisateur a commité l’étape
+12 dans `1785d6c`. Un blocage a ensuite été signalé : son origine n’est pas
+établie. L’interface a été réorganisée pour faciliter la manipulation et rendre
+les états visibles ; un nouvel essai webcam reste nécessaire. Les modifications
+non commitées de calibration ont été annulées à sa demande ; les performances
+et seuils de vision ne sont pas modifiés dans ce lot.
+
+Lors de la validation précédente de l’interface, **431 tests passaient**, lint, formatage et builds web et
+bureau réussis. Le navigateur a vérifié avec des observations synthétiques un
+Desktop simulé : commandes, caméra et simulation visibles en 1280 × 720 et
+1440 × 900, pas de débordement sur mobile, expiration et nouvelle sélection.
+Aucune exception JavaScript relevée. Ces essais n’utilisent ni la vraie webcam
+ni le vrai curseur Windows.
+
+Le lot courant de contrôle automatique passe **412 tests** ; le navigateur a
+vérifié deux mains, disparition et retour, pause et arrêt d’urgence avec des
+observations et un exécuteur simulés. La webcam réelle reste à éprouver.
 
 ## Points à décider ou à éprouver
 
-1. Validation webcam de la sélection de l’étape 12 : choix explicite, perte
-   définitive bloquée, changement volontaire et conservation de la pause. Les
-   étapes 10 et 11 sont acceptées ; la fluidité reste un chantier reporté.
+1. Essai webcam de l’interface réorganisée et diagnostic du blocage signalé :
+   statut de sélection, posture, pause et disponibilité du contrôle Windows.
+   Les étapes 10 et 11 sont acceptées ; la fluidité reste un chantier reporté.
 2. Maintien de ce contrôle dans une autre application ou fenêtre réduite,
    suspension sur perte de suivi, puis reprise. L'étape 9 a validé le suivi
    vidéo en arrière-plan et le scénario synthétique couvre le curseur ;

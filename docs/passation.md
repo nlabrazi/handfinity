@@ -55,7 +55,7 @@ Dépôt : `/home/kaox/code/bricolage/handfinity`.
 Le dernier commit constaté lors de cette passation est :
 
 ```text
-66efba1 feat: implement palm hold gesture for pause and resume functionality
+1785d6c feat(desktop): implement main hand selection and prevent automatic reassignment
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -75,17 +75,18 @@ fonctionnent, puis qu'il a commité et poussé ce lot. Le dépôt était propre 
 validé et commité ce lot dans `a2449a7`. Il juge le résultat meilleur, encore
 perfectible, et demande de reporter les itérations de fluidité pour avancer.
 Aucun push de ce commit n’a été confirmé. L’utilisateur a ensuite testé et
-commité l’étape 11 dans `66efba1`, puis demandé d’avancer. Le dépôt était propre
-sur `staging` avant l’étape 12, maintenant implémentée et non commitée. Le push
-de l’étape 11 n’a pas été confirmé. À chaque reprise, vérifier `git status --short`
-et `git log` pour connaître l’état réel.
+commité l’étape 11 dans `66efba1`, puis commité l’étape 12 dans `1785d6c` et demandé
+d’avancer. Les pushs de ces deux commits n’ont pas été confirmés. Les
+modifications non commitées de l’étape 13 ont été annulées à sa demande ; le lot
+courant réorganise l’interface et rend le choix de main automatique. À chaque reprise,
+vérifier `git status --short` et `git log` pour connaître l’état réel.
 
 ## Existant conservé
 
 | Emplacement | Responsabilité actuelle |
 | --- | --- |
 | `apps/hub` | Accueil, navigation vers le laboratoire et animations actives |
-| `apps/playground` | Diagnostics caméra, choix de main, simulation et journal des commandes |
+| `apps/playground` | Diagnostics caméra, main automatique, simulation et journal des commandes |
 | `apps/desktop` | Vue partagée, suivi en arrière-plan et exécuteur du curseur Windows sur activation explicite |
 | `packages/core` | Observations, identités, postures, pincement interne et lissage |
 | `packages/vision` | Caméra, MediaPipe, boucle de suivi et nettoyage des ressources |
@@ -115,8 +116,9 @@ processus principal avant toute exécution Windows.
 
 **Le déplacement du curseur Windows de l’étape 10 est accepté dans `a2449a7`.
 La pause/reprise de l’étape 11 est acceptée dans `66efba1`. La sélection explicite
-de l’étape 12 est implémentée, à valider avec la vraie webcam. Les boutons, le
-défilement, le clavier et une bibliothèque publiée ne sont pas implémentés.**
+de l’étape 12 est commitée dans `1785d6c`. Un blocage a ensuite été signalé ; sa
+cause reste à identifier avec la webcam. Les boutons, le défilement, le clavier
+et une bibliothèque publiée ne sont pas implémentés.**
 
 ## Étape 8 — livrée dans `9c0de98`
 
@@ -271,7 +273,8 @@ confirmation au délai choisi. Seules les nouvelles observations le font avancer
 Une absence, ambiguïté, autre candidate ou changement de main annule un maintien
 incomplet. À la livraison de l’étape 11, la main principale était utilisée et,
 sans principale, une seule main visible pouvait effectuer le geste. L’étape 12
-réserve désormais ce geste à la main explicitement sélectionnée et suivie.
+réservait alors ce geste à la main explicitement sélectionnée et suivie ;
+le contrôle automatique actuel remplace cette obligation.
 
 Chaque maintien complet bascule la pause une fois. Il faut montrer une autre
 posture claire (pointage/pincement confirmé ou quatre doigts nettement repliés)
@@ -294,7 +297,10 @@ une session en pause ; un geste ne peut pas réactiver une session arrêtée.
 
 L’utilisateur a testé et commité l’étape 11, puis demandé de passer à l’étape 12.
 
-## Étape 12 — implémentée, à valider
+## Étape 12 — commitée dans `1785d6c`
+
+Historique : le sélecteur décrit ci-dessous a depuis été retiré au profit du
+contrôle automatique demandé par l’utilisateur.
 
 ```text
 feat(control): select the controlling hand
@@ -334,8 +340,46 @@ l’ancienne trajectoire. Un appel natif déjà engagé peut encore se terminer.
 **Stop camera** remet la sélection à zéro et désactive le contrôle Windows.
 La logique reste dans le moteur commun, sans second suivi d’identités dans le
 main. Les seuils de vision et les performances restent inchangés dans ce lot.
-Livrer uniquement l’étape 12 et attendre sa validation avant la calibration
-de l’étape 13. L’utilisateur réalise `git add`, `git commit` et le push.
+L’utilisateur a commité cette étape et demandé la suite.
+
+## Lot courant — ergonomie Playground et Desktop
+
+Une calibration de l’étape 13 avait été implémentée sans commit. L’utilisateur
+la juge peu utile pour son usage actuel, signale qu’après choix d’une main le
+bouton Windows était indisponible et la simulation sans pointeur, puis demande
+d’annuler cette modification et de revenir sur l’ergonomie avant la roadmap.
+Les modifications non commitées de calibration ont été retirées.
+
+La vue partagée regroupe les contrôles caméra, l’état de la main automatique, les états
+de suivi/pointage/pause et, dans le bureau, l’activation Windows. Sur écran
+large, vidéo et simulation sont côte à côte. **Tracking and gesture details**
+replie les détails des postures, identités et coordonnées ; le journal des
+commandes est également replié, avec son compteur visible. Le moteur et les
+conditions de pause et d’activation Windows restent explicites.
+
+La cause du blocage réel n’est pas établie. L’identité peut notamment expirer
+après 120 ms sans observation, mais ne pas affirmer que cela explique cet
+essai sans relever les états affichés. Un nouvel essai webcam est nécessaire.
+L’utilisateur réalise `git add`, `git commit` et le push ; attendre sa
+validation de ce lot avant de reprendre la roadmap.
+
+## Contrôle automatique — lot courant
+
+L’utilisateur a demandé de supprimer la sélection manuelle après des pertes de
+suivi répétées. La main en pointage confirmé prend le contrôle ; si les deux
+pointent, la main déjà active reste prioritaire. Quand elle ne pointe plus, une
+autre main pointante sur une nouvelle image peut prendre le relais. Deux
+pointages simultanés sans propriétaire départagent par le plus petit identifiant.
+Une main seule au repos peut effectuer le geste de pause. Après perte ou ambiguïté,
+une observation confirmée peut réactiver le contrôle sans menu. Les identités
+locales ne prouvent pas quelle main physique revient ; une autre main pointante
+peut donc prendre le contrôle. La pause reste acquise et les images répétées ne
+produisent pas de commande. Le bouton Windows exige seulement la caméra active.
+
+Le navigateur a vérifié ce parcours avec le vrai moteur et un exécuteur simulé :
+deux mains, perte et retour, pause conservée et arrêt d’urgence. Ces essais ne
+remplacent pas la webcam ou le curseur Windows réels. **412 tests passent** ;
+attendre la validation utilisateur avant le clic par pincement.
 
 ## Plan de progression
 
@@ -345,8 +389,9 @@ de l’étape 13. L’utilisateur réalise `git add`, `git commit` et le push.
 - **9 — réalisé** : suivi hors premier plan, validé et livré dans `9804677`.
 - **10 — réalisée** : véritable curseur Windows, accepté et commité dans `a2449a7`.
 - **11 — réalisée** : pause/reprise par paume ouverte maintenue 1,5 seconde, validée dans `66efba1`.
-- **12 — implémentée, à valider** : sélection obligatoire dans **Main hand**, sans réattribution après perte.
-- **13–18** : calibration, boutons, défilement et réglages.
+- **12 — commitée** : sélection obligatoire dans **Main hand**, sans réattribution après perte, dans `1785d6c`.
+- **Lot courant** : ergonomie et main de contrôle automatique, à valider avec la webcam.
+- **13–18** : calibration reportée ; prochain objectif, clic par pincement dans une vraie application, puis défilement et réglages.
 - **19–24** : clavier superposé, invocation, touches, saisie, édition et raccourcis.
 - **25–27** : parcours complets, CI Windows et distribution.
 
@@ -560,8 +605,15 @@ Captures 1440/390 px inspectées, aucun débordement ni erreur JavaScript.
 Electron Windows a vérifié séparément les paquets via le vrai pont IPC et le
 helper : annulation, rejet d’anciennes captures, autre identité de commande,
 pause fenêtre réduite, arrêt global, rechargement et fermeture des processus.
-Le curseur a été restauré. Ces essais de l’étape 12 restent synthétiques ; le
-choix de main et les pertes avec la vraie webcam restent à valider.
+Le curseur a été restauré. L’utilisateur a ensuite commité l’étape 12 dans
+`1785d6c`. Il a signalé plus tard un blocage dont la cause reste à identifier.
+
+Validation du lot d’ergonomie : **431 tests passent**, lint, formatage et builds
+web/bureau réussis. Un navigateur a testé le Desktop simulé avec observations
+synthétiques : commandes, caméra et simulation visibles en 1280 × 720 et
+1440 × 900, sans débordement horizontal sur mobile ; expiration de la main après
+120 ms, perte et nouvelle sélection reproduites ; aucune exception JavaScript.
+Ces essais n’utilisent ni la vraie webcam ni le vrai curseur Windows.
 
 ```bash
 npm test
@@ -587,30 +639,19 @@ Docker conserve les services `hub` et `playground`. Ils ont été reconstruits e
 redémarrés lors du recadrage ; le conteneur abandonné a été retiré. Vérifier leur
 état actuel si nécessaire, sans supposer qu'ils tournent encore.
 
-Dans le laboratoire : index tendu, majeur/annulaire/auriculaire repliés, pouce
-séparé → `Pointing`, pointeur `active`, cercle plein dans la vidéo. Ouvrir les
-cinq doigts ou pincer retire ce cercle après confirmation de la posture, sans
-nécessairement retirer les numéros d’identité. Sans sélection, les deux pointeurs
-restent secondaires et aucune commande n’est émise. Après choix dans **Main hand**,
-la main principale a un cercle plein, l’autre un pointillé.
+Dans le laboratoire, pointer avec l’index choisit automatiquement la main de
+contrôle. Deux mains restent possibles : si elles pointent en même temps, la main
+active garde le rôle ; si elle ne pointe plus, une autre main pointante peut
+prendre le relais. Après disparition, le pointage peut reprendre sans menu.
 
-Pour valider l’étape 11 : comparer une ouverture brève et un maintien de 1,5 seconde,
-garder la paume ouverte plusieurs secondes (un seul basculement), repointer puis
-retirer la main (pause conservée), refaire le maintien après relâchement (reprise),
-et désactiver avec **Ctrl + Alt + Esc** pendant la pause. Refaire le parcours
-fenêtre réduite. La caméra continue et aucune désactivation n’est annulée par geste.
+Pour valider le lot courant :
 
-Pour valider le lot courant de l’étape 12 :
-
-1. Démarrer la caméra et pointer avec deux mains sans choisir : aucune commande,
-   bouton Windows indisponible. Choisir un numéro : seul son pointage commande.
-   But : vérifier que le contrôle demande une sélection explicite.
-2. Changer de numéro : l’ancien trajet s’arrête et le menu ne déclenche aucun
-   déplacement. Seule une nouvelle image de la main choisie permet de reprendre.
-   But : vérifier le transfert volontaire et l’absence de cible rejouée.
-3. Retirer la principale jusqu’à `lost` en laissant l’autre pointer : aucun
-   relais. Ramener la main puis choisir un numéro visible pour reprendre.
-   But : éviter une reprise involontaire après perte d’identité.
-4. Mettre en pause puis changer de main : la pause reste active. Perdre la main
-   puis utiliser **Ctrl + Alt + Esc** : le contrôle Windows se désactive.
-   But : vérifier que la sélection conserve pause et arrêt d’urgence.
+1. Démarrer la caméra, activer le contrôle Windows et pointer : simulation et
+   curseur suivent sans choisir de main. But : vérifier le parcours sans menu.
+2. Présenter deux mains puis pointer avec les deux : la main active garde le
+   contrôle. Arrêter de pointer avec elle et laisser l’autre pointer : le contrôle
+   passe à l’autre. But : vérifier les deux mains et le transfert.
+3. Retirer la main, la ramener puis repointer : reprise automatique, sans souris.
+   But : vérifier une nouvelle identité après perte.
+4. Mettre en pause, perdre puis retrouver la main : la pause reste active. But :
+   vérifier que la reprise automatique ne contourne pas la pause volontaire.

@@ -36,7 +36,6 @@ const isLoading = ref(false);
 const handCount = ref(0);
 const processedFrames = ref(0);
 const error = ref("");
-const selectionError = ref("");
 
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
@@ -53,15 +52,13 @@ const selectionStatus = computed(() => {
 	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
 	switch (status) {
 		case "tracked":
-			return `Hand #${primaryHandId} controls the pointer.`;
+			return `Controlling hand: #${primaryHandId} (automatic).`;
 		case "missing":
-			return `Waiting for hand #${primaryHandId}. Other hands cannot take over.`;
-		case "lost":
-			return `Hand #${primaryHandId} was lost. Select a visible hand to continue.`;
+			return `Waiting for hand #${primaryHandId} to return.`;
 		case "ambiguous":
-			return "Hands are ambiguous. Separate them, then select a hand again.";
+			return "Hands are ambiguous. Separate them and point again.";
 		default:
-			return "No controlling hand. Choose a visible hand below.";
+			return "Show a pointing hand to start controlling the pointer.";
 	}
 });
 
@@ -69,6 +66,23 @@ const engine = createGestureEngine();
 const controlFrame = shallowRef(engine.getControlState());
 const simulator = createPointerSimulation();
 const pointerSimulation = shallowRef(simulator.reset());
+const pointerReadiness = computed(() => {
+	if (!isRunning.value) return "Start the camera to begin.";
+	if (controlFrame.value.paused)
+		return pointerFrame.value.selectionStatus === "tracked"
+			? "Paused — hold your open palm to resume."
+			: "Paused — show a hand, then hold your open palm to resume.";
+	if (pointerFrame.value.selectionStatus !== "tracked")
+		return "Show a pointing hand to control the pointer.";
+	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
+	if (pointer?.active) return "Pointing detected — pointer active.";
+	const pose = handPoses.value.find(
+		(item) => item.handId === pointerFrame.value.primaryHandId,
+	);
+	if (pose?.pose === "pointing")
+		return "Pointer inactive — keep your index inside the camera image.";
+	return `Pointer inactive — detected pose: ${pose?.pose ?? "unknown"}. Show a pointing hand.`;
+});
 
 const session = createTrackingSession(
 	{
@@ -219,21 +233,6 @@ function showGestureFrame(frame: GestureEngineFrame, hasNewFrame = false) {
 	drawHands(visible);
 }
 
-function choosePrimaryHand(event: Event) {
-	const value = (event.target as HTMLSelectElement).value;
-	let frame: GestureEngineFrame | null;
-	try {
-		frame = engine.setPrimaryHand(value === "" ? null : Number(value));
-	} catch (error) {
-		if (!(error instanceof RangeError)) throw error;
-		selectionError.value =
-			"This hand is no longer available. Choose a visible hand.";
-		return;
-	}
-	selectionError.value = "";
-	if (frame) showGestureFrame(frame);
-}
-
 function stop() {
 	sessionGeneration += 1;
 	emit("tracking-stop");
@@ -256,7 +255,6 @@ function stop() {
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
-	selectionError.value = "";
 }
 
 async function toggleCamera() {
@@ -294,31 +292,80 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-8">
-		<div class="mx-auto max-w-6xl space-y-6">
-			<header>
-				<h1 class="text-3xl font-bold">Playground</h1>
-				<p class="mt-2 text-slate-400">
-					Hand tracking, poses and pointer command simulation.
-				</p>
-				<p class="mt-2 text-sm text-slate-400">
+	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-5">
+		<div class="mx-auto max-w-7xl space-y-3">
+			<header class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+				<h1 class="text-2xl font-bold">Playground</h1>
+				<p class="text-sm text-slate-400">
 					<slot name="description">
-						Hand pointers appear in the camera preview; shared move commands
-						drive the simulation. This web view does not control the system
-						mouse or keyboard.
+						Hand tracking and pointer simulation. This web view does not control
+						the system pointer.
 					</slot>
 				</p>
 			</header>
 
-			<div
-				class="grid items-start gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]"
+			<section
+				aria-label="Camera and hand controls"
+				class="space-y-2 rounded-lg bg-slate-900 p-3"
 			>
-				<section
-					aria-label="Camera and pointer diagnostics"
-					class="min-w-0 space-y-4"
+				<div
+					class="grid items-end gap-3 lg:grid-cols-[auto_minmax(12rem,1fr)_minmax(20rem,1.4fr)]"
 				>
+					<div class="space-y-1">
+						<button
+							type="button"
+							:disabled="isLoading"
+							@click="toggleCamera"
+							class="rounded-lg bg-blue-600 px-4 py-2 font-medium hover:bg-blue-500 disabled:opacity-50"
+						>
+							{{
+								isLoading
+									? "Initializing..."
+									: isRunning
+										? "Stop camera"
+										: "Start camera"
+							}}
+						</button>
+						<p class="text-xs text-slate-400">
+							Hands detected: {{ handCount }} ·
+							<span data-processed-frames
+								>Images processed: {{ processedFrames }}</span
+							>
+						</p>
+					</div>
+
+					<div data-hand-pointers class="min-w-0 space-y-1 text-sm">
+						<p class="font-medium">Controlling hand</p>
+						<p
+							data-hand-selection
+							:data-status="pointerFrame.selectionStatus"
+							role="status"
+							:class="pointerFrame.selectionStatus === 'tracked' ? 'text-sky-300' : 'text-amber-300'"
+						>
+							{{ selectionStatus }}
+						</p>
+					</div>
+					<slot name="controls" :is-running="isRunning" />
+				</div>
+				<p
+					data-pointer-readiness
+					role="status"
+					class="text-sm"
+					:class="controlFrame.paused ? 'text-amber-300' : 'text-slate-300'"
+				>
+					{{ pointerReadiness }}
+				</p>
+				<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
+			</section>
+
+			<div class="grid items-start gap-3 lg:grid-cols-2">
+				<section
+					aria-label="Camera preview"
+					class="min-w-0 space-y-2 rounded-lg bg-slate-900 p-3"
+				>
+					<h2 class="font-medium">Camera preview</h2>
 					<div
-						class="relative aspect-video overflow-hidden rounded-xl bg-black"
+						class="relative aspect-video overflow-hidden rounded-lg bg-black"
 					>
 						<video
 							ref="videoRef"
@@ -334,133 +381,32 @@ onBeforeUnmount(() => {
 							class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
 						/>
 					</div>
-
-					<div class="flex flex-wrap items-center gap-4">
-						<button
-							type="button"
-							:disabled="isLoading"
-							@click="toggleCamera"
-							class="rounded-lg bg-blue-600 px-5 py-3 font-medium hover:bg-blue-500 disabled:opacity-50"
-						>
-							{{
-								isLoading
-									? "Initializing..."
-									: isRunning
-										? "Stop camera"
-										: "Start camera"
-							}}
-						</button>
-						<span class="text-sm text-slate-400"
-							>Hands detected: {{ handCount }}</span
-						>
-						<span data-processed-frames class="text-sm text-slate-400"
-							>Images processed: {{ processedFrames }}</span
-						>
-					</div>
-					<slot
-						name="controls"
-						:is-running="isRunning"
-						:has-controlling-hand="pointerFrame.selectionStatus === 'tracked'"
-					/>
-					<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
-
-					<section
-						aria-labelledby="pointer-title"
-						data-hand-pointers
-						class="space-y-3 rounded-lg bg-slate-900 p-4 text-sm"
-					>
-						<h2 id="pointer-title" class="font-medium">Hand pointers</h2>
-						<p class="text-slate-400">
-							Extend your index, fold the other three fingers, and keep your
-							thumb separate from the index. The solid cursor marks the main
-							hand; a dashed cursor marks the secondary hand.
-						</p>
-						<p
-							data-hand-selection
-							:data-status="pointerFrame.selectionStatus"
-							role="status"
-							:class="pointerFrame.selectionStatus === 'tracked' ? 'text-sky-300' : 'text-amber-300'"
-						>
-							{{ selectionStatus }}
-						</p>
-						<label for="main-hand" class="block font-medium">Main hand</label>
-						<select
-							id="main-hand"
-							:value="pointerFrame.primaryHandId ?? ''"
-							:disabled="!isRunning || (!trackedHands.length && pointerFrame.primaryHandId === null)"
-							@change="choosePrimaryHand"
-							class="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white disabled:opacity-50"
-						>
-							<option value="">Choose a hand…</option>
-							<option
-								v-if="pointerFrame.primaryHandId !== null && !trackedHands.some(hand => hand.id === pointerFrame.primaryHandId)"
-								:value="pointerFrame.primaryHandId"
-								disabled
-							>
-								Hand #{{ pointerFrame.primaryHandId }} · lost — select again
-							</option>
-							<option
-								v-for="hand in trackedHands"
-								:key="hand.id"
-								:value="hand.id"
-								:disabled="trackingAmbiguous || hand.status !== 'tracked'"
-							>
-								Hand #{{ hand.id }} · {{ hand.observation.handedness }} ·
-								{{ hand.status }}
-							</option>
-						</select>
-						<p v-if="selectionError" role="alert" class="text-amber-300">
-							{{ selectionError }}
-						</p>
-						<p v-if="!pointerFrame.pointers.length" class="text-slate-400">
-							No visible hand pointers.
-						</p>
-						<ul v-else class="space-y-2">
-							<li
-								v-for="pointer in pointerFrame.pointers"
-								:key="pointer.handId"
-								:data-pointer-hand="pointer.handId"
-								class="rounded-lg border border-slate-700 p-3"
-							>
-								<p>
-									Hand #{{ pointer.handId }} ·
-									{{ pointer.isPrimary ? "main" : "secondary" }} ·
-									<span
-										:class="pointer.active ? 'text-sky-300' : 'text-slate-400'"
-										>{{
-											pointer.active ? "active" : "resting"
-										}}</span
-									>
-								</p>
-								<p class="mt-1 font-mono text-xs text-slate-400">
-									Source x: {{ pointer.position.x.toFixed(3) }} · y:
-									{{ pointer.position.y.toFixed(3) }}
-								</p>
-							</li>
-						</ul>
-						<p class="text-slate-400">
-							Coordinates refer to the source image before mirroring. A resting
-							or briefly missing main hand keeps its role while its identity
-							exists. After a lost or ambiguous identity, choose a hand again.
-						</p>
-					</section>
+					<p class="text-xs text-slate-400">
+						Point with your index, fold the other three fingers and keep your
+						thumb separate. The solid circle marks the controlling hand.
+					</p>
 				</section>
+				<PointerCommandDiagnostics :frame="pointerSimulation" />
+			</div>
 
-				<section
-					aria-label="Command, tracking and pose diagnostics"
-					class="min-w-0 space-y-4"
-				>
+			<details
+				data-advanced-diagnostics
+				class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
+			>
+				<summary class="cursor-pointer font-medium">
+					Tracking and gesture details
+				</summary>
+				<div class="mt-3 grid items-start gap-3 lg:grid-cols-3">
 					<GestureControlDiagnostics
 						:state="controlFrame"
 						:running="isRunning"
 						:selection-status="pointerFrame.selectionStatus"
 					/>
-					<PointerCommandDiagnostics :frame="pointerSimulation" />
 					<div
 						data-hand-tracking
-						class="space-y-2 rounded-lg bg-slate-900 p-3 text-sm"
+						class="space-y-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
 					>
-						<h2 class="font-medium">Hand identities</h2>
+						<h2 class="font-medium">Hand identities and pointers</h2>
 						<ul v-if="trackedHands.length" class="space-y-1">
 							<li
 								v-for="hand in trackedHands"
@@ -478,10 +424,26 @@ onBeforeUnmount(() => {
 						<p class="text-slate-400">
 							Last tracking event: {{ trackingTransition }}
 						</p>
+						<ul v-if="pointerFrame.pointers.length" class="space-y-1">
+							<li
+								v-for="pointer in pointerFrame.pointers"
+								:key="pointer.handId"
+								:data-pointer-hand="pointer.handId"
+								class="rounded border border-slate-700 p-2"
+							>
+								Hand #{{ pointer.handId }} ·
+								{{ pointer.isPrimary ? "main" : "secondary" }} ·
+								{{ pointer.active ? "active" : "resting" }}
+								<p class="mt-1 font-mono text-xs text-slate-400">
+									Source x: {{ pointer.position.x.toFixed(3) }} · y:
+									{{ pointer.position.y.toFixed(3) }}
+								</p>
+							</li>
+						</ul>
 					</div>
 					<HandPoseDiagnostics :hands="handPoses" />
-				</section>
-			</div>
+				</div>
+			</details>
 		</div>
 	</main>
 </template>

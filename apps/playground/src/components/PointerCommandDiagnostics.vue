@@ -8,7 +8,7 @@ defineProps<{ frame: PointerSimulationFrame }>();
 	<section
 		aria-labelledby="pointer-commands-title"
 		data-pointer-commands
-		class="space-y-3 rounded-lg bg-slate-900 p-4 text-sm"
+		class="space-y-2 rounded-lg bg-slate-900 p-3 text-sm"
 	>
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h2 id="pointer-commands-title" class="font-medium">Pointer commands</h2>
@@ -16,10 +16,6 @@ defineProps<{ frame: PointerSimulationFrame }>();
 				>Simulation only</span
 			>
 		</div>
-		<p class="text-slate-400">
-			Only the main pointing hand moves this cursor. It keeps its last position
-			when no command is sent.
-		</p>
 		<div
 			role="img"
 			:aria-label="frame.position ? `Simulated cursor at x ${frame.position.x.toFixed(3)}, y ${frame.position.y.toFixed(3)}` : 'Pointer simulation waiting for a move command'"
@@ -53,26 +49,33 @@ defineProps<{ frame: PointerSimulationFrame }>();
 			Destination x: {{ frame.position.x.toFixed(3) }} · y:
 			{{ frame.position.y.toFixed(3) }}
 		</p>
-		<h3 class="font-medium">Command log · {{ frame.commandCount }} received</h3>
-		<p v-if="!frame.commands.length" class="text-slate-400">
-			No pointer commands yet.
+		<p class="text-xs text-slate-400">
+			The cursor stays at its last position when no command is sent.
 		</p>
-		<ol v-else class="space-y-2" aria-label="Latest pointer commands">
-			<li
-				v-for="command in frame.commands"
-				:key="`${command.timestamp}-${command.handId}`"
-				class="rounded-lg border border-slate-700 p-2 font-mono text-xs"
-			>
-				<p class="text-sky-300">
-					{{ command.type }} · Hand #{{ command.handId }}
-				</p>
-				<p class="mt-1 text-slate-400">
-					{{ command.timestamp.toFixed(1) }} ms · x:
-					{{ command.position.x.toFixed(3) }} · y:
-					{{ command.position.y.toFixed(3) }}
-				</p>
-			</li>
-		</ol>
-		<p class="text-xs text-slate-400">Last 8 commands, newest first.</p>
+		<details data-command-log class="text-slate-400">
+			<summary class="cursor-pointer font-medium text-slate-300">
+				Command log · {{ frame.commandCount }} received
+			</summary>
+			<div class="mt-2 space-y-2">
+				<p v-if="!frame.commands.length">No pointer commands yet.</p>
+				<ol v-else class="space-y-2" aria-label="Latest pointer commands">
+					<li
+						v-for="command in frame.commands"
+						:key="`${command.timestamp}-${command.handId}`"
+						class="rounded-lg border border-slate-700 p-2 font-mono text-xs"
+					>
+						<p class="text-sky-300">
+							{{ command.type }} · Hand #{{ command.handId }}
+						</p>
+						<p class="mt-1 text-slate-400">
+							{{ command.timestamp.toFixed(1) }} ms · x:
+							{{ command.position.x.toFixed(3) }} · y:
+							{{ command.position.y.toFixed(3) }}
+						</p>
+					</li>
+				</ol>
+				<p class="text-xs">Last 8 commands, newest first.</p>
+			</div>
+		</details>
 	</section>
 </template>

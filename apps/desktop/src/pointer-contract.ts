@@ -15,7 +15,7 @@ export type PointerControlState = {
 
 export type PointerUpdate = {
 	readonly sessionId: number;
-	/** Origine performance.timeOrigin + horodatage de l'image, ou du choix explicite sans commande. */
+	/** Origine performance.timeOrigin + horodatage du suivi. */
 	readonly capturedAt: number;
 	/** Pause volontaire calculée par le moteur partagé. */
 	readonly paused: boolean;

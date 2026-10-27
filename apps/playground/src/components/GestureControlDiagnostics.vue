@@ -30,13 +30,13 @@ const holdSeconds = CONTROL_HOLD_MS / 1000;
 						? "Paused — pointer movement is blocked."
 						: selectionStatus === "tracked"
 							? "Ready — point to move the pointer."
-							: "Waiting for a selected, visible hand."
+							: "Waiting for a visible hand."
 			}}
 		</p>
 		<p class="text-slate-300">
 			Hold all five fingers open for {{ holdSeconds }} seconds to
-			{{ state.paused ? "resume" : "pause" }} using the hand chosen in Main
-			hand. Select a hand again after its identity is lost.
+			{{ state.paused ? "resume" : "pause" }} using the controlling hand. If
+			both hands are visible, point first to choose the controlling hand.
 		</p>
 		<template v-if="running && state.requiresRelease">
 			<p class="text-amber-300">
