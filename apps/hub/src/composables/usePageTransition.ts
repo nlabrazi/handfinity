@@ -1,5 +1,5 @@
 import { gsap } from "gsap";
-import { nextTick, onScopeDispose, watch, type Ref } from "vue";
+import { nextTick, onScopeDispose, type Ref, watch } from "vue";
 
 /** Les transitions finissent immédiatement si les mouvements sont désactivés. */
 export function usePageTransition(paused: Readonly<Ref<boolean>>) {

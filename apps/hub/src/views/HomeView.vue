@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useTemplateRef } from "vue";
-import { useHomeAnimations } from "../composables/useHomeAnimations";
 import { RouterLink } from "vue-router";
 import HolographicHand from "../components/HolographicHand.vue";
 import TrackingPreview from "../components/TrackingPreview.vue";
+import { useHomeAnimations } from "../composables/useHomeAnimations";
 
 const scene = useTemplateRef<HTMLElement>("scene");
 const { moveLight, resetLight } = useHomeAnimations(scene);

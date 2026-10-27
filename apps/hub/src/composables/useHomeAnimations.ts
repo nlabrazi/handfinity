@@ -1,5 +1,5 @@
 import { gsap } from "gsap";
-import { watch, type Ref } from "vue";
+import { type Ref, watch } from "vue";
 import { createHomeAmbience } from "../animations/homeAmbience";
 import { useGsapContext } from "./useGsapContext";
 import { useMotionPreferences } from "./useMotionPreferences";

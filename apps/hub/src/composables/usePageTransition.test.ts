@@ -1,6 +1,6 @@
 import { gsap } from "gsap";
-import { effectScope, nextTick, ref, type EffectScope } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { type EffectScope, effectScope, nextTick, ref } from "vue";
 import { usePageTransition } from "./usePageTransition";
 
 const scopes: EffectScope[] = [];
