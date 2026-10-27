@@ -9,22 +9,36 @@ export type HandTracker = {
 
 export const HAND_CONNECTIONS = HandLandmarker.HAND_CONNECTIONS;
 
-export async function createHandTracker(): Promise<HandTracker> {
-	const vision = await FilesetResolver.forVisionTasks(
-		"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm",
-	);
+const MODEL_ASSET_PATH =
+	"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
-	const landmarker = await HandLandmarker.createFromOptions(vision, {
+function createWithDelegate(
+	vision: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>,
+	delegate: "GPU" | "CPU",
+) {
+	return HandLandmarker.createFromOptions(vision, {
 		baseOptions: {
-			modelAssetPath:
-				"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-			delegate: "CPU",
+			modelAssetPath: MODEL_ASSET_PATH,
+			delegate,
 		},
 		runningMode: "VIDEO",
 		numHands: 2,
 		minHandDetectionConfidence: 0.5,
 		minTrackingConfidence: 0.5,
 	});
+}
+
+export async function createHandTracker(): Promise<HandTracker> {
+	const vision = await FilesetResolver.forVisionTasks(
+		"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm",
+	);
+
+	let landmarker: HandLandmarker;
+	try {
+		landmarker = await createWithDelegate(vision, "GPU");
+	} catch {
+		landmarker = await createWithDelegate(vision, "CPU");
+	}
 
 	return {
 		detect(video, timestamp) {

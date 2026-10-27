@@ -207,4 +207,29 @@ describe("Hand observations", () => {
 
 		expect(landmarker.close).toHaveBeenCalledOnce();
 	});
+
+	it("requests GPU delegation first and falls back to CPU when GPU initialization fails", async () => {
+		const { HandLandmarker } = await import("@mediapipe/tasks-vision");
+		vi.mocked(HandLandmarker.createFromOptions).mockRejectedValueOnce(
+			new Error("WebGL unavailable"),
+		);
+
+		await createHandTracker();
+
+		expect(HandLandmarker.createFromOptions).toHaveBeenCalledTimes(2);
+		expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
+			1,
+			expect.anything(),
+			expect.objectContaining({
+				baseOptions: expect.objectContaining({ delegate: "GPU" }),
+			}),
+		);
+		expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			expect.objectContaining({
+				baseOptions: expect.objectContaining({ delegate: "CPU" }),
+			}),
+		);
+	});
 });
