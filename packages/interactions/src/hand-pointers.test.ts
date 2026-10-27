@@ -104,7 +104,7 @@ describe("Automatic controlling hand", () => {
 			pose(2, "open-palm"),
 		]);
 		const result = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
-			pose(1, "open-palm"),
+			pose(1, "pinch"),
 			pose(2),
 		]);
 		expect(result.primaryHandId).toBe(2);

@@ -121,7 +121,8 @@ une intégration native spécifique et une étude distincte.
 
 La main en pointage prend automatiquement le contrôle, même si l’autre main
 reste visible. Lorsque les deux pointent, la main active conserve le rôle ;
-si elle ne pointe plus, une autre main en pointage peut prendre le relais.
+si elle ne pointe plus, une autre main en pointage peut prendre le relais. Une
+paume ouverte de la main de contrôle garde la priorité pour permettre la pause.
 Après perte ou ambiguïté, une nouvelle observation confirmée reprend le contrôle
 sans sélection manuelle. La nouvelle identité ne garantit pas qu’il s’agit de la
 même main physique. Le main évite d’interpoler entre deux identités et conserve
@@ -386,6 +387,8 @@ Pour le comportement actuel de contrôle automatique :
 
 - Pointer avec une main : la simulation puis le vrai curseur suivent sans menu.
 - Ajouter l’autre main et pointer avec les deux : la main qui contrôlait garde le rôle.
+- Maintenir la paume de la main qui contrôle 1,5 seconde, avec l’autre main
+  encore en pointage : la pause doit s’activer sans transfert prématuré.
 - Retirer la main contrôlante puis la ramener et repointer : le curseur s’arrête
   pendant l’absence et reprend automatiquement. Tester aussi le relais vers une
   autre main qui pointe. La pause volontaire doit rester active après une perte.

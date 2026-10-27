@@ -68,10 +68,14 @@ const simulator = createPointerSimulation();
 const pointerSimulation = shallowRef(simulator.reset());
 const pointerReadiness = computed(() => {
 	if (!isRunning.value) return "Start the camera to begin.";
+	if (controlFrame.value.handId !== null)
+		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
 	if (controlFrame.value.paused)
-		return pointerFrame.value.selectionStatus === "tracked"
-			? "Paused — hold your open palm to resume."
-			: "Paused — show a hand, then hold your open palm to resume.";
+		return controlFrame.value.requiresRelease
+			? "Paused — point or fold your fingers before holding your palm to resume."
+			: "Paused — hold your open palm for 1.5 seconds to resume.";
+	if (controlFrame.value.requiresRelease)
+		return "Point or fold your fingers before holding your palm to pause again.";
 	if (pointerFrame.value.selectionStatus !== "tracked")
 		return "Show a pointing hand to control the pointer.";
 	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
@@ -345,7 +349,11 @@ onBeforeUnmount(() => {
 							{{ selectionStatus }}
 						</p>
 					</div>
-					<slot name="controls" :is-running="isRunning" />
+					<slot
+						name="controls"
+						:is-running="isRunning"
+						:needs-gesture-release="controlFrame.requiresRelease"
+					/>
 				</div>
 				<p
 					data-pointer-readiness

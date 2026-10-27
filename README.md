@@ -34,7 +34,7 @@
 - 🎨 **Rendu Canvas 2D** : Affichage des repères et des pointeurs dans l'aperçu vidéo du Playground.
 - 🔊 **Retour visuel en direct** : Posture confirmée et candidate, estimation des doigts, coordonnées et rôle de chaque main.
 - 🧹 **Outillage** : Biome v2 pour le lint et le formatage, y compris les fichiers Vue.
-- 🧪 **Qualité & Tests** : 412 tests passent pour l’interface et le socle conservé, ainsi que lint, formatage et builds web/bureau. Les commandes web sont utilisées en CI Jenkins ; les essais natifs Windows et la vraie webcam complètent les tests automatisés.
+- 🧪 **Qualité & Tests** : 414 tests passent pour l’interface et le socle conservé, ainsi que lint, formatage et builds web/bureau. Les commandes web sont utilisées en CI Jenkins ; les essais natifs Windows et la vraie webcam complètent les tests automatisés.
 - 🐳 **Développement Docker** : Deux services conservés, sources montées en volumes et hot reload Vite avec polling.
 
 Le [cadrage technique](docs/architecture.md) décrit les responsabilités et limites actuelles. Le [découpage en commits](docs/roadmap.md) précise la suite.
@@ -177,7 +177,8 @@ traitée n'est pas filtrée une seconde fois.
 La main en pointage confirmé prend automatiquement le contrôle. Si deux mains
 pointent, la main déjà active conserve le rôle ; au démarrage simultané, le plus
 petit numéro est choisi. Si elle cesse de pointer et qu’une autre main pointe,
-cette dernière prend le relais. Une main seule visible peut également utiliser
+cette dernière peut prendre le relais. La paume ouverte de la main de contrôle
+reste prioritaire pour permettre le geste de pause. Une main seule visible peut également utiliser
 la pause par paume ouverte. Après perte ou ambiguïté, une nouvelle observation
 confirmée permet de reprendre sans menu. Les identités restent locales : une
 nouvelle main visible peut prendre le contrôle, sans reconnaissance physique

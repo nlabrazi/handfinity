@@ -55,7 +55,7 @@ Dépôt : `/home/kaox/code/bricolage/handfinity`.
 Le dernier commit constaté lors de cette passation est :
 
 ```text
-1785d6c feat(desktop): implement main hand selection and prevent automatic reassignment
+32a01a2 feat: improve hand pointer selection and tracking logic
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -77,8 +77,9 @@ perfectible, et demande de reporter les itérations de fluidité pour avancer.
 Aucun push de ce commit n’a été confirmé. L’utilisateur a ensuite testé et
 commité l’étape 11 dans `66efba1`, puis commité l’étape 12 dans `1785d6c` et demandé
 d’avancer. Les pushs de ces deux commits n’ont pas été confirmés. Les
-modifications non commitées de l’étape 13 ont été annulées à sa demande ; le lot
-courant réorganise l’interface et rend le choix de main automatique. À chaque reprise,
+modifications non commitées de l’étape 13 ont été annulées à sa demande. La
+réorganisation de l’interface et le choix de main automatique ont été commités
+dans `32a01a2` ; le lot courant corrige la priorité de la paume pour la pause. À chaque reprise,
 vérifier `git status --short` et `git log` pour connaître l’état réel.
 
 ## Existant conservé
@@ -371,14 +372,22 @@ pointent, la main déjà active reste prioritaire. Quand elle ne pointe plus, un
 autre main pointante sur une nouvelle image peut prendre le relais. Deux
 pointages simultanés sans propriétaire départagent par le plus petit identifiant.
 Une main seule au repos peut effectuer le geste de pause. Après perte ou ambiguïté,
-une observation confirmée peut réactiver le contrôle sans menu. Les identités
-locales ne prouvent pas quelle main physique revient ; une autre main pointante
+une observation confirmée peut réactiver le contrôle sans menu. La paume ouverte
+de la main de contrôle garde la priorité pour permettre son
+maintien et pendant la pause tant qu’elle reste suivie. Les identités locales ne
+prouvent pas quelle main physique revient ; une autre main pointante
 peut donc prendre le contrôle. La pause reste acquise et les images répétées ne
 produisent pas de commande. Le bouton Windows exige seulement la caméra active.
 
-Le navigateur a vérifié ce parcours avec le vrai moteur et un exécuteur simulé :
+Le contrôle automatique et l’interface ont été commités dans `32a01a2`. Un
+conflit a ensuite été reproduit : avec deux mains, le pointage de la seconde
+pouvait interrompre le maintien de la paume de contrôle. La correction actuelle
+garde cette priorité et rend la progression visible ; elle reste à valider avec
+la webcam.
+
+Le navigateur a vérifié le parcours automatique avec le vrai moteur et un exécuteur simulé :
 deux mains, perte et retour, pause conservée et arrêt d’urgence. Ces essais ne
-remplacent pas la webcam ou le curseur Windows réels. **412 tests passent** ;
+remplacent pas la webcam ou le curseur Windows réels. **414 tests passent** ;
 attendre la validation utilisateur avant le clic par pincement.
 
 ## Plan de progression
@@ -649,9 +658,10 @@ Pour valider le lot courant :
 1. Démarrer la caméra, activer le contrôle Windows et pointer : simulation et
    curseur suivent sans choisir de main. But : vérifier le parcours sans menu.
 2. Présenter deux mains puis pointer avec les deux : la main active garde le
-   contrôle. Arrêter de pointer avec elle et laisser l’autre pointer : le contrôle
-   passe à l’autre. But : vérifier les deux mains et le transfert.
+   contrôle. Retirer la première et laisser l’autre pointer : le contrôle passe
+   à l’autre. But : vérifier les deux mains et le transfert.
 3. Retirer la main, la ramener puis repointer : reprise automatique, sans souris.
    But : vérifier une nouvelle identité après perte.
 4. Mettre en pause, perdre puis retrouver la main : la pause reste active. But :
    vérifier que la reprise automatique ne contourne pas la pause volontaire.
+   Tester aussi la paume de la main de contrôle avec l’autre main en pointage.

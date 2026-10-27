@@ -44,6 +44,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `a2449a7` | Véritable curseur Windows, corrections de fluidité, suivi réduit et posture, étape 10 | Validé et commité par l’utilisateur ; améliorations de confort reportées |
 | `66efba1` | Pause et reprise gestuelles par paume ouverte maintenue 1,5 seconde, étape 11 | Testée, validée et commitée par l’utilisateur |
 | `1785d6c` | Sélection explicite de la main, étape 12 | Commitée par l’utilisateur, qui a demandé d’avancer ; push non confirmé |
+| `32a01a2` | Interface réorganisée et main de contrôle automatique | Commité par l’utilisateur ; une correction de la pause est en cours |
 
 ## Recadrage et suppressions — réalisé
 

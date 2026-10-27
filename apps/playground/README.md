@@ -35,7 +35,9 @@ journal des commandes sont repliés, mais restent accessibles.
 Tendre l’index, replier majeur, annulaire et auriculaire et séparer le pouce :
 la main en pointage confirmé commande automatiquement. Deux mains peuvent rester
 visibles ; si elles pointent simultanément, la main déjà active conserve le rôle.
-Si elle ne pointe plus et qu’une autre pointe, celle-ci prend le relais. En cas
+Si elle ne pointe plus et qu’une autre pointe, celle-ci peut prendre le relais.
+La paume ouverte de la main de contrôle reste prioritaire pendant le maintien et
+la pause. En cas
 d’absence ou d’ambiguïté, les déplacements s’arrêtent et reprennent après une
 nouvelle observation confirmée, sans menu. Au démarrage simultané, le plus petit
 numéro est choisi. Les numéros sont locaux et ne prouvent pas l’identité physique
@@ -99,12 +101,13 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
 1. Démarrer la caméra et pointer avec une main : un cercle plein apparaît et la
    simulation suit l’index sans sélection. But : vérifier le contrôle automatique.
 2. Présenter une deuxième main puis pointer avec les deux : la première garde le
-   contrôle. Cesser de pointer avec elle en laissant l’autre pointer : le rôle
-   passe à l’autre. But : vérifier la présence de deux mains et le transfert.
+   contrôle. Retirer la première en laissant l’autre pointer : le rôle passe à
+   l’autre. But : vérifier la présence de deux mains et le transfert.
 3. Retirer la main contrôlante puis la ramener et repointer : la simulation se
    fige pendant l’absence puis reprend sans utiliser la souris. But : vérifier le retour.
 4. Mettre en pause par paume ouverte 1,5 seconde, retirer et ramener la main :
    la pause reste active. Relâcher puis refaire le geste pour reprendre. But :
-   vérifier que le retour automatique ne contourne pas la pause.
+   vérifier que le retour automatique ne contourne pas la pause. Refaire le
+   maintien avec l’autre main en pointage : la paume doit garder la priorité.
 5. Arrêter et redémarrer la caméra : les diagnostics, le journal et le moteur
    repartent à zéro. But : vérifier le nettoyage de la session.

@@ -337,6 +337,43 @@ describe("Shared gesture engine", () => {
 		expect(both.commands).toMatchObject([{ handId: 2 }]);
 	});
 
+	it("lets the controlling hand pause with an open palm while the other hand points", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (time: number, kind: HandPoseKind) =>
+			engine.update(
+				identities.update(
+					[hand(kind, time, -0.18), hand("pointing", time, 0.18)],
+					time,
+				),
+			);
+		observe(0, "pointing");
+		expect(observe(80, "pointing").pointers.primaryHandId).toBe(1);
+		observe(100, "open-palm");
+		const opened = observe(180, "open-palm");
+		expect(opened.pointers.primaryHandId).toBe(1);
+		for (let time = 230; time <= 1630; time += 50)
+			expect(observe(time, "open-palm").control.paused).toBe(false);
+		const paused = observe(1680, "open-palm");
+		expect(paused.pointers.primaryHandId).toBe(1);
+		expect(paused.control.paused).toBe(true);
+		expect(paused.commands).toEqual([]);
+		observe(1700, "pointing");
+		const released = observe(1780, "pointing");
+		expect(released.pointers.primaryHandId).toBe(1);
+		expect(released.control).toMatchObject({
+			paused: true,
+			requiresRelease: false,
+		});
+		observe(1800, "open-palm");
+		observe(1880, "open-palm");
+		for (let time = 1930; time <= 3330; time += 50)
+			expect(observe(time, "open-palm").control.paused).toBe(true);
+		const resumed = observe(3380, "open-palm");
+		expect(resumed.pointers.primaryHandId).toBe(1);
+		expect(resumed.control.paused).toBe(false);
+	});
+
 	it("hands control to the other pointing hand when the first stops pointing", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
@@ -349,8 +386,8 @@ describe("Shared gesture engine", () => {
 			);
 		observe(0, "pointing");
 		expect(observe(80, "pointing").commands[0]?.handId).toBe(1);
-		observe(100, "open-palm");
-		const next = observe(180, "open-palm");
+		observe(100, "pinch");
+		const next = observe(180, "pinch");
 		expect(next.pointers.primaryHandId).toBe(2);
 		expect(next.commands).toMatchObject([{ handId: 2, timestamp: 180 }]);
 	});
@@ -453,7 +490,7 @@ describe("Shared gesture engine", () => {
 					engine.update(
 						identities.update(
 							[
-								hand(time >= 100 ? "open-palm" : "pointing", time, -0.18),
+								hand(time >= 100 ? "pinch" : "pointing", time, -0.18),
 								hand("pointing", time, 0.18),
 							],
 							time,

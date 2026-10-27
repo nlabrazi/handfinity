@@ -34,7 +34,11 @@ export function createGestureEngine() {
 		aspectRatio = 1,
 	): GestureEngineFrame {
 		const poses = poseTracker.update(tracking, aspectRatio);
-		const pointers = pointerTracker.update(tracking, poses);
+		const pointers = pointerTracker.update(
+			tracking,
+			poses,
+			controlTracker.getState().paused,
+		);
 		const control = controlTracker.update(
 			tracking,
 			poses,

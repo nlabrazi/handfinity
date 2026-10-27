@@ -156,6 +156,74 @@ describe("Desktop updates with automatic hand control", () => {
 		});
 	});
 
+	it("pauses and resumes the Windows controller with a palm while the other hand points", async () => {
+		vi.useFakeTimers();
+		const epoch = 1_800_000_000_000;
+		vi.setSystemTime(epoch);
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const driver = {
+			start: vi.fn(async () => {}),
+			move: vi.fn(async () => true),
+			stop: vi.fn(),
+		};
+		const controller = createPointerController({
+			supported: true,
+			driver,
+			getBounds: () => ({ x: 0, y: 0, width: 1001, height: 1001 }),
+			registerStop: () => true,
+			unregisterStop() {},
+			onState() {},
+		});
+		try {
+			const { sessionId } = await controller.enable();
+			if (sessionId === null) throw new Error("Missing pointer session");
+			let now = 0;
+			async function sample(time: number, pose: "pointing" | "open-palm") {
+				await vi.advanceTimersByTimeAsync(time - now);
+				now = time;
+				const frame = engine.update(
+					identities.update(
+						[hand(pose, time, -0.18), hand("pointing", time, 0.18)],
+						time,
+					),
+				);
+				const packet = toPointerUpdate(frame, sessionId, epoch);
+				if (packet) controller.submit(packet);
+				await Promise.resolve();
+				await Promise.resolve();
+				return frame;
+			}
+			await sample(0, "pointing");
+			await sample(80, "pointing");
+			expect(controller.getState().phase).toBe("moving");
+			await sample(100, "open-palm");
+			await sample(180, "open-palm");
+			expect(controller.getState().phase).toBe("waiting");
+			for (let time = 230; time <= 1680; time += 50)
+				await sample(time, "open-palm");
+			expect(controller.getState()).toMatchObject({
+				phase: "paused",
+				sessionId,
+			});
+			const movesWhilePaused = driver.move.mock.calls.length;
+			await sample(1700, "pointing");
+			await sample(1780, "pointing");
+			await sample(1800, "open-palm");
+			await sample(1880, "open-palm");
+			for (let time = 1930; time <= 3380; time += 50)
+				await sample(time, "open-palm");
+			expect(controller.getState()).toMatchObject({
+				phase: "waiting",
+				sessionId,
+			});
+			expect(driver.move).toHaveBeenCalledTimes(movesWhilePaused);
+		} finally {
+			controller.disable();
+			vi.useRealTimers();
+		}
+	});
+
 	it("stops the native pointer on loss and resumes automatically from the new hand's fresh observation", async () => {
 		vi.useFakeTimers();
 		const epoch = 1_800_000_000_000;

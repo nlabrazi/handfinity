@@ -106,7 +106,7 @@ onBeforeUnmount(() => {
 			Start the camera, then enable the Windows pointer to control your primary
 			display. Clicking and keyboard input are not available yet.
 		</template>
-		<template #controls="{ isRunning }">
+		<template #controls="{ isRunning, needsGestureRelease }">
 			<section
 				data-system-pointer
 				:data-phase="state.phase"
@@ -122,7 +122,11 @@ onBeforeUnmount(() => {
 							role="status"
 							:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"
 						>
-							{{ status }}
+							{{
+								state.phase === "paused" && needsGestureRelease
+									? "Paused — point or fold your fingers before resuming."
+									: status
+							}}
 						</p>
 					</div>
 					<button

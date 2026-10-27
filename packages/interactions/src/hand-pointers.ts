@@ -41,6 +41,7 @@ export function createHandPointerTracker() {
 	function update(
 		tracking: HandTrackingFrame,
 		poses: readonly TrackedHandPose[],
+		paused = false,
 	): HandPointerFrame {
 		if (
 			!Number.isFinite(tracking.timestamp) ||
@@ -115,7 +116,18 @@ export function createHandPointerTracker() {
 			const activePrimary = pointers.some(
 				(pointer) => pointer.handId === primaryHandId && pointer.active,
 			);
-			if (!activePrimary) {
+			const primaryVisible = tracking.hands.some(
+				(hand) => hand.id === primaryHandId && hand.status === "tracked",
+			);
+			const primaryPose = poses.find((pose) => pose.handId === primaryHandId);
+			// Une paume ouverte sur la main de contrôle doit pouvoir achever la
+			// pause, même si l'autre main pointe. La pause garde cette priorité.
+			const holdingPalm =
+				primaryPose?.status === "tracked" &&
+				primaryPose.pose === "open-palm" &&
+				primaryPose.candidate === "open-palm" &&
+				primaryPose.measurements !== null;
+			if (!activePrimary && !(primaryVisible && (holdingPalm || paused))) {
 				const candidate = pointers
 					.filter(
 						(pointer) =>

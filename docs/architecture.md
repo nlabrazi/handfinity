@@ -131,7 +131,9 @@ un changement de principale annule le maintien, sans retirer la pause.
 Le pointage confirmé détermine automatiquement la main principale. La main active
 reste prioritaire tant qu’elle pointe, même si l’autre pointe aussi. Lorsqu’elle
 ne pointe plus, une autre main pointante avec une observation fraîche peut
-prendre le relais ; une main seule visible au repos peut effectuer la pause.
+prendre le relais ; la paume ouverte de la main principale garde toutefois la
+priorité pour achever le geste de pause, puis pendant la pause tant qu’elle est
+suivie. Une main seule visible au repos peut effectuer la pause.
 L’ambiguïté suspend le contrôle et une nouvelle observation confirmée peut le
 rétablir sans sélection manuelle. Deux pointages simultanés sans propriétaire
 utilisent le plus petit numéro local. Ces numéros ne garantissent pas une
@@ -380,7 +382,7 @@ Desktop simulé : commandes, caméra et simulation visibles en 1280 × 720 et
 Aucune exception JavaScript relevée. Ces essais n’utilisent ni la vraie webcam
 ni le vrai curseur Windows.
 
-Le lot courant de contrôle automatique passe **412 tests** ; le navigateur a
+Le lot courant de contrôle automatique passe **414 tests** ; le navigateur a
 vérifié deux mains, disparition et retour, pause et arrêt d’urgence avec des
 observations et un exécuteur simulés. La webcam réelle reste à éprouver.
 
