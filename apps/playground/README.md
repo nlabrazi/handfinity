@@ -32,7 +32,7 @@ Cliquer sur **Start camera** puis autoriser la webcam. L'aperçu est en miroir.
   estimation de chaque doigt et ratio de pincement.
 - **Hand pointers** : numéro principal ou secondaire, état `active` ou `resting`
   et coordonnées normalisées de l'index avant miroir.
-- **Main hand** : choix automatique ou manuel d'une identité. Le curseur plein
+- **Main hand** : choix obligatoire d’une identité visible, conservé après perte sans réattribution automatique. Le curseur plein
   désigne la main principale et le pointillé la seconde main.
 - **Gesture control** : état `Ready` ou `Paused`, progression du maintien de la
   paume ouverte et indication de relâchement nécessaire.
@@ -48,7 +48,7 @@ Maintenir la paume ouverte confirmée pendant **1,5 seconde** bascule une pause
 persistante. Le pointage ou une perte de suivi ne retire pas cette pause. Pour
 reprendre, montrer brièvement une autre posture confirmée (doigts repliés ou
 pointage), puis refaire le maintien de la paume. La main principale effectue le
-geste ; si aucune n’est désignée, présenter une seule main. Un maintien interrompu
+geste ; si aucune sélection n’est valide, choisir d’abord une main dans le menu. Un maintien interrompu
 repart de zéro. Garder la paume ouverte ne produit qu’un basculement, même si
 l’identité est perdue puis retrouvée. La caméra et les diagnostics continuent.
 Une reprise attend de nouveaux déplacements, sans rejouer une ancienne cible.
@@ -58,12 +58,20 @@ pincement utilise des confirmations de 40 ms à la fermeture et 60 ms au
 relâchement. Les mesures sont géométriques ; elles dépendent de la visibilité
 des doigts et ne constituent pas une confiance globale de reconnaissance.
 
-La première main en pointage devient principale ; à égalité, le plus petit
-numéro gagne. Elle garde son rôle pendant le repos et une absence brève tant
-que son identité existe. Une perte définitive relance le choix automatique.
-Une ambiguïté termine les identités concernées et efface le choix principal.
-Ces règles décrivent le diagnostic actuel du moteur commun ; les règles de
-contrôle du PC restent à définir et à vérifier.
+Aucune main ne contrôle le pointeur au démarrage. Choisir un numéro dans
+**Main hand** ; seules les identités actuellement `tracked` sont sélectionnables.
+Le choix reste réservé au repos et pendant une absence brève. Une perte
+(expiration de l’identité) ou une ambiguïté le bloque jusqu’à une nouvelle
+sélection, même si une main de même latéralité réapparaît. Le numéro perdu reste
+affiché, mais ne peut pas être resélectionné tant qu’il n’est plus visible.
+L’option **Choose a hand…** libère le contrôle ; elle ne réactive aucun choix
+automatique. Arrêter la caméra remet la sélection à zéro.
+
+Le statut `unselected` demande un choix ; `tracked` désigne une main suivie,
+`missing` attend son retour bref, et `lost` / `ambiguous` demandent une nouvelle
+sélection. Les pointeurs secondaires de diagnostic peuvent être actifs sans
+produire de commandes. L’association des identités reste celle du suivi local,
+sans reconnaissance physique persistante après occultation.
 
 Seule la main principale en pointage confirmé produit des commandes, à partir
 de ses nouvelles observations. Le moteur applique le miroir horizontal :
@@ -83,8 +91,11 @@ L'expiration des identités continue sans nouvelle image tant que la boucle tour
 les pointeurs, sans Vue ni caméra. Le composant principal lui transmet le suivi
 et le ratio vidéo avec `update(tracking, aspectRatio)`, puis affiche les résultats
 `tracking`, `poses`, `pointers`, `control` et `commands`. Il transmet aussi le choix principal via
-`setPrimaryHand(id)` et réinitialise l'interprétation avec `reset()` à l'arrêt.
-Le moteur ne crée pas de second suivi d'identités.
+`setPrimaryHand(id)` et réinitialise l’interprétation avec `reset()` à l'arrêt.
+Le moteur ne crée pas de second suivi d’identités.
+`setPrimaryHand` renvoie immédiatement un instantané sans commande, avec
+`selectionChanged` lors d’un changement réel. Le composant met à jour les rôles
+et transmet cette annulation au bureau sans rejouer la dernière image.
 
 Chaque résultat de la session est traité, même sans nouvelle image : une image
 répétée ne confirme pas de posture, n'est pas filtrée à nouveau et n'émet aucune
@@ -120,7 +131,7 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
 
 ## Vérifications manuelles
 
-1. Démarrer la caméra. Tendre l'index, replier les trois autres doigts et garder
+1. Démarrer la caméra, présenter une main et choisir son numéro dans **Main hand**. Tendre l'index, replier les trois autres doigts et garder
    le pouce séparé : **Confirmed: Pointing**, état du pointeur **active**, cercle
    plein près de l'index et curseur dans **Pointer commands**. Le journal doit
    recevoir des `pointer:move` de cette identité. Cela vérifie la chaîne complète.
@@ -141,7 +152,7 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
    Mettre la principale au repos en gardant l'autre en pointage : son rôle reste
    réservé et le compteur se fige. Cela vérifie que seule la principale commande.
 5. Retirer une main environ une seconde puis la ramener : perte de son identité,
-   puis nouveau numéro. Rapprocher les mains jusqu'à une ambiguïté puis les
+   puis nouveau numéro à sélectionner de nouveau dans **Main hand**. Rapprocher les mains jusqu'à une ambiguïté puis les
    séparer : les anciens numéros et pointeurs ne doivent pas subsister. Sans
    autre main principale en pointage, la perte et l'ambiguïté doivent figer le
    compteur, sans effacer la dernière position simulée. Cela vérifie les pertes.
@@ -159,9 +170,22 @@ directe des destinations, le journal borné, les instantanés et le nettoyage.
    le compteur et le curseur simulé restent fixes. La vidéo et **Images processed**
    continuent. Cela vérifie la pause persistante et l’absence de basculements répétés.
 10. Retirer la main plusieurs secondes : la pause reste active. Montrer un
-    pointage ou des doigts repliés pour relâcher le geste, puis ouvrir à nouveau
+    pointage ou des doigts repliés pour relâcher le geste ; si l’identité a été
+    perdue, sélectionner la main de nouveau, puis ouvrir à nouveau
     la paume pendant 1,5 seconde : `Ready` revient. Repointer produit uniquement
     de nouvelles commandes. Cela vérifie une reprise volontaire après perte.
 11. Ouvrir brièvement la paume puis repointer avant 1,5 seconde : aucune pause
     persistante. Arrêter et redémarrer la caméra pendant une pause : état initial
     `Ready` et simulation vide. Cela vérifie le délai et la remise à zéro.
+
+Pour l’étape 12 :
+
+- Au démarrage, pointer avec deux mains sans sélection : aucune commande. Choisir
+  un numéro : aucune ancienne image n’est rejouée ; seul le prochain pointage de
+  cette main déplace la simulation. Cela vérifie l’attribution explicite.
+- Garder l’autre main en pointage et retirer la principale jusqu’à `lost` :
+  compteur et curseur figés, même après son retour sous un nouveau numéro.
+  Sélectionner une identité visible pour reprendre. Cela vérifie l’absence de transfert.
+- Provoquer une ambiguïté puis séparer les mains : une nouvelle sélection reste
+  nécessaire. Changer de main pendant une pause : celle-ci reste active.
+  Cela vérifie que choisir une main ne contourne pas les interruptions.

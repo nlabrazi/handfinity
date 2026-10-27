@@ -822,6 +822,41 @@ describe("System pointer presentation", () => {
 });
 
 describe("System pointer gesture pause", () => {
+	it("starts from the new hand without interpolating across hand identities", async () => {
+		const { controller, driver } = setup();
+		const { sessionId } = await controller.enable();
+		controller.submit(update(sessionId, 1000, { x: 0, y: 0 }));
+		await vi.advanceTimersByTimeAsync(100);
+		const next = update(sessionId, 1100, { x: 1, y: 1 });
+		controller.submit({ ...next, command: { ...next.command, handId: 2 } });
+		await settle();
+		expect(driver.move).toHaveBeenCalledTimes(2);
+		expect(driver.move).toHaveBeenLastCalledWith(
+			{ x: 1919, y: 1079 },
+			Date.now() + 250,
+		);
+	});
+
+	it("discards the old hand's pending target while its native call finishes", async () => {
+		const { controller, driver } = setup();
+		const ack = deferred<boolean>();
+		driver.move.mockReturnValueOnce(ack.promise);
+		const { sessionId } = await controller.enable();
+		controller.submit(update(sessionId, 1000, { x: 0, y: 0 }));
+		vi.setSystemTime(Date.now() + 10);
+		controller.submit(update(sessionId, 1010, { x: 0.2, y: 0.2 }));
+		vi.setSystemTime(Date.now() + 10);
+		const next = update(sessionId, 1020, { x: 1, y: 1 });
+		controller.submit({ ...next, command: { ...next.command, handId: 2 } });
+		ack.resolve(true);
+		await settle();
+		expect(driver.move).toHaveBeenCalledTimes(2);
+		expect(driver.move).toHaveBeenLastCalledWith(
+			{ x: 1919, y: 1079 },
+			Date.now() + 250,
+		);
+	});
+
 	it("keeps the session paused without watchdog resumption and drops an included move", async () => {
 		const { controller, driver, registerStop } = setup();
 		const { sessionId } = await controller.enable();

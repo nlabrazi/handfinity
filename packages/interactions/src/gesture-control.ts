@@ -36,14 +36,10 @@ export function createGestureControl() {
 		primaryHandId: number | null,
 	): GestureControlFrame {
 		const visible = tracking.hands.filter((hand) => hand.status === "tracked");
-		// Sans main principale, une seule main visible peut effectuer le geste.
-		const hand = tracking.ambiguous
-			? undefined
-			: primaryHandId !== null
+		const hand =
+			!tracking.ambiguous && primaryHandId !== null
 				? visible.find((item) => item.id === primaryHandId)
-				: visible.length === 1
-					? visible[0]
-					: undefined;
+				: undefined;
 		const pose = poses.find((item) => item.handId === hand?.id);
 		if (!hand || !pose || pose.measurements === null) {
 			cancelHold();

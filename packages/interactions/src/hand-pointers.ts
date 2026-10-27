@@ -20,10 +20,14 @@ export type HandPointer = {
 export type HandPointerFrame = {
 	readonly timestamp: number;
 	readonly pointers: readonly HandPointer[];
-	/** Peut désigner une main temporairement manquante, alors sans pointeur. */
+	/** Choix explicite conservé après perte, sans réattribution automatique. */
 	readonly primaryHandId: number | null;
-	/** null signifie que le choix est automatique. */
-	readonly preferredHandId: number | null;
+	readonly selectionStatus:
+		| "unselected"
+		| "tracked"
+		| "missing"
+		| "lost"
+		| "ambiguous";
 };
 
 type PointerState = {
@@ -37,15 +41,27 @@ type PointerState = {
 export function createHandPointerTracker() {
 	const states = new Map<number, PointerState>();
 	let primaryHandId: number | null = null;
-	let preferredHandId: number | null = null;
+	let selectionLost = false;
+	let selectableIds = new Set<number>();
 	let lastTimestamp: number | null = null;
 
 	function setPrimaryHand(handId: number | null) {
 		if (handId !== null && (!Number.isSafeInteger(handId) || handId < 1)) {
 			throw new RangeError("A hand identity must be a positive integer");
 		}
-		preferredHandId = handId;
+		if (handId !== null && !selectableIds.has(handId))
+			throw new RangeError("Select a visible tracked hand");
+		const changed = handId !== primaryHandId || selectionLost;
 		primaryHandId = handId;
+		selectionLost = false;
+		if (changed && handId !== null) {
+			const state = states.get(handId);
+			if (state) {
+				state.smoother.reset();
+				state.active = false;
+			}
+		}
+		return changed;
 	}
 
 	function update(
@@ -63,9 +79,18 @@ export function createHandPointerTracker() {
 			tracking.ambiguous ? [] : tracking.hands.map((hand) => hand.id),
 		);
 		for (const id of states.keys()) if (!ids.has(id)) states.delete(id);
-		if (preferredHandId !== null && !ids.has(preferredHandId))
-			preferredHandId = null;
-		if (primaryHandId !== null && !ids.has(primaryHandId)) primaryHandId = null;
+		selectableIds = new Set(
+			tracking.ambiguous
+				? []
+				: tracking.hands
+						.filter((hand) => hand.status === "tracked")
+						.map((hand) => hand.id),
+		);
+		if (
+			primaryHandId !== null &&
+			(tracking.ambiguous || !ids.has(primaryHandId))
+		)
+			selectionLost = true;
 
 		const pointers: Omit<HandPointer, "isPrimary">[] = [];
 		for (const hand of tracking.ambiguous ? [] : tracking.hands) {
@@ -122,30 +147,31 @@ export function createHandPointerTracker() {
 			});
 		}
 
-		// Une posture de repos ou une absence brève ne cède pas la main principale.
-		if (primaryHandId === null) {
-			primaryHandId =
-				preferredHandId ??
-				pointers
-					.filter((pointer) => pointer.active)
-					.sort((a, b) => a.handId - b.handId)[0]?.handId ??
-				null;
-		}
+		const selected = tracking.hands.find((hand) => hand.id === primaryHandId);
+		const selectionStatus =
+			primaryHandId === null
+				? "unselected"
+				: tracking.ambiguous
+					? "ambiguous"
+					: selectionLost
+						? "lost"
+						: (selected?.status ?? "lost");
 		return {
 			timestamp: tracking.timestamp,
 			pointers: pointers.map((pointer) => ({
 				...pointer,
-				isPrimary: pointer.handId === primaryHandId,
+				isPrimary: pointer.handId === primaryHandId && !selectionLost,
 			})),
 			primaryHandId,
-			preferredHandId,
+			selectionStatus,
 		};
 	}
 
 	function reset() {
 		states.clear();
 		primaryHandId = null;
-		preferredHandId = null;
+		selectionLost = false;
+		selectableIds.clear();
 		lastTimestamp = null;
 	}
 	return { update, setPrimaryHand, reset };

@@ -2,9 +2,14 @@
 import {
 	CONTROL_HOLD_MS,
 	type GestureControlFrame,
+	type HandPointerFrame,
 } from "@handfinity/interactions";
 
-defineProps<{ state: GestureControlFrame; running: boolean }>();
+defineProps<{
+	state: GestureControlFrame;
+	running: boolean;
+	selectionStatus: HandPointerFrame["selectionStatus"];
+}>();
 const holdSeconds = CONTROL_HOLD_MS / 1000;
 </script>
 
@@ -23,13 +28,15 @@ const holdSeconds = CONTROL_HOLD_MS / 1000;
 					? "Camera off"
 					: state.paused
 						? "Paused — pointer movement is blocked."
-						: "Ready — point to move the pointer."
+						: selectionStatus === "tracked"
+							? "Ready — point to move the pointer."
+							: "Waiting for a selected, visible hand."
 			}}
 		</p>
 		<p class="text-slate-300">
 			Hold all five fingers open for {{ holdSeconds }} seconds to
-			{{ state.paused ? "resume" : "pause" }}. Use your main hand; if none is
-			selected, show just one hand.
+			{{ state.paused ? "resume" : "pause" }} using the hand chosen in Main
+			hand. Select a hand again after its identity is lost.
 		</p>
 		<template v-if="running && state.requiresRelease">
 			<p class="text-amber-300">

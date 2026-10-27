@@ -57,14 +57,32 @@ function frame(
 	return { timestamp, hands, events: [], ambiguous };
 }
 
-describe("Hand pointers and main hand", () => {
-	it("exposes a source-space pointer for a confirmed pointing pose", () => {
-		const result = createHandPointerTracker().update(frame(0, [hand(1, 0)]), [
+describe("Hand pointers and explicit selection", () => {
+	it("starts unselected even when one or two hands point", () => {
+		const tracker = createHandPointerTracker();
+		const one = tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
+		expect(one).toMatchObject({
+			primaryHandId: null,
+			selectionStatus: "unselected",
+			pointers: [{ active: true, isPrimary: false }],
+		});
+		const two = tracker.update(frame(40, [hand(2, 40, 0.8), hand(1, 40)]), [
+			pose(2),
 			pose(1),
 		]);
-		expect(result.primaryHandId).toBe(1);
-		expect(result.preferredHandId).toBeNull();
-		expect(result.pointers).toEqual([
+		expect(two.primaryHandId).toBeNull();
+		expect(two.pointers.every((p) => !p.isPrimary)).toBe(true);
+	});
+	it("selects a visible hand explicitly and keeps source-space snapshots", () => {
+		const tracker = createHandPointerTracker();
+		const original = tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
+		expect(tracker.setPrimaryHand(1)).toBe(true);
+		const selected = tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
+		expect(selected).toMatchObject({
+			primaryHandId: 1,
+			selectionStatus: "tracked",
+		});
+		expect(selected.pointers).toEqual([
 			{
 				handId: 1,
 				position: { x: 0.2, y: 0.4 },
@@ -74,128 +92,136 @@ describe("Hand pointers and main hand", () => {
 				timestamp: 0,
 			},
 		]);
+		expect(original.primaryHandId).toBeNull();
+		expect(original.pointers[0]?.isPrimary).toBe(false);
+		expect(tracker.setPrimaryHand(1)).toBe(false);
 	});
-
 	it.each(["unknown", "open-palm", "pinch"] as const)(
-		"does not activate a pointer for %s, even while pointing is a candidate",
+		"keeps a selected %s hand at rest",
 		(kind) => {
-			const result = createHandPointerTracker().update(frame(0, [hand(1, 0)]), [
+			const tracker = createHandPointerTracker();
+			tracker.update(frame(0, [hand(1, 0)]), [pose(1, kind)]);
+			tracker.setPrimaryHand(1);
+			const next = tracker.update(frame(40, [hand(1, 40)]), [
 				{ ...pose(1, kind), candidate: "pointing", pending: true },
 			]);
-			expect(result.pointers[0]?.active).toBe(false);
-			expect(result.primaryHandId).toBeNull();
+			expect(next.primaryHandId).toBe(1);
+			expect(next.pointers[0]).toMatchObject({
+				active: false,
+				isPrimary: true,
+			});
 		},
 	);
-
-	it("requires pose measurements from the same tracked identity", () => {
+	it("requires valid pose measurements from the tracked identity", () => {
 		const tracker = createHandPointerTracker();
 		expect(
 			tracker.update(frame(0, [hand(1, 0)]), [pose(2)]).pointers[0]?.active,
 		).toBe(false);
+		tracker.setPrimaryHand(1);
 		expect(
 			tracker.update(frame(40, [hand(1, 40)]), [
 				{ ...pose(1), measurements: null },
 			]).pointers[0]?.active,
 		).toBe(false);
 	});
-
-	it("chooses deterministically when both point together, independently of detector order", () => {
+	it("retains the chosen hand regardless of detector order and another pointing hand", () => {
 		const tracker = createHandPointerTracker();
-		const first = tracker.update(frame(0, [hand(2, 0, 0.8), hand(1, 0)]), [
+		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
+		tracker.setPrimaryHand(2);
+		const next = tracker.update(frame(40, [hand(2, 40, 0.8), hand(1, 40)]), [
 			pose(2),
 			pose(1),
 		]);
-		expect(first.primaryHandId).toBe(1);
-		const next = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
-			pose(1),
-			pose(2),
-		]);
+		expect(next.primaryHandId).toBe(2);
 		expect(
-			next.pointers.map((pointer) => [
-				pointer.handId,
-				pointer.position.x,
-				pointer.isPrimary,
-			]),
+			next.pointers.map((p) => [p.handId, p.position.x, p.isPrimary]),
 		).toEqual([
-			[1, 0.2, true],
-			[2, 0.8, false],
+			[2, 0.8, true],
+			[1, 0.2, false],
 		]);
 	});
-
-	it("keeps the first pointing owner when another hand starts pointing later", () => {
+	it("keeps ownership while the selected hand rests", () => {
 		const tracker = createHandPointerTracker();
-		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [
+		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
+		tracker.setPrimaryHand(1);
+		const next = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
 			pose(1, "open-palm"),
 			pose(2),
 		]);
-		expect(
-			tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
-				pose(1),
-				pose(2),
-			]).primaryHandId,
-		).toBe(2);
+		expect(next.primaryHandId).toBe(1);
+		expect(next.pointers.find((p) => p.active && p.isPrimary)).toBeUndefined();
 	});
-
-	it("retains ownership while the main hand rests", () => {
+	it("reserves a briefly missing hand without transferring control and accepts its recovery", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
-		const result = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
-			pose(1, "open-palm"),
-			pose(2),
-		]);
-		expect(result.primaryHandId).toBe(1);
-		expect(
-			result.pointers.find((pointer) => pointer.active && pointer.isPrimary),
-		).toBeUndefined();
-	});
-
-	it("reserves a briefly missing main hand and transfers control only after its identity expires", () => {
-		const tracker = createHandPointerTracker();
-		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
+		tracker.setPrimaryHand(1);
 		const missing = tracker.update(
 			frame(40, [hand(1, 0, 0.2, "missing"), hand(2, 40, 0.8)]),
 			[pose(2)],
 		);
-		expect(missing.primaryHandId).toBe(1);
-		expect(missing.pointers).toMatchObject([{ handId: 2, isPrimary: false }]);
-		const expired = tracker.update(frame(161, [hand(2, 161, 0.8)]), [pose(2)]);
-		expect(expired.primaryHandId).toBe(2);
-		expect(expired.pointers[0]?.isPrimary).toBe(true);
+		expect(missing).toMatchObject({
+			primaryHandId: 1,
+			selectionStatus: "missing",
+			pointers: [{ handId: 2, isPrimary: false }],
+		});
+		expect(() => tracker.setPrimaryHand(1)).toThrow("visible tracked hand");
+		const returned = tracker.update(
+			frame(80, [hand(1, 80, 0.4), hand(2, 80, 0.8)]),
+			[pose(1), pose(2)],
+		);
+		expect(returned).toMatchObject({
+			primaryHandId: 1,
+			selectionStatus: "tracked",
+		});
+		expect(returned.pointers[0]).toMatchObject({
+			position: { x: 0.4, y: 0.4 },
+			isPrimary: true,
+		});
 	});
-
-	it("supports an explicit choice, including a hand currently at rest", () => {
+	it("blocks every other hand after expiry until explicit reselection", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
+		tracker.setPrimaryHand(1);
+		const lost = tracker.update(frame(200, [hand(2, 200, 0.8)]), [pose(2)]);
+		expect(lost).toMatchObject({ primaryHandId: 1, selectionStatus: "lost" });
+		expect(lost.pointers[0]?.isPrimary).toBe(false);
+		expect(() => tracker.setPrimaryHand(1)).toThrow("visible tracked hand");
 		tracker.setPrimaryHand(2);
-		const resting = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
-			pose(1),
-			pose(2, "open-palm"),
-		]);
-		expect(resting).toMatchObject({ primaryHandId: 2, preferredHandId: 2 });
-		expect(resting.pointers.find((pointer) => pointer.isPrimary)?.active).toBe(
-			false,
-		);
-		tracker.setPrimaryHand(null);
 		expect(
-			tracker.update(frame(80, [hand(1, 80), hand(2, 80, 0.8)]), [
-				pose(1),
-				pose(2),
-			]),
-		).toMatchObject({ primaryHandId: 1, preferredHandId: null });
+			tracker.update(frame(240, [hand(2, 240, 0.8)]), [pose(2)]),
+		).toMatchObject({ primaryHandId: 2, selectionStatus: "tracked" });
 	});
-
-	it("returns to automatic choice when an explicitly preferred identity is lost", () => {
+	it("does not silently revive a lost selection even if an old ID is presented again", () => {
 		const tracker = createHandPointerTracker();
-		tracker.setPrimaryHand(2);
+		tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
+		tracker.setPrimaryHand(1);
+		tracker.update(frame(200, []), []);
+		const stale = tracker.update(frame(240, [hand(1, 240)]), [pose(1)]);
+		expect(stale.selectionStatus).toBe("lost");
+		expect(stale.pointers[0]?.isPrimary).toBe(false);
+		tracker.setPrimaryHand(1);
+		expect(
+			tracker.update(frame(280, [hand(1, 280)]), [pose(1)]).selectionStatus,
+		).toBe("tracked");
+	});
+	it("clears a selection without returning to automatic ownership", () => {
+		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
-		expect(tracker.update(frame(200, [hand(1, 200)]), [pose(1)])).toMatchObject(
-			{ primaryHandId: 1, preferredHandId: null },
-		);
+		tracker.setPrimaryHand(2);
+		tracker.setPrimaryHand(null);
+		const next = tracker.update(frame(40, [hand(1, 40), hand(2, 40, 0.8)]), [
+			pose(1),
+			pose(2),
+		]);
+		expect(next).toMatchObject({
+			primaryHandId: null,
+			selectionStatus: "unselected",
+		});
+		expect(next.pointers.every((p) => !p.isPrimary)).toBe(true);
 	});
-
-	it("smooths each identity separately and preserves previous snapshots", () => {
+	it("smooths identities separately and never filters the same image twice", () => {
 		const tracker = createHandPointerTracker();
-		const original = tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [
+		const initial = tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [
 			pose(1),
 			pose(2),
 		]);
@@ -206,22 +232,37 @@ describe("Hand pointers and main hand", () => {
 		expect(moved.pointers[1]?.position.x).toBeGreaterThan(0.2);
 		expect(moved.pointers[1]?.position.x).toBeLessThan(0.4);
 		expect(moved.pointers[0]?.position.x).toBe(0.8);
-		expect(original.pointers[0]?.position.x).toBe(0.2);
-	});
-
-	it("does not filter the same video image twice while wall time advances", () => {
-		const tracker = createHandPointerTracker();
-		tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
-		const moved = tracker.update(frame(30, [hand(1, 30, 0.4)]), [pose(1)]);
-		const replay = tracker.update(frame(60, [hand(1, 30, 0.4)]), [pose(1)]);
+		const replay = tracker.update(
+			frame(60, [hand(2, 30, 0.8), hand(1, 30, 0.4)]),
+			[pose(2), pose(1)],
+		);
 		expect(replay.pointers).toEqual(moved.pointers);
-		expect(replay.pointers[0]?.timestamp).toBe(30);
+		expect(initial.pointers[0]?.position.x).toBe(0.2);
+	});
+	it("resets smoothing on explicit transfer instead of blending with a previous owner", () => {
+		const tracker = createHandPointerTracker();
+		tracker.update(frame(0, [hand(1, 0), hand(2, 0, 0.8)]), [pose(1), pose(2)]);
+		tracker.setPrimaryHand(1);
+		tracker.update(frame(30, [hand(1, 30, 0.4), hand(2, 30, 0.5)]), [
+			pose(1),
+			pose(2),
+		]);
+		tracker.setPrimaryHand(2);
+		const selected = tracker.update(
+			frame(30, [hand(1, 30, 0.4), hand(2, 30, 0.5)]),
+			[pose(1), pose(2)],
+		);
+		expect(selected.pointers[1]).toMatchObject({
+			isPrimary: true,
+			position: { x: 0.5, y: 0.4 },
+		});
 	});
 
-	it("resets the filter on return from rest or a brief tracking loss", () => {
+	it("resets smoothing after rest or a brief absence of the same selected hand", () => {
 		for (const missing of [false, true]) {
 			const tracker = createHandPointerTracker();
 			tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
+			tracker.setPrimaryHand(1);
 			tracker.update(
 				frame(40, [hand(1, 40, 0.2, missing ? "missing" : "tracked")]),
 				[pose(1, "open-palm")],
@@ -231,34 +272,24 @@ describe("Hand pointers and main hand", () => {
 			expect(returned.primaryHandId).toBe(1);
 		}
 	});
-
-	it("does not blend the cursor of a new identity with the previous one", () => {
+	it("keeps an ambiguous selection blocked when unrelated identities appear", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
-		const replaced = tracker.update(frame(40, [hand(3, 40, 0.8)]), [pose(3)]);
-		expect(replaced.pointers[0]?.position.x).toBe(0.8);
-		expect(replaced.primaryHandId).toBe(3);
-	});
-
-	it("clears ownership and preference on ambiguity, then starts fresh", () => {
-		const tracker = createHandPointerTracker();
 		tracker.setPrimaryHand(1);
-		tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
 		expect(tracker.update(frame(40, [], true), [])).toEqual({
 			timestamp: 40,
 			pointers: [],
-			primaryHandId: null,
-			preferredHandId: null,
+			primaryHandId: 1,
+			selectionStatus: "ambiguous",
 		});
-		expect(
-			tracker.update(frame(80, [hand(3, 80, 0.8)]), [pose(3)]).pointers[0]
-				?.position.x,
-		).toBe(0.8);
+		const next = tracker.update(frame(80, [hand(3, 80, 0.8)]), [pose(3)]);
+		expect(next).toMatchObject({ primaryHandId: 1, selectionStatus: "lost" });
+		expect(next.pointers[0]?.isPrimary).toBe(false);
 	});
-
-	it("disables an out-of-image cursor immediately, even if its smoothed position was inside", () => {
+	it("disables out-of-image and invalid pointers without handing over ownership", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0, 0.9)]), [pose(1)]);
+		tracker.setPrimaryHand(1);
 		const outside = tracker.update(frame(1, [hand(1, 1, 1.1)]), [pose(1)]);
 		expect(outside.pointers[0]).toMatchObject({
 			active: false,
@@ -268,28 +299,32 @@ describe("Hand pointers and main hand", () => {
 			tracker.update(frame(40, [hand(1, 40, 0.5)]), [pose(1)]).pointers[0]
 				?.position.x,
 		).toBe(0.5);
+		expect(
+			tracker.update(frame(80, [hand(1, 80, Number.NaN)]), [pose(1)]).pointers,
+		).toEqual([]);
+		expect(
+			tracker.update(frame(120, [hand(1, 120)]), [pose(1)]).primaryHandId,
+		).toBe(1);
 	});
-
-	it("discards invalid positions and clears all state on stop", () => {
+	it("clears ownership and all filters on reset", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(0, [hand(1, 0)]), [pose(1)]);
-		expect(
-			tracker.update(frame(40, [hand(1, 40, Number.NaN)]), [pose(1)]).pointers,
-		).toEqual([]);
+		tracker.setPrimaryHand(1);
 		tracker.reset();
 		expect(tracker.update(frame(0, []), [])).toEqual({
 			timestamp: 0,
 			pointers: [],
 			primaryHandId: null,
-			preferredHandId: null,
+			selectionStatus: "unselected",
 		});
+		expect(() => tracker.setPrimaryHand(1)).toThrow("visible tracked hand");
 	});
-
-	it("rejects invalid identities and backward time without changing ownership", () => {
+	it("rejects invalid or unavailable choices and backwards time without mutating ownership", () => {
 		const tracker = createHandPointerTracker();
 		tracker.update(frame(80, [hand(1, 80)]), [pose(1)]);
-		expect(() => tracker.setPrimaryHand(-1)).toThrow(RangeError);
-		expect(() => tracker.setPrimaryHand(Number.NaN)).toThrow(RangeError);
+		tracker.setPrimaryHand(1);
+		for (const id of [-1, 0, Number.NaN, Number.POSITIVE_INFINITY, 1.5, 2])
+			expect(() => tracker.setPrimaryHand(id)).toThrow(RangeError);
 		expect(() => tracker.update(frame(40, []), [])).toThrow(RangeError);
 		expect(
 			tracker.update(frame(80, [hand(1, 80)]), [pose(1)]).primaryHandId,

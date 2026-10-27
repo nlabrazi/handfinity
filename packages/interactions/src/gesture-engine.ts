@@ -18,6 +18,8 @@ export type GestureEngineFrame = {
 	readonly poses: readonly TrackedHandPose[];
 	readonly pointers: HandPointerFrame;
 	readonly control: GestureControlFrame;
+	/** Résultat immédiat d'un choix explicite ; aucune ancienne image n'est rejouée. */
+	readonly selectionChanged: boolean;
 	/** Commandes de cet appel uniquement ; les observations ne sont pas rejouées. */
 	readonly commands: readonly PointerMoveCommand[];
 };
@@ -28,6 +30,8 @@ export function createGestureEngine() {
 	const pointerTracker = createHandPointerTracker();
 	const controlTracker = createGestureControl();
 	let lastObservationTimestamp: number | null = null;
+	let lastTracking: HandTrackingFrame | null = null;
+	let lastAspectRatio = 1;
 
 	function update(
 		tracking: HandTrackingFrame,
@@ -38,7 +42,7 @@ export function createGestureEngine() {
 		const control = controlTracker.update(
 			tracking,
 			poses,
-			pointers.primaryHandId,
+			pointers.selectionStatus === "tracked" ? pointers.primaryHandId : null,
 		);
 		const hasNewObservation = tracking.hands.some(
 			(hand) =>
@@ -65,7 +69,16 @@ export function createGestureEngine() {
 						},
 					]
 				: [];
-		return { tracking, poses, pointers, control, commands };
+		lastTracking = tracking;
+		lastAspectRatio = aspectRatio;
+		return {
+			tracking,
+			poses,
+			pointers,
+			control,
+			commands,
+			selectionChanged: false,
+		};
 	}
 
 	function reset() {
@@ -73,11 +86,16 @@ export function createGestureEngine() {
 		pointerTracker.reset();
 		controlTracker.reset();
 		lastObservationTimestamp = null;
+		lastTracking = null;
+		lastAspectRatio = 1;
 	}
 
 	function setPrimaryHand(handId: number | null) {
-		pointerTracker.setPrimaryHand(handId);
-		controlTracker.cancelHold();
+		const changed = pointerTracker.setPrimaryHand(handId);
+		if (changed) controlTracker.cancelHold();
+		if (lastTracking === null) return null;
+		const frame = update(lastTracking, lastAspectRatio);
+		return { ...frame, commands: [], selectionChanged: changed };
 	}
 
 	return {

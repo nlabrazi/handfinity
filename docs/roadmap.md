@@ -42,6 +42,7 @@ Les intitulés de certains commits commencent par `docs` alors qu'ils contiennen
 | `9c0de98` | Socle Electron Windows et lancement depuis WSL2, étape 8 | Accepté et commité par l'utilisateur |
 | `9804677` | Suivi bureau en arrière-plan et cadence par timer, étape 9 | Testé avec la vraie webcam, validé, commité et poussé par l'utilisateur |
 | `a2449a7` | Véritable curseur Windows, corrections de fluidité, suivi réduit et posture, étape 10 | Validé et commité par l’utilisateur ; améliorations de confort reportées |
+| `66efba1` | Pause et reprise gestuelles par paume ouverte maintenue 1,5 seconde, étape 11 | Testée, validée et commitée par l’utilisateur |
 
 ## Recadrage et suppressions — réalisé
 
@@ -118,16 +119,23 @@ restent possibles dans Firefox Windows. Le suivi hors premier plan a été valid
 ## Souris utilisable — à réaliser
 
 11. **`feat(control): add gesture-based pause and resume`** — Pause et reprise
-    volontaires avec états communs dans la simulation et sur PC. Implémentée,
-    à valider : maintien de la paume ouverte confirmée pendant **1,5 seconde**,
+    volontaires avec états communs dans la simulation et sur PC. Livrée et
+    validée dans `66efba1` : maintien de la paume ouverte confirmée pendant **1,5 seconde**,
     délai choisi par l’utilisateur. Un seul basculement jusqu’au relâchement
     clair des doigts ou à un pointage confirmé ; ni le pointage ni la perte de suivi ne retirent une pause.
     Main principale seulement, ou main unique si aucune principale n’existe.
     État et progression visibles ; arrêt des commandes commun et état `paused`
     transmis au main Windows. **421 tests passent**, lint, formatage et builds
-    web/bureau réussis. Attendre la validation de ce lot avant l’étape 12.
+    web/bureau réussis. L’étape 12 remplace ensuite le choix automatique par une
+    sélection obligatoire ; une main non choisie ne peut plus agir sur la pause.
 12. **`feat(control): select the controlling hand`** — Choix explicite et prévention
-    du transfert involontaire du contrôle.
+    du transfert involontaire du contrôle. Implémentée, à valider : l’utilisateur
+    conserve **Main hand**, sans nouveau geste. Choix obligatoire d’une identité
+    visible, aucun relais automatique après expiration ou ambiguïté, états de
+    sélection affichés et conservation de la pause lors d’un changement.
+    Le changement annule l’ancienne trajectoire sans rejouer d’image, puis attend
+    une observation fraîche de la nouvelle main. **431 tests passent**, lint,
+    formatage et builds web/bureau réussis. Attendre sa validation avant l’étape 13.
 13. **`feat(pointer): calibrate the hand control area`** — Correspondance avec l'écran,
     précision, accès aux bords et amplitude de mouvement.
 14. **`feat(input): translate pinch into primary-button commands`** — Appui et
@@ -177,4 +185,4 @@ le système cible restent nécessaires pour l'exécution des entrées, le focus,
 les permissions, la précision et le confort d'utilisation.
 
 La [passation](passation.md) regroupe les consignes, l'état du dépôt et le
-périmètre de l’étape 11 pour reprendre dans une nouvelle discussion.
+périmètre de l’étape 12 pour reprendre dans une nouvelle discussion.

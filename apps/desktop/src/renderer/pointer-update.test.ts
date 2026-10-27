@@ -66,17 +66,65 @@ function setup() {
 		return engine.update(identities.update(observations, timestamp));
 	}
 	observe(0);
+	engine.setPrimaryHand(1);
 	const pointing = observe(80);
 	expect(pointing.commands).toHaveLength(1);
 	return { identities, engine, observe, pointing };
 }
 
 describe("Desktop pointer updates from the shared engine", () => {
+	it("timestamps an explicit choice at the event time and always sends a cancellation", () => {
+		const { engine } = setup();
+		const cleared = engine.setPrimaryHand(null);
+		const chosen = engine.setPrimaryHand(1);
+		if (!cleared || !chosen)
+			throw new Error("Selection did not produce a snapshot");
+		expect(chosen.pointers.pointers[0]?.active).toBe(true);
+		for (const frame of [cleared, chosen]) {
+			expect(frame.tracking.timestamp).toBe(80);
+			expect(toPointerUpdate(frame, 7, 10_000, 105)).toEqual({
+				sessionId: 7,
+				capturedAt: 10_105,
+				paused: false,
+				command: null,
+			});
+		}
+	});
+
+	it("does not freshen ordinary image timestamps with the event clock", () => {
+		const { pointing } = setup();
+		expect(toPointerUpdate(pointing, 7, 10_000, 1000)?.capturedAt).toBe(10_080);
+	});
+
+	it("never lets the still-pointing secondary hand take over an expired selection", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		for (const timestamp of [0, 80]) {
+			engine.update(
+				identities.update(
+					[
+						hand("pointing", timestamp, -0.18),
+						hand("pointing", timestamp, 0.18),
+					],
+					timestamp,
+				),
+			);
+			if (timestamp === 0) engine.setPrimaryHand(1);
+		}
+		for (const timestamp of [100, 180, 220]) {
+			const frame = engine.update(
+				identities.update([hand("pointing", timestamp, 0.18)], timestamp),
+			);
+			expect(frame.commands).toEqual([]);
+			expect(toPointerUpdate(frame, 7, 10_000, timestamp)?.command).toBeNull();
+		}
+	});
+
 	it("keeps simulation and native execution paused through pointing and loss, then resumes from a fresh target", async () => {
 		vi.useFakeTimers();
 		const epoch = 1_800_000_000_000;
 		vi.setSystemTime(epoch + 80);
-		const { observe, pointing } = setup();
+		const { observe, pointing, engine } = setup();
 		const simulation = createPointerSimulation();
 		const driver = {
 			start: vi.fn(async () => {}),
@@ -97,7 +145,12 @@ describe("Desktop pointer updates from the shared engine", () => {
 				throw new Error("Native test session did not start");
 			async function publish(frame: GestureEngineFrame) {
 				simulation.execute(frame.commands);
-				const packet = toPointerUpdate(frame, sessionId, epoch);
+				const packet = toPointerUpdate(
+					frame,
+					sessionId,
+					epoch,
+					Date.now() - epoch,
+				);
 				if (packet) controller.submit(packet);
 				await Promise.resolve();
 				await Promise.resolve();
@@ -120,6 +173,21 @@ describe("Desktop pointer updates from the shared engine", () => {
 			}
 			await publish(pointing);
 			expect(driver.move).toHaveBeenCalledOnce();
+			await vi.advanceTimersByTimeAsync(10);
+			now = 90;
+			await publish(observe(90, [hand("pointing", 90, 0.02)]));
+			await vi.advanceTimersByTimeAsync(5);
+			now = 95;
+			const cleared = engine.setPrimaryHand(null);
+			if (!cleared) throw new Error("Missing selection event");
+			expect(cleared.tracking.timestamp).toBe(90);
+			await publish(cleared);
+			expect(controller.getState().phase).toBe("waiting");
+			await vi.advanceTimersByTimeAsync(4);
+			now = 99;
+			expect(driver.move).toHaveBeenCalledOnce();
+			const chosen = engine.setPrimaryHand(1);
+			if (chosen) await publish(chosen);
 			await sample(100, "open-palm");
 			await sample(180, "open-palm");
 			for (let time = 230; time <= 1680; time += 50)
@@ -144,6 +212,8 @@ describe("Desktop pointer updates from the shared engine", () => {
 			});
 			expect(driver.move).toHaveBeenCalledTimes(nativeCount);
 			await sample(2100, "open-palm");
+			const selected = engine.setPrimaryHand(2);
+			if (selected) await publish(selected);
 			await sample(2180, "open-palm");
 			for (let time = 2230; time <= 3680; time += 50)
 				await sample(time, "open-palm");
@@ -172,7 +242,12 @@ describe("Desktop pointer updates from the shared engine", () => {
 
 	it("preserves the command and its mirror using the frame capture time", () => {
 		const { pointing } = setup();
-		const update = toPointerUpdate(pointing, 7, 10_000);
+		const update = toPointerUpdate(
+			pointing,
+			7,
+			10_000,
+			pointing.tracking.timestamp,
+		);
 		expect(update).toMatchObject({ sessionId: 7, capturedAt: 10_080 });
 		expect(update?.command).toBe(pointing.commands[0]);
 		expect(update?.command?.position.x).toBeCloseTo(0.58);
@@ -188,7 +263,9 @@ describe("Desktop pointer updates from the shared engine", () => {
 			expect(frame.pointers.pointers).toMatchObject([
 				{ isPrimary: true, active: true, timestamp: 80 },
 			]);
-			expect(toPointerUpdate(frame, 7, 10_000)).toBeNull();
+			expect(
+				toPointerUpdate(frame, 7, 10_000, frame.tracking.timestamp),
+			).toBeNull();
 		}
 		expect(pointing.commands).toHaveLength(1);
 	});
@@ -199,7 +276,9 @@ describe("Desktop pointer updates from the shared engine", () => {
 		expect(expired.tracking.events).toMatchObject([
 			{ type: "hand:lost", reason: "timeout" },
 		]);
-		expect(toPointerUpdate(expired, 7, 10_000)).toEqual({
+		expect(
+			toPointerUpdate(expired, 7, 10_000, expired.tracking.timestamp),
+		).toEqual({
 			sessionId: 7,
 			capturedAt: 10_201,
 			paused: false,
@@ -211,7 +290,9 @@ describe("Desktop pointer updates from the shared engine", () => {
 		const { observe } = setup();
 		const missing = observe(100, []);
 		expect(missing.tracking.hands).toMatchObject([{ status: "missing" }]);
-		expect(toPointerUpdate(missing, 7, 10_000)).toEqual({
+		expect(
+			toPointerUpdate(missing, 7, 10_000, missing.tracking.timestamp),
+		).toEqual({
 			sessionId: 7,
 			capturedAt: 10_100,
 			paused: false,
@@ -224,7 +305,9 @@ describe("Desktop pointer updates from the shared engine", () => {
 		observe(100, [hand("open-palm", 100)]);
 		const resting = observe(180, [hand("open-palm", 180)]);
 		expect(resting.poses[0]?.pose).toBe("open-palm");
-		expect(toPointerUpdate(resting, 7, 10_000)?.command).toBeNull();
+		expect(
+			toPointerUpdate(resting, 7, 10_000, resting.tracking.timestamp)?.command,
+		).toBeNull();
 	});
 
 	it("suspends on ambiguity between two previously active hands", () => {
@@ -245,7 +328,10 @@ describe("Desktop pointer updates from the shared engine", () => {
 			identities.update([hand("pointing", 100), hand("pointing", 100)], 100),
 		);
 		expect(ambiguous.tracking.ambiguous).toBe(true);
-		expect(toPointerUpdate(ambiguous, 7, 10_000)?.command).toBeNull();
+		expect(
+			toPointerUpdate(ambiguous, 7, 10_000, ambiguous.tracking.timestamp)
+				?.command,
+		).toBeNull();
 	});
 
 	it("does not treat an active secondary hand as active primary control", () => {
@@ -268,6 +354,13 @@ describe("Desktop pointer updates from the shared engine", () => {
 			{ isPrimary: false, active: true },
 			{ isPrimary: true, active: false },
 		]);
-		expect(toPointerUpdate(restingPrimary, 7, 10_000)?.command).toBeNull();
+		expect(
+			toPointerUpdate(
+				restingPrimary,
+				7,
+				10_000,
+				restingPrimary.tracking.timestamp,
+			)?.command,
+		).toBeNull();
 	});
 });

@@ -23,7 +23,7 @@ const status = computed(() => {
 		case "starting":
 			return "Starting Windows pointer control…";
 		case "waiting":
-			return "Enabled — waiting for a pointing hand.";
+			return "Enabled — waiting for the selected hand to point.";
 		case "moving":
 			return "Enabled — following your main hand.";
 		case "paused":
@@ -58,13 +58,16 @@ async function disablePointer() {
 	}
 }
 
-async function togglePointer(cameraRunning: boolean) {
+async function togglePointer(
+	cameraRunning: boolean,
+	hasControllingHand: boolean,
+) {
 	if (!bridge) return;
 	if (enabled.value || starting.value) {
 		await disablePointer();
 		return;
 	}
-	if (!cameraRunning) return;
+	if (!cameraRunning || !hasControllingHand) return;
 	try {
 		showState(await bridge.enable());
 	} catch (error) {
@@ -75,7 +78,12 @@ async function togglePointer(cameraRunning: boolean) {
 function submit(frame: GestureEngineFrame) {
 	const sessionId = state.value.sessionId;
 	if (!bridge || sessionId === null) return;
-	const update = toPointerUpdate(frame, sessionId, performance.timeOrigin);
+	const update = toPointerUpdate(
+		frame,
+		sessionId,
+		performance.timeOrigin,
+		performance.now(),
+	);
 	if (update) bridge.submit(update);
 }
 
@@ -103,10 +111,11 @@ onBeforeUnmount(() => {
 		@tracking-stop="disablePointer"
 	>
 		<template #description>
-			Start the camera, then enable the Windows pointer to control your primary
-			display. Clicking and keyboard input are not available yet.
+			Start the camera, select a hand, then enable the Windows pointer to
+			control your primary display. Clicking and keyboard input are not
+			available yet.
 		</template>
-		<template #controls="{ isRunning }">
+		<template #controls="{ isRunning, hasControllingHand }">
 			<section
 				data-system-pointer
 				:data-phase="state.phase"
@@ -121,8 +130,8 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					data-toggle-system-pointer
-					:disabled="!bridge || state.phase === 'unsupported' || (!isRunning && !enabled && !starting)"
-					@click="togglePointer(isRunning)"
+					:disabled="!bridge || state.phase === 'unsupported' || ((!isRunning || !hasControllingHand) && !enabled && !starting)"
+					@click="togglePointer(isRunning, hasControllingHand)"
 					class="rounded-lg bg-cyan-700 px-4 py-2 font-medium hover:bg-cyan-600 disabled:opacity-50"
 				>
 					{{
@@ -131,6 +140,12 @@ onBeforeUnmount(() => {
 							: "Enable Windows pointer"
 					}}
 				</button>
+				<p
+					v-if="!hasControllingHand && !enabled && !starting"
+					class="text-amber-300"
+				>
+					Choose a visible hand in Main hand before enabling Windows control.
+				</p>
 				<p
 					role="status"
 					:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"

@@ -93,8 +93,8 @@ describe("Voluntary gesture control", () => {
 			1,
 		);
 		control.update(tracking(1700, []), [], null);
-		control.update(tracking(1800, [2]), [pose(2)], null);
-		expect(control.update(tracking(4000, [2]), [pose(2)], null)).toMatchObject({
+		control.update(tracking(1800, [2]), [pose(2)], 2);
+		expect(control.update(tracking(4000, [2]), [pose(2)], 2)).toMatchObject({
 			paused: true,
 			requiresRelease: true,
 		});
@@ -116,12 +116,10 @@ describe("Voluntary gesture control", () => {
 		control.update(tracking(1500), [pose()], 1);
 		control.update(tracking(1700, []), [], null);
 		const uncertain = pose(2, "unknown");
-		control.update(tracking(1800, [2]), [uncertain], null);
+		control.update(tracking(1800, [2]), [uncertain], 2);
 		expect(control.getState().requiresRelease).toBe(true);
-		control.update(tracking(1900, [2]), [pose(2)], null);
-		expect(control.update(tracking(4000, [2]), [pose(2)], null).paused).toBe(
-			true,
-		);
+		control.update(tracking(1900, [2]), [pose(2)], 2);
+		expect(control.update(tracking(4000, [2]), [pose(2)], 2).paused).toBe(true);
 	});
 
 	it("accepts clearly folded fingers as release without adding a new gesture pose", () => {
@@ -192,17 +190,14 @@ describe("Voluntary gesture control", () => {
 		}
 	});
 
-	it("requires a sole visible hand when there is no primary hand", () => {
+	it("does not let an unselected hand pause or resume, even when it is the only visible hand", () => {
 		const control = createGestureControl();
-		control.update(tracking(0, [1, 2]), [pose(1), pose(2)], null);
-		expect(
-			control.update(tracking(1500, [1, 2]), [pose(1), pose(2)], null)
-				.holdProgress,
-		).toBe(0);
-		control.update(tracking(1600, [2]), [pose(2)], null);
-		expect(control.update(tracking(3100, [2]), [pose(2)], null).paused).toBe(
-			true,
+		control.update(tracking(0, [2]), [pose(2)], null);
+		expect(control.update(tracking(1500, [2]), [pose(2)], null).paused).toBe(
+			false,
 		);
+		control.update(tracking(1600, [2]), [pose(2)], 2);
+		expect(control.update(tracking(3100, [2]), [pose(2)], 2).paused).toBe(true);
 	});
 
 	it("never combines hold time from different hands", () => {

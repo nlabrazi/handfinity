@@ -55,7 +55,7 @@ Dépôt : `/home/kaox/code/bricolage/handfinity`.
 Le dernier commit constaté lors de cette passation est :
 
 ```text
-a2449a7 docs: update README with current status and implementation details
+66efba1 feat: implement palm hold gesture for pause and resume functionality
 ```
 
 Le commit `7f6d27b` contient l'ensemble des étapes de recadrage 1 à 5.
@@ -74,9 +74,11 @@ fonctionnent, puis qu'il a commité et poussé ce lot. Le dépôt était propre 
 `staging` avant les modifications de l’étape 10. L’utilisateur a maintenant
 validé et commité ce lot dans `a2449a7`. Il juge le résultat meilleur, encore
 perfectible, et demande de reporter les itérations de fluidité pour avancer.
-Aucun push de ce commit n’a été confirmé. Le dépôt était propre avant l’étape 11,
-qui reste à valider et à commiter par l’utilisateur. À chaque reprise, vérifier `git status --short`
-et `git log` pour connaître l'état réel.
+Aucun push de ce commit n’a été confirmé. L’utilisateur a ensuite testé et
+commité l’étape 11 dans `66efba1`, puis demandé d’avancer. Le dépôt était propre
+sur `staging` avant l’étape 12, maintenant implémentée et non commitée. Le push
+de l’étape 11 n’a pas été confirmé. À chaque reprise, vérifier `git status --short`
+et `git log` pour connaître l’état réel.
 
 ## Existant conservé
 
@@ -112,8 +114,9 @@ Le preload expose un pont IPC limité au contrôle du pointeur, validé dans le
 processus principal avant toute exécution Windows.
 
 **Le déplacement du curseur Windows de l’étape 10 est accepté dans `a2449a7`.
-La pause/reprise de l’étape 11 est implémentée, à valider avec la vraie webcam. Les boutons, le défilement, le clavier et une bibliothèque
-publiée ne sont pas implémentés.**
+La pause/reprise de l’étape 11 est acceptée dans `66efba1`. La sélection explicite
+de l’étape 12 est implémentée, à valider avec la vraie webcam. Les boutons, le
+défilement, le clavier et une bibliothèque publiée ne sont pas implémentés.**
 
 ## Étape 8 — livrée dans `9c0de98`
 
@@ -249,7 +252,7 @@ et commité l’étape 10 dans `a2449a7`, tout en gardant des réserves de confo
 Il a explicitement demandé d’avancer et de revenir plus tard sur la fluidité.
 Ne pas relancer ce chantier au sein du lot de pause/reprise.
 
-## Étape 11 — implémentée, à valider
+## Étape 11 — validée et commitée dans `66efba1`
 
 ```text
 feat(control): add gesture-based pause and resume
@@ -266,8 +269,9 @@ moteur, avec `CONTROL_HOLD_MS = 1500`. Le résultat du moteur contient maintenan
 confirmation de la paume (80 ms existants), ce qui ajoute cette courte
 confirmation au délai choisi. Seules les nouvelles observations le font avancer.
 Une absence, ambiguïté, autre candidate ou changement de main annule un maintien
-incomplet. La main principale est utilisée ; si aucune principale n’existe,
-une seule main visible peut effectuer le geste. L’étape 12 n’est pas commencée.
+incomplet. À la livraison de l’étape 11, la main principale était utilisée et,
+sans principale, une seule main visible pouvait effectuer le geste. L’étape 12
+réserve désormais ce geste à la main explicitement sélectionnée et suivie.
 
 Chaque maintien complet bascule la pause une fois. Il faut montrer une autre
 posture claire (pointage/pincement confirmé ou quatre doigts nettement repliés)
@@ -288,8 +292,50 @@ pendant la pause. Les boutons d’arrêt et **Ctrl + Alt + Esc** désactivent au
 une session en pause ; un geste ne peut pas réactiver une session arrêtée.
 **Stop camera** remet le moteur à zéro et désactive le contrôle Windows.
 
-Livrer uniquement l’étape 11 et attendre sa validation avant l’étape 12.
-L’utilisateur réalise `git add`, `git commit` et le push.
+L’utilisateur a testé et commité l’étape 11, puis demandé de passer à l’étape 12.
+
+## Étape 12 — implémentée, à valider
+
+```text
+feat(control): select the controlling hand
+```
+
+Après avoir envisagé un geste dédié, l’utilisateur a finalement demandé de
+conserver le sélecteur **Main hand**. Aucun nouveau geste n’est ajouté.
+
+Aucune main ne commande au démarrage. Le menu exige une identité actuellement
+`tracked` ; **Choose a hand…** libère le contrôle. Une absence brève `missing`
+réserve le rôle tant que le tracker conserve la même identité. Après expiration
+ou ambiguïté, aucune autre main ne prend le relais : choisir explicitement une
+main visible. Une nouvelle identité de même latéralité n’est pas une preuve de
+reconnaissance physique. Ces identités sont locales à la session.
+
+`HandPointerFrame.selectionStatus` remplace `preferredHandId` et distingue
+`unselected`, `tracked`, `missing`, `lost` et `ambiguous`. Le choix perdu reste
+affiché pour expliquer le blocage. `setPrimaryHand(id)` rejette une identité
+indisponible avant mutation ; `null` efface le choix sans mode automatique.
+Le verrou de perte empêche aussi une ancienne identité de reprendre sans choix.
+
+Le moteur conserve la dernière observation pour rendre immédiatement les rôles
+après un choix. `setPrimaryHand` renvoie un instantané sans commande ;
+`selectionChanged` signale un vrai changement. Cela ne rejoue pas l’image et ne
+confirme pas de nouvelle posture. Un maintien de pause incomplet est annulé,
+mais une pause acquise reste active. Seule la main sélectionnée peut basculer
+la pause ; après perte, il faut d’abord choisir une main visible.
+
+Dans le bureau, l’activation exige caméra active et sélection visible. Le bouton
+d’arrêt reste disponible après perte ou pendant une pause. Le changement de
+sélection envoie immédiatement une annulation sans commande, datée au moment
+du choix explicite ; utiliser la dernière capture la ferait rejeter comme
+doublon. Les commandes normales conservent l’heure de leur image. Le main annule
+aussi le trajet si l’identité d’une commande change et ignore les ACK tardifs de
+l’ancienne trajectoire. Un appel natif déjà engagé peut encore se terminer.
+
+**Stop camera** remet la sélection à zéro et désactive le contrôle Windows.
+La logique reste dans le moteur commun, sans second suivi d’identités dans le
+main. Les seuils de vision et les performances restent inchangés dans ce lot.
+Livrer uniquement l’étape 12 et attendre sa validation avant la calibration
+de l’étape 13. L’utilisateur réalise `git add`, `git commit` et le push.
 
 ## Plan de progression
 
@@ -298,8 +344,9 @@ L’utilisateur réalise `git add`, `git commit` et le push.
 - **8 — réalisé** : socle Electron Windows réutilisant le moteur et l'interface.
 - **9 — réalisé** : suivi hors premier plan, validé et livré dans `9804677`.
 - **10 — réalisée** : véritable curseur Windows, accepté et commité dans `a2449a7`.
-- **11 — implémentée, à valider** : pause/reprise par paume ouverte maintenue 1,5 seconde.
-- **12–18** : main principale, calibration, boutons, défilement et réglages.
+- **11 — réalisée** : pause/reprise par paume ouverte maintenue 1,5 seconde, validée dans `66efba1`.
+- **12 — implémentée, à valider** : sélection obligatoire dans **Main hand**, sans réattribution après perte.
+- **13–18** : calibration, boutons, défilement et réglages.
 - **19–24** : clavier superposé, invocation, touches, saisie, édition et raccourcis.
 - **25–27** : parcours complets, CI Windows et distribution.
 
@@ -386,7 +433,7 @@ Ces essais prouvent l'intégration IPC et le déplacement Windows avec des
 commandes synthétiques. Le déplacement par les vrais gestes, sa précision,
 la perte et le retour d'une main et le confort restent à valider avec la webcam.
 À ce stade historique, l’étape 10 n’était pas commitée ; elle a depuis été
-acceptée dans `a2449a7`. L’étape 11 est maintenant le lot courant.
+acceptée dans `a2449a7`. L’étape 11 a depuis été acceptée dans `66efba1`.
 
 Après le retour sur les saccades, **336 tests passent**, lint, formatage et builds
 web/bureau réussis. Les nouveaux cas couvrent le budget de vision incluant les
@@ -493,8 +540,28 @@ avec arrêt des processus. Curseur restauré après l’essai. Un premier passag
 natif avait atteint `error` après réduction sans détail capturé ; la relance
 avec relevé de l’état passe sans reproduire cette erreur. Ne pas prétendre avoir
 corrigé ce cas non identifié ni modifier les timeouts pour le masquer.
-Ces essais restent synthétiques ; le geste avec webcam réelle est à valider.
-Aucun commit de l’étape 11 n’est effectué.
+Ces essais étaient synthétiques ; l’utilisateur a ensuite validé le geste et
+commité l’étape 11 dans `66efba1`.
+
+Validation de l’étape 12 : **431 tests passent**, lint, formatage et builds
+web/bureau réussis. Les régressions couvrent choix obligatoire, perte brève,
+expiration, ambiguïté, absence de transfert par latéralité, sélection invalide
+sans mutation, choix immédiat sans replay, pause conservée et annulation native
+entre deux images. Le contrôle Biome complet des fichiers de code modifiés passe ;
+le `check` global conserve les six tris d’importations préexistants hors périmètre.
+
+Le navigateur a testé le vrai moteur avec des observations synthétiques : deux
+mains sans choix, sélection, perte, retour sous une nouvelle identité de même
+latéralité, ambiguïté et reset. Le wrapper Desktop a aussi été relié au vrai
+contrôleur avec un exécuteur simulé : bouton conditionné à la sélection, annulation
+entre images, arrêt disponible après perte et pause conservée lors d’un choix.
+Captures 1440/390 px inspectées, aucun débordement ni erreur JavaScript.
+
+Electron Windows a vérifié séparément les paquets via le vrai pont IPC et le
+helper : annulation, rejet d’anciennes captures, autre identité de commande,
+pause fenêtre réduite, arrêt global, rechargement et fermeture des processus.
+Le curseur a été restauré. Ces essais de l’étape 12 restent synthétiques ; le
+choix de main et les pertes avec la vraie webcam restent à valider.
 
 ```bash
 npm test
@@ -523,11 +590,27 @@ redémarrés lors du recadrage ; le conteneur abandonné a été retiré. Vérif
 Dans le laboratoire : index tendu, majeur/annulaire/auriculaire repliés, pouce
 séparé → `Pointing`, pointeur `active`, cercle plein dans la vidéo. Ouvrir les
 cinq doigts ou pincer retire ce cercle après confirmation de la posture, sans
-nécessairement retirer les numéros d'identité. Deux mains en pointage donnent
-un cercle plein et un pointillé. `Main hand` change le rôle principal.
+nécessairement retirer les numéros d’identité. Sans sélection, les deux pointeurs
+restent secondaires et aucune commande n’est émise. Après choix dans **Main hand**,
+la main principale a un cercle plein, l’autre un pointillé.
 
 Pour valider l’étape 11 : comparer une ouverture brève et un maintien de 1,5 seconde,
 garder la paume ouverte plusieurs secondes (un seul basculement), repointer puis
 retirer la main (pause conservée), refaire le maintien après relâchement (reprise),
 et désactiver avec **Ctrl + Alt + Esc** pendant la pause. Refaire le parcours
 fenêtre réduite. La caméra continue et aucune désactivation n’est annulée par geste.
+
+Pour valider le lot courant de l’étape 12 :
+
+1. Démarrer la caméra et pointer avec deux mains sans choisir : aucune commande,
+   bouton Windows indisponible. Choisir un numéro : seul son pointage commande.
+   But : vérifier que le contrôle demande une sélection explicite.
+2. Changer de numéro : l’ancien trajet s’arrête et le menu ne déclenche aucun
+   déplacement. Seule une nouvelle image de la main choisie permet de reprendre.
+   But : vérifier le transfert volontaire et l’absence de cible rejouée.
+3. Retirer la principale jusqu’à `lost` en laissant l’autre pointer : aucun
+   relais. Ramener la main puis choisir un numéro visible pour reprendre.
+   But : éviter une reprise involontaire après perte d’identité.
+4. Mettre en pause puis changer de main : la pause reste active. Perdre la main
+   puis utiliser **Ctrl + Alt + Esc** : le contrôle Windows se désactive.
+   But : vérifier que la sélection conserve pause et arrêt d’urgence.

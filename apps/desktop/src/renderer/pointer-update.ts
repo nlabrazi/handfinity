@@ -6,7 +6,16 @@ export function toPointerUpdate(
 	frame: GestureEngineFrame,
 	sessionId: number,
 	timeOrigin: number,
+	eventTimestamp: number,
 ): PointerUpdate | null {
+	if (frame.selectionChanged) {
+		return {
+			sessionId,
+			capturedAt: timeOrigin + eventTimestamp,
+			paused: frame.control.paused,
+			command: null,
+		};
+	}
 	const command = frame.commands.at(-1);
 	if (
 		!frame.control.paused &&

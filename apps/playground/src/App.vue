@@ -16,7 +16,7 @@ import {
 	type TrackingSessionFrame,
 	type TrackingSessionOptions,
 } from "@handfinity/vision";
-import { onBeforeUnmount, ref, shallowRef } from "vue";
+import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
 import GestureControlDiagnostics from "./components/GestureControlDiagnostics.vue";
 import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
 import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
@@ -36,6 +36,7 @@ const isLoading = ref(false);
 const handCount = ref(0);
 const processedFrames = ref(0);
 const error = ref("");
+const selectionError = ref("");
 
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
@@ -45,9 +46,24 @@ const emptyPointers: HandPointerFrame = {
 	timestamp: 0,
 	pointers: [],
 	primaryHandId: null,
-	preferredHandId: null,
+	selectionStatus: "unselected",
 };
 const pointerFrame = shallowRef(emptyPointers);
+const selectionStatus = computed(() => {
+	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
+	switch (status) {
+		case "tracked":
+			return `Hand #${primaryHandId} controls the pointer.`;
+		case "missing":
+			return `Waiting for hand #${primaryHandId}. Other hands cannot take over.`;
+		case "lost":
+			return `Hand #${primaryHandId} was lost. Select a visible hand to continue.`;
+		case "ambiguous":
+			return "Hands are ambiguous. Separate them, then select a hand again.";
+		default:
+			return "No controlling hand. Choose a visible hand below.";
+	}
+});
 
 const engine = createGestureEngine();
 const controlFrame = shallowRef(engine.getControlState());
@@ -185,7 +201,10 @@ function handleTrackingFrame({
 	aspectRatio,
 	hasNewFrame,
 }: TrackingSessionFrame) {
-	const frame = engine.update(tracking, aspectRatio);
+	showGestureFrame(engine.update(tracking, aspectRatio), hasNewFrame);
+}
+
+function showGestureFrame(frame: GestureEngineFrame, hasNewFrame = false) {
 	if (hasNewFrame) processedFrames.value += 1;
 	showTracking(frame.tracking);
 	handPoses.value = frame.poses;
@@ -202,7 +221,17 @@ function handleTrackingFrame({
 
 function choosePrimaryHand(event: Event) {
 	const value = (event.target as HTMLSelectElement).value;
-	engine.setPrimaryHand(value === "auto" ? null : Number(value));
+	let frame: GestureEngineFrame | null;
+	try {
+		frame = engine.setPrimaryHand(value === "" ? null : Number(value));
+	} catch (error) {
+		if (!(error instanceof RangeError)) throw error;
+		selectionError.value =
+			"This hand is no longer available. Choose a visible hand.";
+		return;
+	}
+	selectionError.value = "";
+	if (frame) showGestureFrame(frame);
 }
 
 function stop() {
@@ -227,6 +256,7 @@ function stop() {
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
+	selectionError.value = "";
 }
 
 async function toggleCamera() {
@@ -327,7 +357,11 @@ onBeforeUnmount(() => {
 							>Images processed: {{ processedFrames }}</span
 						>
 					</div>
-					<slot name="controls" :is-running="isRunning" />
+					<slot
+						name="controls"
+						:is-running="isRunning"
+						:has-controlling-hand="pointerFrame.selectionStatus === 'tracked'"
+					/>
 					<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
 
 					<section
@@ -341,30 +375,43 @@ onBeforeUnmount(() => {
 							thumb separate from the index. The solid cursor marks the main
 							hand; a dashed cursor marks the secondary hand.
 						</p>
+						<p
+							data-hand-selection
+							:data-status="pointerFrame.selectionStatus"
+							role="status"
+							:class="pointerFrame.selectionStatus === 'tracked' ? 'text-sky-300' : 'text-amber-300'"
+						>
+							{{ selectionStatus }}
+						</p>
 						<label for="main-hand" class="block font-medium">Main hand</label>
 						<select
 							id="main-hand"
-							:value="pointerFrame.preferredHandId ?? 'auto'"
-							:disabled="!isRunning || !trackedHands.length"
+							:value="pointerFrame.primaryHandId ?? ''"
+							:disabled="!isRunning || (!trackedHands.length && pointerFrame.primaryHandId === null)"
 							@change="choosePrimaryHand"
 							class="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white disabled:opacity-50"
 						>
-							<option value="auto">
-								Automatic{{
-									pointerFrame.primaryHandId !== null
-										? ` (main: #${pointerFrame.primaryHandId})`
-										: ""
-								}}
+							<option value="">Choose a hand…</option>
+							<option
+								v-if="pointerFrame.primaryHandId !== null && !trackedHands.some(hand => hand.id === pointerFrame.primaryHandId)"
+								:value="pointerFrame.primaryHandId"
+								disabled
+							>
+								Hand #{{ pointerFrame.primaryHandId }} · lost — select again
 							</option>
 							<option
 								v-for="hand in trackedHands"
 								:key="hand.id"
 								:value="hand.id"
+								:disabled="trackingAmbiguous || hand.status !== 'tracked'"
 							>
 								Hand #{{ hand.id }} · {{ hand.observation.handedness }} ·
 								{{ hand.status }}
 							</option>
 						</select>
+						<p v-if="selectionError" role="alert" class="text-amber-300">
+							{{ selectionError }}
+						</p>
 						<p v-if="!pointerFrame.pointers.length" class="text-slate-400">
 							No visible hand pointers.
 						</p>
@@ -394,7 +441,7 @@ onBeforeUnmount(() => {
 						<p class="text-slate-400">
 							Coordinates refer to the source image before mirroring. A resting
 							or briefly missing main hand keeps its role while its identity
-							exists.
+							exists. After a lost or ambiguous identity, choose a hand again.
 						</p>
 					</section>
 				</section>
@@ -406,6 +453,7 @@ onBeforeUnmount(() => {
 					<GestureControlDiagnostics
 						:state="controlFrame"
 						:running="isRunning"
+						:selection-status="pointerFrame.selectionStatus"
 					/>
 					<PointerCommandDiagnostics :frame="pointerSimulation" />
 					<div

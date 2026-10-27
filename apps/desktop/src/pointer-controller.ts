@@ -78,6 +78,7 @@ export function createPointerController(options: PointerControllerOptions) {
 	let paused = false;
 	let lastCapturedAt = -Infinity;
 	let lastCommandTimestamp = -Infinity;
+	let commandHandId: number | null = null;
 	let suspension = 0;
 	let inFlight = false;
 	let pending: PointerTarget | null = null;
@@ -123,6 +124,7 @@ export function createPointerController(options: PointerControllerOptions) {
 		acknowledgedPoint = null;
 		acknowledgedAt = null;
 		lastTargetCapturedAt = null;
+		commandHandId = null;
 		clearPresentationTimer();
 		clearWatchdog();
 		if (activeSession !== null) publish(paused ? "paused" : "waiting");
@@ -327,6 +329,8 @@ export function createPointerController(options: PointerControllerOptions) {
 			return;
 		}
 		lastCommandTimestamp = command.timestamp;
+		if (commandHandId !== null && commandHandId !== command.handId) suspend();
+		commandHandId = command.handId;
 		const expiresAt = Math.floor(value.capturedAt + MAX_FRAME_AGE_MS);
 		const duration = Math.max(
 			MIN_TRAJECTORY_DURATION_MS,
