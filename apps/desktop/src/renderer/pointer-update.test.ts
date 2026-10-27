@@ -5,7 +5,6 @@ import {
 	type HandObservation,
 } from "@handfinity/engine";
 import { describe, expect, it, vi } from "vitest";
-import { createPointerSimulation } from "../../../playground/src/pointer-simulation";
 import { createPointerController } from "../pointer-controller";
 import { toPointerUpdate } from "./pointer-update";
 
@@ -227,7 +226,6 @@ describe("Desktop updates with automatic hand control", () => {
 		const epoch = 1_800_000_000_000;
 		vi.setSystemTime(epoch + 80);
 		const { engine, identities, observe, pointing } = setup();
-		const simulation = createPointerSimulation();
 		const driver = {
 			start: vi.fn(async () => {}),
 			move: vi.fn(async () => true),
@@ -245,7 +243,6 @@ describe("Desktop updates with automatic hand control", () => {
 			const { sessionId } = await controller.enable();
 			if (sessionId === null) throw new Error("Missing pointer session");
 			async function publish(frame: GestureEngineFrame) {
-				simulation.execute(frame.commands);
 				const packet = toPointerUpdate(frame, sessionId, epoch);
 				if (packet) controller.submit(packet);
 				await Promise.resolve();
@@ -268,7 +265,6 @@ describe("Desktop updates with automatic hand control", () => {
 			const target = confirmed.commands[0]?.position;
 			if (!target) throw new Error("Missing resumed command");
 			expect(confirmed.commands[0]?.handId).toBe(2);
-			expect(simulation.execute([]).position).toEqual(target);
 			expect(driver.move).toHaveBeenCalledTimes(2);
 			expect(driver.move).toHaveBeenLastCalledWith(
 				{ x: Math.round(target.x * 1000), y: Math.round(target.y * 1000) },

@@ -1,7 +1,19 @@
 <script setup lang="ts">
-import { CONTROL_HOLD_MS, type GestureEngineFrame } from "@handfinity/engine";
-import Playground from "playground/view";
-import { computed, onBeforeUnmount, onMounted, shallowRef } from "vue";
+import {
+	CONTROL_HOLD_MS,
+	createGestureEngine,
+	type GestureEngineFrame,
+	type HandObservation,
+	type HandPointerFrame,
+	type TrackedHand,
+	type TrackedHandPose,
+} from "@handfinity/engine";
+import {
+	createTrackingSession,
+	HAND_CONNECTIONS,
+	type TrackingSessionFrame,
+} from "@handfinity/vision";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import type { PointerControlState } from "../pointer-contract";
 import { toPointerUpdate } from "./pointer-update";
 
@@ -11,9 +23,36 @@ const state = shallowRef<PointerControlState>({
 	sessionId: null,
 	error: bridge ? null : "Pointer control is unavailable. Relaunch Handfinity.",
 });
+
+const videoRef = ref<HTMLVideoElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+
+const isRunning = ref(false);
+const isLoading = ref(false);
+const handCount = ref(0);
+const processedFrames = ref(0);
+const cameraError = ref("");
+
+const trackedHands = shallowRef<readonly TrackedHand[]>([]);
+const trackingAmbiguous = ref(false);
+const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
+const emptyPointers: HandPointerFrame = {
+	timestamp: 0,
+	pointers: [],
+	primaryHandId: null,
+	selectionStatus: "unselected",
+};
+const pointerFrame = shallowRef(emptyPointers);
+
+const engine = createGestureEngine();
+const controlFrame = shallowRef(engine.getControlState());
+
 const enabled = computed(() => state.value.sessionId !== null);
 const starting = computed(() => state.value.phase === "starting");
-const status = computed(() => {
+const pointerStatus = computed(() => {
+	if (state.value.phase === "paused" && controlFrame.value.requiresRelease) {
+		return "Paused — point or fold your fingers before resuming.";
+	}
 	switch (state.value.phase) {
 		case "unsupported":
 			return "Available on Windows only.";
@@ -31,6 +70,56 @@ const status = computed(() => {
 			return "Off.";
 	}
 });
+
+const selectionStatus = computed(() => {
+	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
+	switch (status) {
+		case "tracked":
+			return `Controlling hand: #${primaryHandId} (automatic).`;
+		case "missing":
+			return `Waiting for hand #${primaryHandId} to return.`;
+		case "ambiguous":
+			return "Hands are ambiguous. Separate them and point again.";
+		default:
+			return "Show a pointing hand to start controlling the pointer.";
+	}
+});
+
+const pointerReadiness = computed(() => {
+	if (!isRunning.value) return "Start the camera to begin.";
+	if (controlFrame.value.handId !== null)
+		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
+	if (controlFrame.value.paused)
+		return controlFrame.value.requiresRelease
+			? "Paused — point or fold your fingers before holding your palm to resume."
+			: "Paused — hold your open palm for 1.5 seconds to resume.";
+	if (controlFrame.value.requiresRelease)
+		return "Point or fold your fingers before holding your palm to pause again.";
+	if (pointerFrame.value.selectionStatus !== "tracked")
+		return "Show a pointing hand to control the pointer.";
+	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
+	if (pointer?.active) return "Pointing detected — pointer active.";
+	const pose = handPoses.value.find(
+		(item) => item.handId === pointerFrame.value.primaryHandId,
+	);
+	if (pose?.pose === "pointing")
+		return "Pointer inactive — keep your index inside the camera image.";
+	return `Pointer inactive — detected pose: ${pose?.pose ?? "unknown"}. Show a pointing hand.`;
+});
+
+const session = createTrackingSession(
+	{
+		onFrame: handleTrackingFrame,
+		onError(err) {
+			stopCamera();
+			cameraError.value =
+				err instanceof Error ? err.message : "Tracking failed";
+		},
+	},
+	{ scheduling: "timer" },
+);
+
+let sessionGeneration = 0;
 let unsubscribe: (() => void) | undefined;
 let disposed = false;
 
@@ -55,13 +144,13 @@ async function disablePointer() {
 	}
 }
 
-async function togglePointer(cameraRunning: boolean) {
+async function togglePointer() {
 	if (!bridge) return;
 	if (enabled.value || starting.value) {
 		await disablePointer();
 		return;
 	}
-	if (!cameraRunning) return;
+	if (!isRunning.value) return;
 	try {
 		showState(await bridge.enable());
 	} catch (error) {
@@ -74,6 +163,153 @@ function submit(frame: GestureEngineFrame) {
 	if (!bridge || sessionId === null) return;
 	const update = toPointerUpdate(frame, sessionId, performance.timeOrigin);
 	if (update) bridge.submit(update);
+}
+
+function handColor(id: number) {
+	return (
+		["#22d3ee", "#fb923c", "#a78bfa", "#4ade80"][(id - 1) % 4] ?? "#22d3ee"
+	);
+}
+
+function drawHands(hands: readonly HandObservation[]) {
+	const canvas = canvasRef.value;
+	const video = videoRef.value;
+	if (!canvas || !video) return;
+
+	if (
+		canvas.width !== video.videoWidth ||
+		canvas.height !== video.videoHeight
+	) {
+		canvas.width = video.videoWidth;
+		canvas.height = video.videoHeight;
+	}
+
+	const ctx = canvas.getContext("2d");
+	if (!ctx) return;
+
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	for (const observation of hands) {
+		const points = observation.landmarks;
+		const tracked = trackedHands.value.find(
+			(hand) => hand.status === "tracked" && hand.observation === observation,
+		);
+		ctx.strokeStyle = tracked ? handColor(tracked.id) : "#94a3b8";
+		ctx.lineWidth = 3;
+
+		for (const connection of HAND_CONNECTIONS) {
+			const start = points[connection.start];
+			const end = points[connection.end];
+			if (!start || !end) continue;
+
+			ctx.beginPath();
+			ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+			ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+			ctx.stroke();
+		}
+
+		ctx.fillStyle = "#facc15";
+		for (const point of points) {
+			ctx.beginPath();
+			ctx.arc(
+				point.x * canvas.width,
+				point.y * canvas.height,
+				5,
+				0,
+				Math.PI * 2,
+			);
+			ctx.fill();
+		}
+	}
+
+	for (const pointer of pointerFrame.value.pointers) {
+		if (!pointer.active) continue;
+		ctx.save();
+		ctx.translate(
+			pointer.position.x * canvas.width,
+			pointer.position.y * canvas.height,
+		);
+		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
+		ctx.fillStyle = "#020617dd";
+		ctx.lineWidth = 3;
+		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
+		ctx.beginPath();
+		ctx.arc(0, 0, 18, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+		ctx.restore();
+	}
+}
+
+function handleTrackingFrame({
+	tracking,
+	aspectRatio,
+	hasNewFrame,
+}: TrackingSessionFrame) {
+	const frame = engine.update(tracking, aspectRatio);
+	if (hasNewFrame) processedFrames.value += 1;
+	trackedHands.value = frame.tracking.hands;
+	trackingAmbiguous.value = frame.tracking.ambiguous;
+	handPoses.value = frame.poses;
+	pointerFrame.value = frame.pointers;
+	controlFrame.value = frame.control;
+	submit(frame);
+	const visible = frame.tracking.hands
+		.filter((hand) => hand.status === "tracked")
+		.map((hand) => hand.observation);
+	handCount.value = visible.length;
+	drawHands(visible);
+}
+
+function stopCamera() {
+	sessionGeneration += 1;
+	void disablePointer();
+	session.stop();
+
+	const canvas = canvasRef.value;
+	if (canvas) {
+		canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+	}
+
+	isRunning.value = false;
+	isLoading.value = false;
+	handCount.value = 0;
+	processedFrames.value = 0;
+	trackedHands.value = [];
+	engine.reset();
+	controlFrame.value = engine.getControlState();
+	handPoses.value = [];
+	pointerFrame.value = emptyPointers;
+	trackingAmbiguous.value = false;
+}
+
+async function toggleCamera() {
+	if (disposed || isLoading.value) return;
+
+	if (isRunning.value) {
+		stopCamera();
+		return;
+	}
+
+	const video = videoRef.value;
+	if (!video) return;
+
+	isLoading.value = true;
+	cameraError.value = "";
+
+	const generation = sessionGeneration;
+	try {
+		await session.start(video);
+		if (disposed || generation !== sessionGeneration) return;
+		isRunning.value = true;
+	} catch (err) {
+		if (disposed || generation !== sessionGeneration) return;
+		stopCamera();
+		cameraError.value =
+			err instanceof Error ? err.message : "Camera unavailable";
+	} finally {
+		if (generation === sessionGeneration) isLoading.value = false;
+	}
 }
 
 onMounted(async () => {
@@ -89,68 +325,138 @@ onMounted(async () => {
 onBeforeUnmount(() => {
 	disposed = true;
 	unsubscribe?.();
-	void disablePointer();
+	stopCamera();
 });
 </script>
 
 <template>
-	<Playground
-		:tracking-options="{ scheduling: 'timer' }"
-		@gesture-frame="submit"
-		@tracking-stop="disablePointer"
-	>
-		<template #description>
-			Start the camera, then enable the Windows pointer to control your primary
-			display. Clicking and keyboard input are not available yet.
-		</template>
-		<template #controls="{ isRunning, needsGestureRelease }">
+	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-5">
+		<div class="mx-auto max-w-5xl space-y-4">
+			<header class="flex flex-wrap items-baseline justify-between gap-2">
+				<div>
+					<h1 class="text-2xl font-bold">Handfinity Desktop</h1>
+					<p class="text-sm text-slate-400">
+						Start the camera, then enable the Windows pointer to control your
+						primary display.
+					</p>
+				</div>
+				<p class="text-xs text-slate-400">
+					Emergency stop:
+					<kbd class="rounded bg-slate-800 px-1.5 py-0.5">Ctrl + Alt + Esc</kbd>
+				</p>
+			</header>
+
 			<section
-				data-system-pointer
-				:data-phase="state.phase"
-				aria-labelledby="system-pointer-title"
-				class="space-y-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
+				aria-label="Camera and pointer controls"
+				class="grid gap-3 rounded-lg bg-slate-900 p-4 lg:grid-cols-2"
 			>
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<div class="min-w-0">
-						<h2 id="system-pointer-title" class="font-medium">
-							Windows pointer
-						</h2>
-						<p
-							role="status"
-							:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"
+				<div class="space-y-2">
+					<div class="flex flex-wrap items-center gap-3">
+						<button
+							type="button"
+							:disabled="isLoading"
+							@click="toggleCamera"
+							class="rounded-lg bg-blue-600 px-4 py-2 font-medium hover:bg-blue-500 disabled:opacity-50"
 						>
 							{{
-								state.phase === "paused" && needsGestureRelease
-									? "Paused — point or fold your fingers before resuming."
-									: status
+								isLoading
+									? "Initializing..."
+									: isRunning
+										? "Stop camera"
+										: "Start camera"
 							}}
+						</button>
+						<p class="text-xs text-slate-400">
+							Hands: {{ handCount }} ·
+							<span data-processed-frames>Frames: {{ processedFrames }}</span>
 						</p>
 					</div>
-					<button
-						type="button"
-						data-toggle-system-pointer
-						:disabled="!bridge || state.phase === 'unsupported' || (!isRunning && !enabled && !starting)"
-						@click="togglePointer(isRunning)"
-						class="rounded-lg bg-cyan-700 px-4 py-2 font-medium hover:bg-cyan-600 disabled:opacity-50"
+					<p
+						data-hand-selection
+						:data-status="pointerFrame.selectionStatus"
+						role="status"
+						class="text-sm"
+						:class="pointerFrame.selectionStatus === 'tracked' ? 'text-sky-300' : 'text-amber-300'"
 					>
-						{{
-							enabled || starting
-								? "Stop Windows pointer"
-								: "Enable Windows pointer"
-						}}
-					</button>
+						{{ selectionStatus }}
+					</p>
+					<p
+						data-pointer-readiness
+						role="status"
+						class="text-sm"
+						:class="controlFrame.paused ? 'text-amber-300' : 'text-slate-300'"
+					>
+						{{ pointerReadiness }}
+					</p>
+					<p v-if="cameraError" role="alert" class="text-sm text-red-400">
+						{{ cameraError }}
+					</p>
 				</div>
-				<p
-					v-if="bridge && state.phase !== 'unsupported' && !enabled && !starting && !isRunning"
-					class="text-xs text-amber-300"
+
+				<section
+					data-system-pointer
+					:data-phase="state.phase"
+					aria-labelledby="system-pointer-title"
+					class="flex flex-col justify-between gap-3 rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-sm"
 				>
-					Start the camera to enable control.
-				</p>
-				<p class="text-xs text-slate-400">
-					Emergency stop: <kbd>Ctrl + Alt + Esc</kbd> · Stop camera also turns
-					control off.
-				</p>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<div class="min-w-0">
+							<h2 id="system-pointer-title" class="font-medium">
+								Windows pointer
+							</h2>
+							<p
+								role="status"
+								:class="state.phase === 'error' ? 'text-red-400' : 'text-slate-300'"
+							>
+								{{ pointerStatus }}
+							</p>
+						</div>
+						<button
+							type="button"
+							data-toggle-system-pointer
+							:disabled="!bridge || state.phase === 'unsupported' || (!isRunning && !enabled && !starting)"
+							@click="togglePointer"
+							class="rounded-lg bg-cyan-700 px-4 py-2 font-medium hover:bg-cyan-600 disabled:opacity-50"
+						>
+							{{
+								enabled || starting
+									? "Stop Windows pointer"
+									: "Enable Windows pointer"
+							}}
+						</button>
+					</div>
+					<p
+						v-if="bridge && state.phase !== 'unsupported' && !enabled && !starting && !isRunning"
+						class="text-xs text-amber-300"
+					>
+						Start the camera to enable control.
+					</p>
+				</section>
 			</section>
-		</template>
-	</Playground>
+
+			<section
+				aria-label="Camera preview"
+				class="space-y-2 rounded-lg bg-slate-900 p-3"
+			>
+				<h2 class="font-medium">Camera preview</h2>
+				<div
+					class="relative aspect-video max-h-[28rem] overflow-hidden rounded-lg bg-black"
+				>
+					<video
+						ref="videoRef"
+						autoplay
+						muted
+						playsinline
+						aria-label="Live camera preview"
+						class="absolute inset-0 h-full w-full -scale-x-100 object-contain"
+					/>
+					<canvas
+						ref="canvasRef"
+						aria-hidden="true"
+						class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
+					/>
+				</div>
+			</section>
+		</div>
+	</main>
 </template>
