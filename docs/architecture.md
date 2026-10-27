@@ -37,9 +37,14 @@ Package pur TypeScript, sans dépendance DOM, Vue ou Electron :
 
 - **`tracking/hand-identity-tracker.ts`** : associe jusqu'à 2 mains d'une image à l'autre par proximité spatiale, taille de paume et latéralité. Tolère une perte brève (120 ms) et signale les croisements ambigus.
 - **`poses/hand-pose-tracker.ts`** : classifie chaque main suivie en `pointing`, `open-palm`, `pinch` ou `unknown` à partir des angles articulaires 3D corrigés du ratio d'image et de la distance pouce-index normalisée par la paume, avec confirmation temporelle (80 ms pour pointage/paume, 40 ms / 60 ms avec hystérésis pour le pincement).
-- **`pointer/point-smoother.ts` & `pointer/hand-pointers.ts`** : filtre la position du pointeur par main et sélectionne automatiquement la main de contrôle.
+- **`pointer/one-euro-filter.ts`, `pointer/active-zone.ts`, `pointer/point-smoother.ts` & `pointer/hand-pointers.ts`** : filtre la position du pointeur et calcule le centre stable de la paume (`palmPosition`, moyenne des repères `[0, 5, 9, 13, 17]` filtrée par *One Euro Filter*), projette la zone active confortable vers l'écran et sélectionne automatiquement la main de contrôle.
+- **`gestures/pointer-actions.ts`** : implémente le modèle gestuel multimodal sans dérive du curseur :
+  - **✊ Poing fermé maintenu 600 ms (`GRAB_HOLD_MS`)** : Saisir & Glisser (*Grab & Drag*) avec jauge de progression (`grabProgress`), verrouillage `pointer:down`, déplacement fluide piloté par le centre de la paume (`palmPosition`) et relâchement automatique `pointer:up` à l'ouverture de la main ou en cas de perte de suivi.
+  - **✌️ 2 doigts tendus (Index + Majeur, `CHORD_HOLD_MS = 140 ms`)** : Clic gauche (`pointer:click`, `button: "left"`), curseur figé.
+  - **🤟 3 doigts tendus (Index + Majeur + Annulaire, `CHORD_HOLD_MS = 140 ms`)** : Clic droit (`pointer:click`, `button: "right"`), curseur figé.
+  - **🤏 Pincement maintenu (`SCROLL_HOLD_MS = 100 ms`) + écart vertical** : Défilement continu type « Joystick » (`pointer:scroll`), vitesse proportionnelle à l'écart vertical de la paume hors de la zone morte (`SCROLL_DEADZONE`).
 - **`control/gesture-control.ts`** : bascule la pause/reprise après un maintien de `open-palm` pendant 1 500 ms avec obligation de relâcher le geste avant un nouveau basculement.
-- **`gesture-engine.ts` & `commands.ts`** : assemble l'ensemble du pipeline et émet les commandes normalisées (`PointerMoveCommand`, avec miroir horizontal déjà appliqué).
+- **`gesture-engine.ts` & `commands.ts`** : assemble l'ensemble du pipeline et émet les commandes normalisées (`PointerMoveCommand` et `PointerActionCommand`, avec miroir horizontal déjà appliqué).
 
 ### 3. `apps/desktop`
 
@@ -49,8 +54,8 @@ Application Electron isolée de `apps/playground` :
   - Fenêtre avec `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, protocole `handfinity://app/` et permissions restreintes à la seule webcam vidéo.
   - Maintien des performances du renderer en arrière-plan (`disable-renderer-backgrounding`, `backgroundThrottling: false`, désactivation d'EcoQoS sur le processus de vision Windows).
   - Raccourci global d'arrêt d'urgence `Ctrl + Alt + Esc`.
-  - Contrôleur de pointeur interpolant les cibles à 120 Hz avec arrêt immédiat en cas de pause, perte de suivi, expiration (250 ms) ou fermeture.
-- **Processus `renderer`** (`src/renderer/App.vue`) : interface de contrôle bureau dédiée consommant directement `@handfinity/vision` et `@handfinity/engine`.
+  - Contrôleur système interpolant les cibles à 120 Hz, exécutant les clics gauche/droit, le maintien de bouton (glisser-déposer), la molette et la frappe clavier (`mouse_event`, `keybd_event`, `VkKeyScanW`), avec relâchement inconditionnel (`ReleaseAll`) en cas de pause, perte de suivi, expiration (250 ms) ou fermeture.
+- **Processus `renderer`** (`src/renderer/App.vue`, `src/renderer/components/VirtualKeyboard.vue`) : interface de contrôle bureau dédiée consommant directement `@handfinity/vision` et `@handfinity/engine`, avec jauge de saisie (poing fermé) et clavier virtuel intégré.
 
 ### 4. `apps/hub` & `apps/playground`
 

@@ -61,26 +61,30 @@ La feuille de route détaillée est disponible dans [`docs/roadmap.md`](docs/roa
   - [x] Unification du moteur dans `@handfinity/engine` et vision GPU/CPU dans `@handfinity/vision`
   - [x] Découplage de `apps/desktop` (interface bureau autonome) et conservation de `apps/hub` + `apps/playground`
   - [x] Déplacement du curseur Windows en arrière-plan, sélection automatique de la main et pause gestuelle
-- [ ] **Phase 1 — Couche d'entrée native (`SendInput`)**
-  - [ ] Driver Win32 natif (`SendInput` via FFI) remplaçant le sous-processus PowerShell
-  - [ ] Support natif des clics, de la molette, du clavier et relâchement de sécurité (`releaseAll`)
-- [ ] **Phase 2 — Ergonomie & précision du pointeur**
-  - [ ] Ancrage stable sur la paume, filtre adaptatif *One Euro Filter* et zone active configurable
-- [ ] **Phase 3 — Clics, glisser-déposer et défilement**
-  - [ ] Machine à états d'entrée complète (clic gauche, double-clic, drag & drop, clic droit, scroll)
-- [ ] **Phase 4 — Clavier virtuel à la demande**
-  - [ ] Clavier superposé sans perte de focus (`focusable: false`) et saisie Unicode dans l'application cible
+- [x] **Phase 1 — Couche d'entrée système Windows (Souris & Clavier)**
+  - [x] Clics gauche/droit, maintien de bouton (glisser-déposer), molette, frappe clavier et relâchement de sécurité (`ReleaseAll`)
+- [x] **Phase 2 — Ergonomie & précision du pointeur**
+  - [x] Ancrage stable sur la paume (`palmPosition`), filtre adaptatif *One Euro Filter* et zone active configurable (`createActiveZoneMapper`)
+- [x] **Phase 3 — Modèle gestuel multimodal (Saisir au poing, accords de doigts, Joystick Scroll)**
+  - [x] **☝️ 1 doigt** (déplacement), **✌️ 2 doigts** (clic gauche), **🤟 3 doigts** (clic droit), **✊ poing fermé 0,6 s** (saisir & glisser par la paume), **🤏 pincement + haut/bas** (défilement continu joystick)
+- [x] **Phase 4 — Clavier virtuel**
+  - [x] Clavier virtuel AZERTY intégré (`VirtualKeyboard.vue`) avec touches d'édition et navigation
 - [ ] **Phase 5 — Expérience quotidienne & distribution**
-  - [ ] Barre système (Tray), overlay HUD, assets MediaPipe hors-ligne et installeur Windows
+  - [ ] Barre système (Tray), overlay HUD sans perte de focus, assets MediaPipe hors-ligne et installeur Windows
 
 ---
 
 ## Utiliser Handfinity
 
 1. **Démarrer la caméra** : cliquer sur **Start camera**.
-2. **Pointer** : tendre l'index en repliant les trois autres doigts. La main est sélectionnée automatiquement.
-3. **Mettre en pause / reprendre** : maintenir la paume ouverte pendant 1,5 seconde, puis relâcher.
-4. **Contrôler Windows (`apps/desktop`)** : cliquer sur **Enable Windows pointer**. Utiliser **Stop Windows pointer** ou **`Ctrl + Alt + Esc`** pour désactiver immédiatement le contrôle.
+2. **Contrôler la souris avec les gestes** :
+   - **☝️ 1 doigt (Index)** : Déplacer le curseur.
+   - **✌️ 2 doigts (Index + Majeur)** : Clic gauche.
+   - **🤟 3 doigts (Index + Majeur + Annulaire)** : Clic droit.
+   - **✊ Poing fermé (0,6 s avec jauge)** : Saisir & Glisser (*Grab & Drag* piloté par la paume).
+   - **🤏 Pincement + Haut/Bas** : Défilement continu type « Joystick ».
+   - **🖐️ Paume ouverte (1,5 s)** : Mettre en pause / reprendre.
+3. **Contrôler Windows (`apps/desktop`)** : cliquer sur **Enable Windows pointer**. Utiliser **Stop Windows pointer** ou **`Ctrl + Alt + Esc`** pour désactiver immédiatement le contrôle.
 
 ---
 

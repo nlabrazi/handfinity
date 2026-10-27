@@ -27,9 +27,14 @@ npm test -w desktop
 
 Au premier lancement depuis WSL2, `scripts/start.mjs` télécharge le binaire Windows d'Electron dans `%LOCALAPPDATA%\Handfinity\Cache` afin que Chromium s'exécute directement sous Windows et accède à la webcam hôte.
 
-## Fonctionnement et sécurité
+## Gestes et sécurité
 
 1. **Démarrer la caméra** (`Start camera`) : active le suivi à 30 images/s (ordonnancement par timer maintenu même lorsque la fenêtre est réduite ou en arrière-plan).
-2. **Activer le pointeur Windows** (`Enable Windows pointer`) : déplace le curseur physique de l'écran principal lorsque la main de contrôle pointe.
-3. **Pause gestuelle** : maintenir la paume ouverte pendant **1,5 seconde** met en pause ou reprend le contrôle du curseur.
-4. **Arrêt d'urgence** : **`Ctrl + Alt + Esc`** (ou `Stop Windows pointer` / `Stop camera` / fermeture de la fenêtre) désactive immédiatement le contrôle du curseur.
+2. **Activer le pointeur Windows** (`Enable Windows pointer`) :
+   - **☝️ 1 doigt (Index)** : Déplacer le curseur.
+   - **✌️ 2 doigts (Index + Majeur)** : Clic gauche.
+   - **🤟 3 doigts (Index + Majeur + Annulaire)** : Clic droit.
+   - **✊ Poing fermé (maintenu 0,6 s avec jauge)** : Saisir & Glisser (*Grab & Drag* piloté par la paume, relâchement à l'ouverture de la main).
+   - **🤏 Pincement + Haut/Bas** : Défilement continu type « Joystick ».
+   - **🖐️ Paume ouverte (maintenue 1,5 s)** : Pause / Reprise du contrôle.
+3. **Arrêt d'urgence** : **`Ctrl + Alt + Esc`** (ou `Stop Windows pointer` / `Stop camera` / fermeture de la fenêtre) relâche tout bouton maintenu et désactive immédiatement le contrôle.

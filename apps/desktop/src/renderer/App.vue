@@ -102,11 +102,23 @@ const pointerReadiness = computed(() => {
 		return "Point or fold your fingers before holding your palm to pause again.";
 	if (pointerFrame.value.selectionStatus !== "tracked")
 		return "Show a pointing hand to control the pointer.";
-	if (actionState.value.dragging) return "Dragging — pinch held while moving.";
 	if (actionState.value.leftButtonDown)
-		return "Left button held — release pinch to click or move to drag.";
-	if (actionState.value.scrolling)
-		return "Scroll mode — move two fingers up or down.";
+		return "Grab locked — move your closed fist to drag, or open your hand to release.";
+	if (actionState.value.grabProgress > 0)
+		return `Locking fist grab — ${Math.round(actionState.value.grabProgress * 100)}% (hold 0.6s).`;
+	if (actionState.value.pendingChord === "left-click")
+		return "2-finger chord detected — confirming left-click…";
+	if (actionState.value.pendingChord === "right-click")
+		return "3-finger chord detected — confirming right-click…";
+	if (actionState.value.scrolling) {
+		const dir =
+			actionState.value.scrollVelocity === 0
+				? "neutral zone"
+				: actionState.value.scrollVelocity < 0
+					? "scrolling up ↑"
+					: "scrolling down ↓";
+		return `Joystick scroll active (${dir}) — raise or lower your pinched hand.`;
+	}
 	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
 	if (pointer?.active) return "Pointing detected — pointer active.";
 	const pose = handPoses.value.find(
@@ -260,20 +272,43 @@ function drawHands(hands: readonly HandObservation[]) {
 
 	for (const pointer of pointerFrame.value.pointers) {
 		if (
-			!pointer.active &&
-			!(pointer.isPrimary && actionState.value.leftButtonDown)
-		)
-			continue;
+			pointer.isPrimary &&
+			(actionState.value.grabProgress > 0 ||
+				actionState.value.leftButtonDown ||
+				actionState.value.scrolling)
+		) {
+			ctx.save();
+			ctx.translate(
+				pointer.palmPosition.x * canvas.width,
+				pointer.palmPosition.y * canvas.height,
+			);
+			ctx.fillStyle = "#020617cc";
+			ctx.beginPath();
+			ctx.arc(0, 0, 22, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.lineWidth = 4;
+			ctx.strokeStyle = actionState.value.scrolling ? "#38bdf8" : "#4ade80";
+			const progress = actionState.value.scrolling
+				? 1
+				: actionState.value.grabProgress;
+			ctx.beginPath();
+			ctx.arc(
+				0,
+				0,
+				22,
+				-Math.PI / 2,
+				-Math.PI / 2 + Math.PI * 2 * Math.max(0.08, progress),
+			);
+			ctx.stroke();
+			ctx.restore();
+		}
+		if (!pointer.active) continue;
 		ctx.save();
 		ctx.translate(
 			pointer.position.x * canvas.width,
 			pointer.position.y * canvas.height,
 		);
-		ctx.strokeStyle = actionState.value.leftButtonDown
-			? "#4ade80"
-			: pointer.isPrimary
-				? "#ffffff"
-				: "#fb923c";
+		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
 		ctx.fillStyle = "#020617dd";
 		ctx.lineWidth = 3;
 		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
@@ -454,6 +489,30 @@ onBeforeUnmount(() => {
 						Last input action:
 						<span class="font-mono text-cyan-300">{{ lastActionLabel }}</span>
 					</p>
+					<div
+						v-if="actionState.grabProgress > 0 || actionState.leftButtonDown"
+						data-grab-progress
+						class="space-y-1 pt-1"
+					>
+						<div class="flex justify-between text-xs text-emerald-300">
+							<span>
+								{{
+									actionState.leftButtonDown
+										? "✊ Grab locked — move palm to drag"
+										: "✊ Hold fist to grab (0.6s)…"
+								}}
+							</span>
+							<span>{{ Math.round(actionState.grabProgress * 100) }}%</span>
+						</div>
+						<div class="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+							<div
+								class="h-full bg-emerald-400 transition-all duration-75"
+								:style="{
+									width: `${Math.round(actionState.grabProgress * 100)}%`,
+								}"
+							/>
+						</div>
+					</div>
 					<p v-if="cameraError" role="alert" class="text-sm text-red-400">
 						{{ cameraError }}
 					</p>
@@ -492,17 +551,23 @@ onBeforeUnmount(() => {
 						</button>
 					</div>
 					<div
-						class="grid grid-cols-2 gap-1.5 text-xs text-slate-400 sm:grid-cols-4"
+						class="grid grid-cols-2 gap-1.5 text-xs text-slate-400 sm:grid-cols-3"
 					>
-						<span class="rounded bg-slate-900 px-2 py-1">☝️ Index: Move</span>
+						<span class="rounded bg-slate-900 px-2 py-1">☝️ 1 Finger: Move</span>
 						<span class="rounded bg-slate-900 px-2 py-1"
-							>🤏 Thumb+Index: Click/Drag</span
+							>✌️ 2 Fingers: Left-click</span
 						>
 						<span class="rounded bg-slate-900 px-2 py-1"
-							>👌 Thumb+Middle: Right-click</span
+							>🤟 3 Fingers: Right-click</span
 						>
 						<span class="rounded bg-slate-900 px-2 py-1"
-							>✌️ 2 Fingers: Scroll</span
+							>✊ Fist (0.6s): Grab &amp; Drag</span
+						>
+						<span class="rounded bg-slate-900 px-2 py-1"
+							>🤏 Pinch + ↑/↓: Scroll</span
+						>
+						<span class="rounded bg-slate-900 px-2 py-1"
+							>🖐️ Palm (1.5s): Pause</span
 						>
 					</div>
 					<p

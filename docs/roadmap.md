@@ -14,51 +14,42 @@ Objectif : remplacer la souris et le clavier sur PC par le suivi des mains à la
 
 ---
 
-## Phase 1 — Couche d'entrée native (`SendInput`)
+## Phase 1 — Couche d'entrée système Windows (Souris & Clavier) ✅
 
-Remplacer le sous-processus PowerShell (`SetPhysicalCursorPos`) par une couche d'entrée native directe dans le processus `main` Electron (FFI Win32 `SendInput` via `koffi`) :
-
-- [ ] Définir le contrat `InputDriver` :
-  - `moveAbsolute(x, y)` / `moveRelative(dx, dy)`
-  - `mouseButton(button: "left" | "right" | "middle", state: "down" | "up")`
-  - `scroll(dx, dy)`
-  - `key(code, state: "down" | "up")` et `typeText(text)`
-  - `releaseAll()` (relâchement inconditionnel de tous les boutons et modificateurs enfoncés)
-- [ ] Implémenter le driver Win32 `SendInput` et supprimer le script PowerShell persistant.
-- [ ] Garantir l'appel automatique à `releaseAll()` sur pause, perte de suivi, désactivation, arrêt d'urgence (`Ctrl + Alt + Esc`) ou fermeture.
+- [x] Étendre le driver Windows (`apps/desktop/src/windows-pointer.ts`) avec le support complet de la souris (`DOWN left|right`, `UP left|right`, `CLICK left|right`, `SCROLL <delta>`) et du clavier (`KEY <token>` via `VkKeyScanW` / `keybd_event`).
+- [x] Garantir le relâchement inconditionnel (`ReleaseAll` dans le bloc `finally` et commande `RELEASE`) sur pause, perte de suivi, désactivation, arrêt d'urgence (`Ctrl + Alt + Esc`) ou fermeture.
+- [ ] Optionnel : migration future vers FFI natif (`koffi` + `SendInput`) lors de l'étape de packaging binaire.
 
 ---
 
-## Phase 2 — Ergonomie & précision du pointeur
+## Phase 2 — Ergonomie & précision du pointeur ✅
 
 Corriger les problèmes ergonomiques qui gênent le clic et l'accès aux bords de l'écran :
 
-- [ ] **Point d'ancrage stable** : ancrer le curseur sur le centre de la paume / articulations MCP plutôt que sur le bout de l'index (qui bouge lors d'un pincement).
-- [ ] **Filtre adaptatif (One Euro Filter)** : remplacer le lissage exponentiel fixe par un filtre adaptatif (très stable à basse vitesse pour viser, très réactif en déplacement rapide).
-- [ ] **Zone active & gain** : projeter un sous-rectangle confortable du champ caméra vers l'écran entier pour atteindre facilement les 4 coins sans tendre le bras.
-- [ ] **Mode embrayage (clutch)** : permettre de figer le curseur (ex. poing fermé) pour repositionner sa main.
+- [x] **Point d'ancrage stable sur la paume** : calculer et filtrer `palmPosition` (moyenne des repères `[0, 5, 9, 13, 17]`) pour découpler les déplacements de la main des mouvements des doigts.
+- [x] **Filtre adaptatif (One Euro Filter)** : implémenter `createOneEuroFilter` (très stable à basse vitesse pour viser, très réactif en déplacement rapide).
+- [x] **Zone active & gain** : projeter un sous-rectangle confortable du champ caméra (`createActiveZoneMapper`) vers l'écran entier pour atteindre facilement les 4 coins sans tendre le bras.
 
 ---
 
-## Phase 3 — Clics, glisser-déposer et défilement
+## Phase 3 — Clics par accords de doigts, Saisir & Glisser au poing et Défilement Joystick ✅
 
-Étendre `@handfinity/engine` avec une machine à états d'entrée complète :
+Modèle gestuel multimodal dans `@handfinity/engine` (`createPointerActionTracker`) :
 
-- [ ] **Stabilisation au clic** : geler ou freiner légèrement la position du pointeur au début d'un pincement pour éviter tout dérapage du curseur pendant le clic.
-- [ ] **Clic gauche & double-clic** : pincement pouce + index bref (`pointer:down` → `pointer:up`).
-- [ ] **Glisser-déposer (drag & drop)** : pincement pouce + index maintenu avec déplacement, puis relâchement.
-- [ ] **Clic droit** : pincement pouce + majeur (ou geste secondaire dédié).
-- [ ] **Défilement (scroll)** : geste dédié avec contrôle de vitesse et arrêt net.
+- [x] **Stabilisation immédiate au geste** : figer instantanément la position du curseur dès le début d'un geste d'action (poing, accord à 2 ou 3 doigts, pincement).
+- [x] **Clic gauche (`✌️ 2 doigts`)** : index + majeur tendus (`CHORD_HOLD_MS = 140 ms`) avec réarmement obligatoire.
+- [x] **Clic droit (`🤟 3 doigts`)** : index + majeur + annulaire tendus (`CHORD_HOLD_MS = 140 ms`) sans déclencher de faux clic gauche pendant la transition.
+- [x] **Saisir & Glisser (`✊ Poing fermé 600 ms`)** : verrouillage progressif avec jauge visuelle (`grabProgress`), déplacement piloté par la paume (`palmPosition`) et relâchement automatique à l'ouverture de la main.
+- [x] **Défilement continu type « Joystick » (`🤏 Pincement + Haut/Bas`)** : point d'ancrage vertical avec zone morte (`SCROLL_DEADZONE`) et défilement continu proportionnel à l'écart vertical.
 
 ---
 
-## Phase 4 — Clavier virtuel sans perte de focus
+## Phase 4 — Clavier virtuel ✅
 
-Permettre la saisie de texte dans n'importe quelle application active :
+Permettre la saisie de texte et les touches d'édition :
 
-- [ ] **Intégration rapide** : commande gestuelle pour ouvrir/fermer le clavier visuel système ou l'overlay clavier.
-- [ ] **Clavier overlay Handfinity** : fenêtre Electron transparente toujours au premier plan avec `focusable: false` (ne vole jamais le focus à l'application cible).
-- [ ] **Saisie et édition** : frappe de caractères Unicode via `SendInput`, touches d'édition (`Entrée`, `Retour arrière`, `Espace`, `Tab`, flèches) et modificateurs (`Maj`, `Ctrl`, `Alt`) avec relâchement garanti.
+- [x] **Clavier virtuel intégré (`VirtualKeyboard.vue`)** : disposition AZERTY complète, pavé directionnel et touches d'édition (`Space`, `Backspace`, `Enter`, `Tab`, `Esc`).
+- [ ] **Fenêtre overlay dédiée sans perte de focus** : fenêtre Electron transparente toujours au premier plan avec `focusable: false`.
 
 ---
 
