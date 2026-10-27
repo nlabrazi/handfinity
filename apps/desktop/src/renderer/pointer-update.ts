@@ -8,18 +8,25 @@ export function toPointerUpdate(
 	timeOrigin: number,
 ): PointerUpdate | null {
 	const command = frame.commands.at(-1);
+	const actions = frame.actions ?? [];
 	if (
 		!frame.control.paused &&
 		command === undefined &&
-		frame.pointers.pointers.some(
+		actions.length === 0 &&
+		(frame.pointers.pointers.some(
 			(pointer) => pointer.isPrimary && pointer.active,
-		)
+		) ||
+			frame.actionState?.leftButtonDown)
 	)
 		return null;
-	return {
+	const base: PointerUpdate = {
 		sessionId,
 		capturedAt: timeOrigin + frame.tracking.timestamp,
 		paused: frame.control.paused,
 		command: frame.control.paused ? null : (command ?? null),
 	};
+	if (!frame.control.paused && actions.length > 0) {
+		return { ...base, actions };
+	}
+	return base;
 }

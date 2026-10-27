@@ -1,4 +1,7 @@
-import type { PointerMoveCommand } from "@handfinity/engine/commands";
+import type {
+	PointerActionCommand,
+	PointerMoveCommand,
+} from "@handfinity/engine/commands";
 import type { PointerControlState } from "./pointer-contract.js";
 import type { NativePointer } from "./windows-pointer.js";
 
@@ -23,6 +26,7 @@ const MAX_FRAME_AGE_MS = 250;
 const PRESENTATION_INTERVAL_MS = 1000 / 120;
 const MIN_TRAJECTORY_DURATION_MS = 1000 / 60;
 const MAX_TRAJECTORY_DURATION_MS = 100;
+const WHEEL_STEP = 120;
 
 type PhysicalPoint = { x: number; y: number };
 type PointerTarget = {
@@ -39,6 +43,27 @@ type PointerTrajectory = {
 	expiresAt: number;
 };
 
+type QueuedDriverTask =
+	| {
+			kind: "button";
+			action: "down" | "up" | "click";
+			button: "left" | "right";
+			expiresAt: number;
+	  }
+	| {
+			kind: "scroll";
+			wheelDelta: number;
+			expiresAt: number;
+	  }
+	| {
+			kind: "key";
+			key: string;
+			expiresAt: number;
+	  }
+	| {
+			kind: "releaseAll";
+	  };
+
 function samePoint(first: PhysicalPoint | null, second: PhysicalPoint) {
 	return first !== null && first.x === second.x && first.y === second.y;
 }
@@ -47,23 +72,56 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isNormalizedPosition(
+	value: unknown,
+): value is Readonly<{ x: number; y: number }> {
+	if (!isRecord(value)) return false;
+	return [value.x, value.y].every(
+		(coordinate) =>
+			typeof coordinate === "number" &&
+			Number.isFinite(coordinate) &&
+			coordinate >= 0 &&
+			coordinate <= 1,
+	);
+}
+
 function isMove(value: unknown): value is PointerMoveCommand {
-	if (!isRecord(value) || !isRecord(value.position)) return false;
+	if (!isRecord(value) || !isNormalizedPosition(value.position)) return false;
 	return (
 		value.type === "pointer:move" &&
 		Number.isSafeInteger(value.handId) &&
 		Number(value.handId) > 0 &&
 		typeof value.timestamp === "number" &&
 		Number.isFinite(value.timestamp) &&
-		value.timestamp >= 0 &&
-		[value.position.x, value.position.y].every(
-			(coordinate) =>
-				typeof coordinate === "number" &&
-				Number.isFinite(coordinate) &&
-				coordinate >= 0 &&
-				coordinate <= 1,
-		)
+		value.timestamp >= 0
 	);
+}
+
+function isAction(value: unknown): value is PointerActionCommand {
+	if (!isRecord(value)) return false;
+	if (
+		!Number.isSafeInteger(value.handId) ||
+		Number(value.handId) <= 0 ||
+		typeof value.timestamp !== "number" ||
+		!Number.isFinite(value.timestamp) ||
+		value.timestamp < 0
+	) {
+		return false;
+	}
+	if (
+		value.type === "pointer:down" ||
+		value.type === "pointer:up" ||
+		value.type === "pointer:click"
+	) {
+		return (
+			(value.button === "left" || value.button === "right") &&
+			isNormalizedPosition(value.position)
+		);
+	}
+	if (value.type === "pointer:scroll") {
+		return typeof value.deltaY === "number" && Number.isFinite(value.deltaY);
+	}
+	return false;
 }
 
 /** Consomme les commandes du moteur, sans interpréter de geste. */
@@ -81,8 +139,10 @@ export function createPointerController(options: PointerControllerOptions) {
 	let commandHandId: number | null = null;
 	let suspension = 0;
 	let inFlight = false;
+	let heldLeftButton = false;
 	let pending: PointerTarget | null = null;
 	let trajectory: PointerTrajectory | null = null;
+	let taskQueue: QueuedDriverTask[] = [];
 	let acknowledgedPoint: PhysicalPoint | null = null;
 	let acknowledgedAt: number | null = null;
 	let lastTargetCapturedAt: number | null = null;
@@ -125,9 +185,17 @@ export function createPointerController(options: PointerControllerOptions) {
 		acknowledgedAt = null;
 		lastTargetCapturedAt = null;
 		commandHandId = null;
+		taskQueue = [];
+		if (heldLeftButton) {
+			heldLeftButton = false;
+			if (activeSession !== null && options.driver.releaseAll) {
+				taskQueue.push({ kind: "releaseAll" });
+			}
+		}
 		clearPresentationTimer();
 		clearWatchdog();
 		if (activeSession !== null) publish(paused ? "paused" : "waiting");
+		if (taskQueue.length > 0 && !inFlight) void flush();
 	}
 
 	function shutdown(
@@ -137,6 +205,8 @@ export function createPointerController(options: PointerControllerOptions) {
 		generation += 1;
 		activeSession = null;
 		paused = false;
+		heldLeftButton = false;
+		taskQueue = [];
 		suspend();
 		inFlight = false;
 		lastCapturedAt = -Infinity;
@@ -212,12 +282,38 @@ export function createPointerController(options: PointerControllerOptions) {
 		};
 	}
 
+	async function executeTask(task: QueuedDriverTask): Promise<boolean> {
+		switch (task.kind) {
+			case "button":
+				if (!options.driver.button) return true;
+				return options.driver.button(task.action, task.button, task.expiresAt);
+			case "scroll":
+				if (!options.driver.scroll) return true;
+				return options.driver.scroll(task.wheelDelta, task.expiresAt);
+			case "key":
+				if (!options.driver.sendKey) return true;
+				return options.driver.sendKey(task.key, task.expiresAt);
+			case "releaseAll":
+				if (!options.driver.releaseAll) return true;
+				return options.driver.releaseAll();
+		}
+	}
+
 	async function flush() {
 		if (inFlight || activeSession === null) return;
 		const run = generation;
 		const suspendedAt = suspension;
 		const startedAt = Date.now();
 		try {
+			while (taskQueue.length > 0) {
+				const task = taskQueue.shift();
+				if (!task) break;
+				inFlight = true;
+				await executeTask(task);
+				inFlight = false;
+				if (generation !== run) return;
+			}
+			if (suspension !== suspendedAt) return;
 			if (pending !== null) {
 				const target = pending;
 				pending = null;
@@ -275,8 +371,53 @@ export function createPointerController(options: PointerControllerOptions) {
 		} finally {
 			if (generation === run) {
 				inFlight = false;
-				if (pending !== null) void flush();
+				if (pending !== null || taskQueue.length > 0) void flush();
 				else schedulePresentation(startedAt);
+			}
+		}
+	}
+
+	function enqueueActions(
+		actions: readonly PointerActionCommand[],
+		expiresAt: number,
+	) {
+		for (const action of actions) {
+			if (action.type === "pointer:down") {
+				if (action.button === "left") heldLeftButton = true;
+				taskQueue.push({
+					kind: "button",
+					action: "down",
+					button: action.button,
+					expiresAt,
+				});
+			} else if (action.type === "pointer:up") {
+				if (action.button === "left") heldLeftButton = false;
+				taskQueue.push({
+					kind: "button",
+					action: "up",
+					button: action.button,
+					expiresAt,
+				});
+			} else if (action.type === "pointer:click") {
+				taskQueue.push({
+					kind: "button",
+					action: "click",
+					button: action.button,
+					expiresAt,
+				});
+			} else if (action.type === "pointer:scroll") {
+				// Sur Windows, un wheelDelta négatif défile vers le bas.
+				const wheelDelta = Math.max(
+					-1200,
+					Math.min(1200, Math.round(-action.deltaY * WHEEL_STEP)),
+				);
+				if (wheelDelta !== 0) {
+					taskQueue.push({
+						kind: "scroll",
+						wheelDelta,
+						expiresAt,
+					});
+				}
 			}
 		}
 	}
@@ -314,24 +455,61 @@ export function createPointerController(options: PointerControllerOptions) {
 			suspend();
 			return;
 		}
+		let actions: readonly PointerActionCommand[] = [];
+		if (value.actions !== undefined) {
+			if (!Array.isArray(value.actions) || !value.actions.every(isAction)) {
+				suspend();
+				return;
+			}
+			actions = value.actions;
+		}
+		let keys: readonly string[] = [];
+		if (value.keys !== undefined) {
+			if (
+				!Array.isArray(value.keys) ||
+				!value.keys.every(
+					(k): k is string =>
+						typeof k === "string" && k.length > 0 && k.length <= 32,
+				)
+			) {
+				suspend();
+				return;
+			}
+			keys = value.keys;
+		}
 		if (
 			!value.paused &&
 			command !== null &&
-			command.timestamp <= lastCommandTimestamp
+			command.timestamp <= lastCommandTimestamp &&
+			actions.length === 0 &&
+			keys.length === 0
 		)
 			return;
 		const wasPaused = paused;
 		paused = value.paused;
 		if (paused || wasPaused) suspend();
 		if (paused) return;
+
+		const expiresAt = Math.floor(value.capturedAt + MAX_FRAME_AGE_MS);
+		for (const key of keys) {
+			taskQueue.push({ kind: "key", key, expiresAt });
+		}
+		if (actions.length > 0) {
+			enqueueActions(actions, expiresAt);
+		}
 		if (command === null) {
-			suspend();
+			if (actions.length === 0 && keys.length === 0 && !heldLeftButton) {
+				suspend();
+				return;
+			}
+			if (taskQueue.length > 0 && presentationTimer === null) {
+				void flush();
+			}
 			return;
 		}
-		lastCommandTimestamp = command.timestamp;
+		lastCommandTimestamp = Math.max(lastCommandTimestamp, command.timestamp);
 		if (commandHandId !== null && commandHandId !== command.handId) suspend();
 		commandHandId = command.handId;
-		const expiresAt = Math.floor(value.capturedAt + MAX_FRAME_AGE_MS);
 		const duration = Math.max(
 			MIN_TRAJECTORY_DURATION_MS,
 			Math.min(

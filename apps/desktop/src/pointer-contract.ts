@@ -1,4 +1,7 @@
-import type { PointerMoveCommand } from "@handfinity/engine/commands";
+import type {
+	PointerActionCommand,
+	PointerMoveCommand,
+} from "@handfinity/engine/commands";
 
 export type PointerControlState = {
 	readonly phase:
@@ -20,6 +23,8 @@ export type PointerUpdate = {
 	/** Pause volontaire calculée par le moteur partagé. */
 	readonly paused: boolean;
 	readonly command: PointerMoveCommand | null;
+	readonly actions?: readonly PointerActionCommand[];
+	readonly keys?: readonly string[];
 };
 
 /** Capacités limitées du preload ; aucun accès générique à Electron. */

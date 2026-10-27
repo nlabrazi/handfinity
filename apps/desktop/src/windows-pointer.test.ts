@@ -278,4 +278,50 @@ describe("Windows pointer helper", () => {
 		await rejected;
 		expect(child.kill).toHaveBeenCalledOnce();
 	});
+
+	it("sends native mouse button, scroll, key, and releaseAll commands", async () => {
+		const { pointer, send, input } = await ready();
+		const expiresAt = Date.now() + 100;
+
+		const btnPromise = pointer.button?.("down", "left", expiresAt);
+		expect(JSON.parse(input[0])).toEqual({
+			id: 1,
+			op: "button",
+			action: "down",
+			button: "left",
+			expiresAt,
+		});
+		send({ type: "ack", id: 1, applied: true });
+		await expect(btnPromise).resolves.toBe(true);
+
+		const scrollPromise = pointer.scroll?.(-120, expiresAt);
+		expect(JSON.parse(input[1])).toEqual({
+			id: 2,
+			op: "scroll",
+			wheelDelta: -120,
+			expiresAt,
+		});
+		send({ type: "ack", id: 2, applied: true });
+		await expect(scrollPromise).resolves.toBe(true);
+
+		const keyPromise = pointer.sendKey?.("Enter", expiresAt);
+		expect(JSON.parse(input[2])).toEqual({
+			id: 3,
+			op: "key",
+			key: "Enter",
+			expiresAt,
+		});
+		send({ type: "ack", id: 3, applied: true });
+		await expect(keyPromise).resolves.toBe(true);
+
+		const releasePromise = pointer.releaseAll?.();
+		expect(JSON.parse(input[3])).toMatchObject({
+			id: 4,
+			op: "releaseAll",
+		});
+		send({ type: "ack", id: 4, applied: true });
+		await expect(releasePromise).resolves.toBe(true);
+
+		pointer.stop();
+	});
 });
