@@ -9,8 +9,15 @@ export type {
 	HandObservation,
 	HandPoint,
 } from "./hand-observation";
+export type { ActiveZoneBounds } from "./pointer/active-zone";
+export {
+	createActiveZoneMapper,
+	DEFAULT_ACTIVE_ZONE,
+} from "./pointer/active-zone";
 export type { HandPointer, HandPointerFrame } from "./pointer/hand-pointers";
 export { createHandPointerTracker } from "./pointer/hand-pointers";
+export type { OneEuroFilterOptions } from "./pointer/one-euro-filter";
+export { createOneEuroFilter } from "./pointer/one-euro-filter";
 export { createPointSmoother } from "./pointer/point-smoother";
 export type {
 	FingerExtension,
