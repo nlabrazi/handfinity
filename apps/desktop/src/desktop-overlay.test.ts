@@ -19,6 +19,7 @@ const electron = vi.hoisted(() => {
 		destroy: vi.fn(),
 		getPosition: vi.fn(() => [100, 200]),
 		setPosition: vi.fn(),
+		getBounds: vi.fn(() => ({ x: 100, y: 200, width: 880, height: 320 })),
 		setBounds: vi.fn(),
 		isVisible: vi.fn(() => true),
 		isDestroyed: vi.fn(() => false),
@@ -98,6 +99,12 @@ describe("desktop-overlay", () => {
 		electron.mockWindow.isDestroyed.mockReturnValue(false);
 		electron.mockWindow.webContents.isDestroyed.mockReturnValue(false);
 		electron.mockWindow.getPosition.mockReturnValue([100, 200]);
+		electron.mockWindow.getBounds.mockReturnValue({
+			x: 100,
+			y: 200,
+			width: 880,
+			height: 320,
+		});
 		onKeyPress = vi.fn();
 		session = {} as unknown as Session;
 	});
@@ -147,10 +154,10 @@ describe("desktop-overlay", () => {
 			width: number;
 			height: number;
 		};
-		expect(options.width).toBe(860);
-		expect(options.height).toBe(280);
-		expect(options.x).toBe(Math.round((1920 - 860) / 2));
-		expect(options.y).toBe(1040 - 280 - 20);
+		expect(options.width).toBe(880);
+		expect(options.height).toBe(320);
+		expect(options.x).toBe(Math.round((1920 - 880) / 2));
+		expect(options.y).toBe(1040 - 320 - 20);
 	});
 
 	it("shows without stealing focus via showInactive() and reinforces topmost z-order", () => {
@@ -239,7 +246,12 @@ describe("desktop-overlay", () => {
 		} as unknown as IpcMainEvent;
 
 		moveHandler?.(trustedEvent, { deltaX: 25, deltaY: -15 });
-		expect(electron.mockWindow.setPosition).toHaveBeenCalledWith(125, 185);
+		expect(electron.mockWindow.setBounds).toHaveBeenCalledWith({
+			x: 125,
+			y: 185,
+			width: 880,
+			height: 320,
+		});
 	});
 
 	it("resets overlay position to bottom center via resetPosition IPC", () => {
@@ -263,10 +275,10 @@ describe("desktop-overlay", () => {
 
 		resetHandler?.(trustedEvent);
 		expect(electron.mockWindow.setBounds).toHaveBeenCalledWith({
-			x: Math.round((1920 - 860) / 2),
-			y: 1040 - 280 - 20,
-			width: 860,
-			height: 280,
+			x: Math.round((1920 - 880) / 2),
+			y: 1040 - 320 - 20,
+			width: 880,
+			height: 320,
 		});
 	});
 

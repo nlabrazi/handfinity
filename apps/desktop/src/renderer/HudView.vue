@@ -18,8 +18,35 @@ let unsubscribeFeedback: (() => void) | undefined;
 let unsubscribeHud: (() => void) | undefined;
 
 let isDragging = false;
-let startX = 0;
-let startY = 0;
+let lastX = 0;
+let lastY = 0;
+let accumulatedDeltaX = 0;
+let accumulatedDeltaY = 0;
+let rafId: number | null = null;
+
+function flushMove() {
+	if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
+		overlayBridge?.moveBy(accumulatedDeltaX, accumulatedDeltaY);
+		accumulatedDeltaX = 0;
+		accumulatedDeltaY = 0;
+	}
+	rafId = null;
+}
+
+function queueMove(stepX: number, stepY: number) {
+	accumulatedDeltaX += stepX;
+	accumulatedDeltaY += stepY;
+	if (
+		typeof window !== "undefined" &&
+		typeof window.requestAnimationFrame === "function"
+	) {
+		if (rafId === null) {
+			rafId = window.requestAnimationFrame(flushMove);
+		}
+	} else {
+		flushMove();
+	}
+}
 
 function onMouseDown(event: MouseEvent) {
 	if (event.button !== 0) return;
@@ -29,20 +56,22 @@ function onMouseDown(event: MouseEvent) {
 		return;
 	}
 	isDragging = true;
-	startX = event.screenX;
-	startY = event.screenY;
+	lastX = event.screenX;
+	lastY = event.screenY;
+	accumulatedDeltaX = 0;
+	accumulatedDeltaY = 0;
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
 }
 
 function onMouseMove(event: MouseEvent) {
 	if (!isDragging) return;
-	const deltaX = event.screenX - startX;
-	const deltaY = event.screenY - startY;
-	if (deltaX !== 0 || deltaY !== 0) {
-		startX = event.screenX;
-		startY = event.screenY;
-		overlayBridge?.moveBy(deltaX, deltaY);
+	const stepX = event.screenX - lastX;
+	const stepY = event.screenY - lastY;
+	lastX = event.screenX;
+	lastY = event.screenY;
+	if (stepX !== 0 || stepY !== 0) {
+		queueMove(stepX, stepY);
 	}
 }
 
@@ -51,6 +80,16 @@ function onMouseUp() {
 	isDragging = false;
 	window.removeEventListener("mousemove", onMouseMove);
 	window.removeEventListener("mouseup", onMouseUp);
+	if (rafId !== null) {
+		if (
+			typeof window !== "undefined" &&
+			typeof window.cancelAnimationFrame === "function"
+		) {
+			window.cancelAnimationFrame(rafId);
+		}
+		rafId = null;
+	}
+	flushMove();
 }
 
 function resetPosition() {

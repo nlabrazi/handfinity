@@ -30,7 +30,7 @@ onBeforeUnmount(() => {
 <template>
 	<div
 		data-overlay-root
-		class="flex h-screen w-screen flex-col items-center justify-end bg-transparent p-2 select-none overflow-hidden"
+		class="flex h-screen w-screen flex-col items-center justify-center bg-transparent p-1 select-none overflow-hidden"
 	>
 		<!-- Clavier virtuel pop-up flottant draggable sans perte de focus -->
 		<div class="w-full max-w-4xl drop-shadow-2xl">

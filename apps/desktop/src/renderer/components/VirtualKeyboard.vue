@@ -44,41 +44,115 @@ function cycleOpacity() {
 	opacityIndex.value = (opacityIndex.value + 1) % opacityOptions.length;
 }
 
-let isDragging = false;
+const isDragging = ref(false);
+let isPointerDown = false;
+let isInteractiveTarget = false;
 let startX = 0;
 let startY = 0;
+let lastX = 0;
+let lastY = 0;
+let accumulatedDeltaX = 0;
+let accumulatedDeltaY = 0;
+let rafId: number | null = null;
+const DRAG_THRESHOLD = 4;
+
+function flushMove() {
+	if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
+		window.handfinityOverlay?.moveBy(accumulatedDeltaX, accumulatedDeltaY);
+		accumulatedDeltaX = 0;
+		accumulatedDeltaY = 0;
+	}
+	rafId = null;
+}
+
+function queueMove(stepX: number, stepY: number) {
+	accumulatedDeltaX += stepX;
+	accumulatedDeltaY += stepY;
+	if (
+		typeof window !== "undefined" &&
+		typeof window.requestAnimationFrame === "function"
+	) {
+		if (rafId === null) {
+			rafId = window.requestAnimationFrame(flushMove);
+		}
+	} else {
+		flushMove();
+	}
+}
+
+function isInteractiveControl(target: EventTarget | null): boolean {
+	if (!(target instanceof HTMLElement)) return false;
+	return !!target.closest("button");
+}
 
 function onMouseDown(event: MouseEvent) {
 	if (event.button !== 0) return;
-	const target = event.target as HTMLElement | null;
-	const button = target?.closest("button");
-	// Si le clic provient d'une touche ou d'un bouton de contrôle, ne pas démarrer le glissement
-	if (button) {
-		return;
-	}
-	isDragging = true;
+	isPointerDown = true;
+	isDragging.value = false;
+	isInteractiveTarget = isInteractiveControl(event.target);
 	startX = event.screenX;
 	startY = event.screenY;
+	lastX = event.screenX;
+	lastY = event.screenY;
+	accumulatedDeltaX = 0;
+	accumulatedDeltaY = 0;
+
 	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mouseup", onMouseUp);
+	window.addEventListener("mouseup", onMouseUp, { capture: true });
 }
 
 function onMouseMove(event: MouseEvent) {
-	if (!isDragging) return;
-	const deltaX = event.screenX - startX;
-	const deltaY = event.screenY - startY;
-	if (deltaX !== 0 || deltaY !== 0) {
-		startX = event.screenX;
-		startY = event.screenY;
-		window.handfinityOverlay?.moveBy(deltaX, deltaY);
+	if (!isPointerDown) return;
+	const totalDist = Math.hypot(event.screenX - startX, event.screenY - startY);
+	const threshold = isInteractiveTarget ? DRAG_THRESHOLD : 1;
+
+	if (!isDragging.value && totalDist >= threshold) {
+		isDragging.value = true;
+	}
+
+	if (isDragging.value) {
+		const stepX = event.screenX - lastX;
+		const stepY = event.screenY - lastY;
+		lastX = event.screenX;
+		lastY = event.screenY;
+
+		if (stepX !== 0 || stepY !== 0) {
+			queueMove(stepX, stepY);
+		}
 	}
 }
 
 function onMouseUp() {
-	if (!isDragging) return;
-	isDragging = false;
+	if (!isPointerDown) return;
+	isPointerDown = false;
 	window.removeEventListener("mousemove", onMouseMove);
-	window.removeEventListener("mouseup", onMouseUp);
+	window.removeEventListener("mouseup", onMouseUp, { capture: true });
+
+	if (rafId !== null) {
+		if (
+			typeof window !== "undefined" &&
+			typeof window.cancelAnimationFrame === "function"
+		) {
+			window.cancelAnimationFrame(rafId);
+		}
+		rafId = null;
+	}
+	flushMove();
+
+	if (isDragging.value) {
+		isDragging.value = false;
+		const suppressClick = (e: MouseEvent) => {
+			e.stopPropagation();
+			e.preventDefault();
+		};
+		window.addEventListener("click", suppressClick, {
+			capture: true,
+			once: true,
+		});
+		setTimeout(() => {
+			window.removeEventListener("click", suppressClick, { capture: true });
+		}, 50);
+	}
 }
 
 function resetPosition() {
@@ -86,7 +160,19 @@ function resetPosition() {
 }
 
 onBeforeUnmount(() => {
-	onMouseUp();
+	isPointerDown = false;
+	isDragging.value = false;
+	window.removeEventListener("mousemove", onMouseMove);
+	window.removeEventListener("mouseup", onMouseUp, { capture: true });
+	if (rafId !== null) {
+		if (
+			typeof window !== "undefined" &&
+			typeof window.cancelAnimationFrame === "function"
+		) {
+			window.cancelAnimationFrame(rafId);
+		}
+		rafId = null;
+	}
 });
 
 const rows = computed(() => {
@@ -130,27 +216,29 @@ function send(key: string) {
 <template>
 	<section
 		data-virtual-keyboard
+		:data-dragging="isDragging ? 'true' : 'false'"
 		aria-labelledby="virtual-keyboard-title"
 		@mousedown="onMouseDown"
+		@dragstart.prevent
 		class="space-y-2 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none cursor-grab active:cursor-grabbing"
-		:class="currentOpacityClass"
+		:class="[currentOpacityClass, { 'cursor-grabbing': isDragging }]"
 	>
 		<!-- Barre supérieure indicatrice de déplacement -->
 		<div
 			data-drag-handle
-			class="flex w-full cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 select-none pointer-events-none"
+			class="flex w-full cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 select-none active:cursor-grabbing"
 			title="Cliquer et glisser n'importe où sur le clavier pour le déplacer"
 		>
-			<span class="flex items-center gap-1.5">
+			<span class="flex items-center gap-1.5 pointer-events-none">
 				<span class="font-mono text-cyan-400">⠿</span>
 				<span>Glisser n'importe quelle zone pour déplacer le clavier</span>
 			</span>
 		</div>
 
 		<div
-			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2"
+			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2 cursor-grab active:cursor-grabbing"
 		>
-			<div class="flex items-center gap-2">
+			<div class="flex items-center gap-2 pointer-events-none">
 				<span
 					class="rounded bg-cyan-950/60 px-2 py-0.5 text-xs font-semibold text-cyan-300 border border-cyan-800/50"
 				>
@@ -164,7 +252,7 @@ function send(key: string) {
 						Clavier virtuel Windows
 					</h2>
 					<p class="text-[11px] text-slate-400">
-						Sans perte de focus · Pointez et cliquez ou touchez
+						Sans perte de focus · Pointez et touchez ou glissez pour déplacer
 					</p>
 				</div>
 			</div>
@@ -179,7 +267,7 @@ function send(key: string) {
 					type="button"
 					@click="resetPosition"
 					title="Recentrer le clavier en bas de l'écran"
-					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15 cursor-pointer active:cursor-grabbing"
 				>
 					↺ Recentrer
 				</button>
@@ -187,7 +275,7 @@ function send(key: string) {
 					type="button"
 					@click="cycleOpacity"
 					title="Changer le niveau de transparence"
-					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15 cursor-pointer active:cursor-grabbing"
 				>
 					Transparence : {{ currentOpacityLabel }}
 				</button>
@@ -195,7 +283,7 @@ function send(key: string) {
 					type="button"
 					@click="uppercase = !uppercase"
 					:aria-pressed="uppercase"
-					class="rounded border px-2 py-0.5 font-medium transition-colors"
+					class="rounded border px-2 py-0.5 font-medium transition-colors cursor-pointer active:cursor-grabbing"
 					:class="uppercase ? 'bg-cyan-600/50 text-white border-cyan-400/60' : 'bg-white/5 text-slate-300 border-white/15 hover:bg-white/15'"
 				>
 					⇧ Maj
@@ -203,7 +291,7 @@ function send(key: string) {
 				<button
 					type="button"
 					@click="layout = layout === 'azerty' ? 'qwerty' : 'azerty'"
-					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 font-medium uppercase text-slate-300 hover:bg-white/15"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 font-medium uppercase text-slate-300 hover:bg-white/15 cursor-pointer active:cursor-grabbing"
 				>
 					{{ layout }}
 				</button>
@@ -212,7 +300,7 @@ function send(key: string) {
 					data-close-keyboard
 					@click="emit('close')"
 					aria-label="Fermer le clavier virtuel"
-					class="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-0.5 font-medium text-red-300 hover:bg-red-900/50 hover:text-white"
+					class="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-0.5 font-medium text-red-300 hover:bg-red-900/50 hover:text-white cursor-pointer active:cursor-grabbing"
 				>
 					✕
 				</button>
@@ -230,8 +318,9 @@ function send(key: string) {
 					:key="key"
 					type="button"
 					:disabled="disabled"
+					:data-key="key"
 					@click="send(key)"
-					class="rounded-lg border border-white/10 bg-slate-900/30 py-2 font-mono text-sm font-semibold text-white/95 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30"
+					class="rounded-lg border border-white/10 bg-slate-900/30 py-2 font-mono text-sm font-semibold text-white/95 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30 cursor-pointer active:cursor-grabbing"
 				>
 					{{ key }}
 				</button>
@@ -243,8 +332,9 @@ function send(key: string) {
 					:key="special.value"
 					type="button"
 					:disabled="disabled"
+					:data-key="special.value"
 					@click="send(special.value)"
-					class="rounded-lg border border-white/10 bg-slate-800/30 px-2 py-1.5 text-xs font-medium text-slate-200/90 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30"
+					class="rounded-lg border border-white/10 bg-slate-800/30 px-2 py-1.5 text-xs font-medium text-slate-200/90 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30 cursor-pointer active:cursor-grabbing"
 				>
 					{{ special.label }}
 				</button>

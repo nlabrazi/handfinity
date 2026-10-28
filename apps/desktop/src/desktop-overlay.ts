@@ -52,8 +52,8 @@ export function createDesktopOverlay(
 		const primary = screen.getPrimaryDisplay();
 		const bounds = primary.workArea ??
 			primary.bounds ?? { x: 0, y: 0, width: 1280, height: 720 };
-		const width = Math.min(860, Math.max(360, bounds.width - 40));
-		const height = 280;
+		const width = Math.min(880, Math.max(360, bounds.width - 40));
+		const height = 320;
 		const x = Math.round(bounds.x + (bounds.width - width) / 2);
 		const y = Math.round(bounds.y + bounds.height - height - 20);
 
@@ -183,8 +183,13 @@ export function createDesktopOverlay(
 		deltaY: number,
 	) {
 		if (win && !win.isDestroyed()) {
-			const [curX, curY] = win.getPosition();
-			win.setPosition(Math.round(curX + deltaX), Math.round(curY + deltaY));
+			const bounds = win.getBounds();
+			win.setBounds({
+				x: Math.round(bounds.x + deltaX),
+				y: Math.round(bounds.y + deltaY),
+				width: bounds.width,
+				height: bounds.height,
+			});
 		}
 	}
 
@@ -202,8 +207,8 @@ export function createDesktopOverlay(
 		} else {
 			const win = keyboardWindow;
 			if (win && !win.isDestroyed()) {
-				const width = Math.min(860, Math.max(360, bounds.width - 40));
-				const height = 280;
+				const width = Math.min(880, Math.max(360, bounds.width - 40));
+				const height = 320;
 				const x = Math.round(bounds.x + (bounds.width - width) / 2);
 				const y = Math.round(bounds.y + bounds.height - height - 20);
 				win.setBounds({ x, y, width, height });
