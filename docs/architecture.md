@@ -44,7 +44,8 @@ Package pur TypeScript, sans dépendance DOM, Vue ou Electron :
   - **🤟 3 doigts tendus (Index + Majeur + Annulaire, `CHORD_HOLD_MS = 140 ms`)** : Clic droit (`pointer:click`, `button: "right"`), curseur figé.
   - **🤏 Pincement maintenu (`SCROLL_HOLD_MS = 100 ms`) + écart vertical** : Défilement continu type « Joystick » (`pointer:scroll`), vitesse proportionnelle à l'écart vertical de la paume hors de la zone morte (`SCROLL_DEADZONE`).
 - **`control/gesture-control.ts`** : bascule la pause/reprise après un maintien de `open-palm` pendant 1 500 ms avec obligation de relâcher le geste avant un nouveau basculement.
-- **`gesture-engine.ts` & `commands.ts`** : assemble l'ensemble du pipeline et émet les commandes normalisées (`PointerMoveCommand` et `PointerActionCommand`, avec miroir horizontal déjà appliqué).
+- **`gestures/bimanual-gestures.ts`** : détecte le rapprochement des deux paumes (`distance <= 0.22`, confirmation 80 ms) suivi de leur écartement rapide (`distance >= 0.38` sous 1,2 s) pour basculer l'ouverture/fermeture du clavier virtuel en pop-up avec temps de recharge (1,5 s).
+- **`gesture-engine.ts` & `commands.ts`** : assemble l'ensemble du pipeline et émet les commandes normalisées (`PointerMoveCommand` et `PointerActionCommand`, avec miroir horizontal et zone active déjà appliqués).
 
 ### 3. `apps/desktop`
 
@@ -55,7 +56,7 @@ Application Electron isolée de `apps/playground` :
   - Maintien des performances du renderer en arrière-plan (`disable-renderer-backgrounding`, `backgroundThrottling: false`, désactivation d'EcoQoS sur le processus de vision Windows).
   - Raccourci global d'arrêt d'urgence `Ctrl + Alt + Esc`.
   - Contrôleur système interpolant les cibles à 120 Hz, exécutant les clics gauche/droit, le maintien de bouton (glisser-déposer), la molette et la frappe clavier (`mouse_event`, `keybd_event`, `VkKeyScanW`), avec relâchement inconditionnel (`ReleaseAll`) en cas de pause, perte de suivi, expiration (250 ms) ou fermeture.
-- **Processus `renderer`** (`src/renderer/App.vue`, `src/renderer/components/VirtualKeyboard.vue`) : interface de contrôle bureau dédiée consommant directement `@handfinity/vision` et `@handfinity/engine`, avec jauge de saisie (poing fermé) et clavier virtuel intégré.
+- **Processus `renderer`** (`src/renderer/App.vue`, `src/renderer/components/VirtualKeyboard.vue`) : interface de contrôle bureau dédiée consommant directement `@handfinity/vision` et `@handfinity/engine`, avec jauge de saisie (poing fermé), affichage de la zone active et clavier virtuel en pop-up modal flottant téléporté et déclenché par geste bimanuel.
 
 ### 4. `apps/hub` & `apps/playground`
 

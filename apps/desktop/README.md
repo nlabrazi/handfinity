@@ -37,4 +37,5 @@ Au premier lancement depuis WSL2, `scripts/start.mjs` télécharge le binaire Wi
    - **✊ Poing fermé (maintenu 0,6 s avec jauge)** : Saisir & Glisser (*Grab & Drag* piloté par la paume, relâchement à l'ouverture de la main).
    - **🤏 Pincement + Haut/Bas** : Défilement continu type « Joystick ».
    - **🖐️ Paume ouverte (maintenue 1,5 s)** : Pause / Reprise du contrôle.
+   - **👐 Paumes jointes puis écartées** : Afficher ou masquer le clavier virtuel en pop-up.
 3. **Arrêt d'urgence** : **`Ctrl + Alt + Esc`** (ou `Stop Windows pointer` / `Stop camera` / fermeture de la fenêtre) relâche tout bouton maintenu et désactive immédiatement le contrôle.

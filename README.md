@@ -67,8 +67,8 @@ La feuille de route détaillée est disponible dans [`docs/roadmap.md`](docs/roa
   - [x] Ancrage stable sur la paume (`palmPosition`), filtre adaptatif *One Euro Filter* et zone active configurable (`createActiveZoneMapper`)
 - [x] **Phase 3 — Modèle gestuel multimodal (Saisir au poing, accords de doigts, Joystick Scroll)**
   - [x] **☝️ 1 doigt** (déplacement), **✌️ 2 doigts** (clic gauche), **🤟 3 doigts** (clic droit), **✊ poing fermé 0,6 s** (saisir & glisser par la paume), **🤏 pincement + haut/bas** (défilement continu joystick)
-- [x] **Phase 4 — Clavier virtuel**
-  - [x] Clavier virtuel AZERTY intégré (`VirtualKeyboard.vue`) avec touches d'édition et navigation
+- [x] **Phase 4 — Clavier virtuel pop-up**
+  - [x] Clavier virtuel pop-up modal (`VirtualKeyboard.vue`) déclenchable sur demande via bouton ou geste bimanuel dédié (rapprocher puis écarter les paumes 👐)
 - [ ] **Phase 5 — Expérience quotidienne & distribution**
   - [ ] Barre système (Tray), overlay HUD sans perte de focus, assets MediaPipe hors-ligne et installeur Windows
 
@@ -77,13 +77,14 @@ La feuille de route détaillée est disponible dans [`docs/roadmap.md`](docs/roa
 ## Utiliser Handfinity
 
 1. **Démarrer la caméra** : cliquer sur **Start camera**.
-2. **Contrôler la souris avec les gestes** :
-   - **☝️ 1 doigt (Index)** : Déplacer le curseur.
+2. **Contrôler la souris et le clavier avec les gestes** :
+   - **☝️ 1 doigt (Index)** : Déplacer le curseur (zone active projetée aux 4 coins).
    - **✌️ 2 doigts (Index + Majeur)** : Clic gauche.
    - **🤟 3 doigts (Index + Majeur + Annulaire)** : Clic droit.
    - **✊ Poing fermé (0,6 s avec jauge)** : Saisir & Glisser (*Grab & Drag* piloté par la paume).
    - **🤏 Pincement + Haut/Bas** : Défilement continu type « Joystick ».
    - **🖐️ Paume ouverte (1,5 s)** : Mettre en pause / reprendre.
+   - **👐 Paumes jointes puis écartées** : Afficher ou masquer le clavier virtuel pop-up.
 3. **Contrôler Windows (`apps/desktop`)** : cliquer sur **Enable Windows pointer**. Utiliser **Stop Windows pointer** ou **`Ctrl + Alt + Esc`** pour désactiver immédiatement le contrôle.
 
 ---

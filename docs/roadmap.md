@@ -44,12 +44,13 @@ Modèle gestuel multimodal dans `@handfinity/engine` (`createPointerActionTracke
 
 ---
 
-## Phase 4 — Clavier virtuel ✅
+## Phase 4 — Clavier virtuel pop-up ✅
 
-Permettre la saisie de texte et les touches d'édition :
+Permettre la saisie de texte et les touches d'édition sans encombrer l'écran :
 
-- [x] **Clavier virtuel intégré (`VirtualKeyboard.vue`)** : disposition AZERTY complète, pavé directionnel et touches d'édition (`Space`, `Backspace`, `Enter`, `Tab`, `Esc`).
-- [ ] **Fenêtre overlay dédiée sans perte de focus** : fenêtre Electron transparente toujours au premier plan avec `focusable: false`.
+- [x] **Geste bimanuel dédié** : rapprocher les deux paumes puis les écarter (`createBimanualGestureTracker`) pour ouvrir ou fermer le clavier à la volée.
+- [x] **Clavier pop-up flottant (`VirtualKeyboard.vue`)** : modal semi-transparente avec disposition AZERTY, pavé directionnel, touches d'édition (`Space`, `Backspace`, `Enter`, `Tab`, `Esc`) et bouton de fermeture.
+- [ ] **Fenêtre overlay transparente sans perte de focus** : fenêtre Electron indépendante avec `focusable: false` toujours au premier plan pour les applications plein écran.
 
 ---
 
