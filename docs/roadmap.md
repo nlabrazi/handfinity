@@ -50,14 +50,14 @@ Permettre la saisie de texte et les touches d'édition sans encombrer l'écran :
 
 - [x] **Geste bimanuel dédié** : rapprocher les deux paumes puis les écarter (`createBimanualGestureTracker`) pour ouvrir ou fermer le clavier à la volée.
 - [x] **Clavier pop-up flottant (`VirtualKeyboard.vue`)** : modal semi-transparente avec disposition AZERTY, pavé directionnel, touches d'édition (`Space`, `Backspace`, `Enter`, `Tab`, `Esc`) et bouton de fermeture.
-- [ ] **Fenêtre overlay transparente sans perte de focus** : fenêtre Electron indépendante avec `focusable: false` toujours au premier plan pour les applications plein écran.
+- [x] **Fenêtre overlay transparente sans perte de focus** : fenêtre Electron indépendante avec `focusable: false` (`createDesktopOverlay`) toujours au premier plan, sans voler le focus Windows (`WS_EX_NOACTIVATE`) et avec retour HUD en surimpression.
 
 ---
 
 ## Phase 5 — Expérience quotidienne & distribution
 
 - [x] **Embarquement local des fichiers WASM et du modèle MediaPipe** (`npm run setup:assets`) avec repli automatique sur CDN (multi-plateforme web/desktop/mobile).
-- [ ] Icône dans la barre système (System Tray) et retour visuel léger en surimpression (HUD/overlay).
+- [x] **Icône dans la barre système (System Tray)** : minimisation en arrière-plan sans interrompre le suivi caméra (`createDesktopTray`), menu contextuel complet (ouvrir/masquer, bascule du contrôle, clavier virtuel overlay, quitter) et double-clic de restauration.
 - [ ] Persistance des réglages utilisateur (sensibilité, zone active, main préférée).
 - [ ] Packaging Windows distribuable (`electron-builder`).
 - [ ] Adaptation du driver système pour Linux (`uinput`).

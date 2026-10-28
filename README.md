@@ -67,11 +67,13 @@ La feuille de route détaillée est disponible dans [`docs/roadmap.md`](docs/roa
   - [x] Ancrage stable sur la paume (`palmPosition`), filtre adaptatif *One Euro Filter* et zone active configurable (`createActiveZoneMapper`)
 - [x] **Phase 3 — Modèle gestuel multimodal (Saisir au poing, accords de doigts, Joystick Scroll)**
   - [x] **☝️ 1 doigt** (déplacement), **✌️ 2 doigts** (clic gauche), **🤟 3 doigts** (clic droit), **✊ poing fermé 0,6 s** (saisir & glisser par la paume), **🤏 pincement + haut/bas** (défilement continu joystick)
-- [x] **Phase 4 — Clavier virtuel pop-up**
-  - [x] Clavier virtuel pop-up modal (`VirtualKeyboard.vue`) déclenchable sur demande via bouton ou geste bimanuel dédié (rapprocher puis écarter les paumes 👐)
+- [x] **Phase 4 — Clavier virtuel pop-up & Overlay sans perte de focus**
+  - [x] Clavier virtuel pop-up modal et fenêtre overlay transparente dédiée (`focusable: false`, `WS_EX_NOACTIVATE`) pour saisir du texte dans n'importe quelle application Windows sans lui voler le focus
+  - [x] Déclenchable sur demande via geste bimanuel dédié (rapprocher puis écarter les paumes 👐), raccourci ou menu Tray
 - [ ] **Phase 5 — Expérience quotidienne & distribution**
   - [x] Embarquement local des fichiers WASM et du modèle MediaPipe (`npm run setup:assets`) avec repli automatique sur CDN
-  - [ ] Barre système (Tray), overlay HUD sans perte de focus et installeur Windows
+  - [x] Barre système Windows (System Tray) avec minimisation en arrière-plan et suivi caméra ininterrompu
+  - [ ] Persistance des réglages et installeur Windows (`electron-builder`)
 
 ---
 
