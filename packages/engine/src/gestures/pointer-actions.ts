@@ -1,8 +1,16 @@
 import type { PointerActionCommand, PointerMoveCommand } from "../commands";
+import {
+	type ActiveZoneBounds,
+	createActiveZoneMapper,
+} from "../pointer/active-zone";
 import type { HandPointerFrame } from "../pointer/hand-pointers";
 import type { TrackedHandPose } from "../poses/hand-pose-tracker";
 import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
 import type { Point } from "./pinch";
+
+export type PointerActionOptions = {
+	readonly activeZone?: ActiveZoneBounds | null;
+};
 
 /** Durée de maintien du poing fermé avant de verrouiller la saisie (Grab & Drag). */
 export const GRAB_HOLD_MS = 600;
@@ -91,7 +99,23 @@ function isThreeFingerChord(pose: TrackedHandPose): boolean {
  * - 🤟 3 doigts tendus (Index + Majeur + Annulaire) : Clic droit
  * - 🤏 Pincement maintenu + déplacement vertical : Défilement continu type "Joystick"
  */
-export function createPointerActionTracker() {
+export function createPointerActionTracker(options?: PointerActionOptions) {
+	let activeZone: ActiveZoneBounds | null = options?.activeZone ?? null;
+	let mapper = activeZone ? createActiveZoneMapper(activeZone) : null;
+	let gainX = activeZone ? 1 / (activeZone.maxX - activeZone.minX) : 1;
+	let gainY = activeZone ? 1 / (activeZone.maxY - activeZone.minY) : 1;
+
+	function setActiveZone(bounds: ActiveZoneBounds | null) {
+		activeZone = bounds;
+		mapper = bounds ? createActiveZoneMapper(bounds) : null;
+		gainX = bounds ? 1 / (bounds.maxX - bounds.minX) : 1;
+		gainY = bounds ? 1 / (bounds.maxY - bounds.minY) : 1;
+	}
+
+	function project(point: Point): Point {
+		return mapper ? mapper.project(point) : point;
+	}
+
 	let activeHandId: number | null = null;
 	let lastMirroredPosition: Point = { x: 0.5, y: 0.5 };
 
@@ -246,10 +270,10 @@ export function createPointerActionTracker() {
 			!pinchScroll &&
 			!leftButtonDown
 		) {
-			lastMirroredPosition = {
+			lastMirroredPosition = project({
 				x: clamp01(1 - pointer.position.x),
 				y: clamp01(pointer.position.y),
-			};
+			});
 		}
 
 		// 1. Saisir & Glisser (Grab & Drag) : poing fermé maintenu 600 ms, puis déplacement par la paume
@@ -259,8 +283,8 @@ export function createPointerActionTracker() {
 			} else {
 				grabProgress = 1;
 				if (dragOriginPalm && dragStartScreenPos) {
-					const dx = -(pointer.palmPosition.x - dragOriginPalm.x);
-					const dy = pointer.palmPosition.y - dragOriginPalm.y;
+					const dx = -(pointer.palmPosition.x - dragOriginPalm.x) * gainX;
+					const dy = (pointer.palmPosition.y - dragOriginPalm.y) * gainY;
 					if (Math.hypot(dx, dy) > 0.002) {
 						dragging = true;
 						lastMirroredPosition = {
@@ -439,5 +463,5 @@ export function createPointerActionTracker() {
 		clearGestureTimers();
 	}
 
-	return { update, getState, reset };
+	return { update, getState, reset, setActiveZone };
 }

@@ -2,6 +2,7 @@
 import {
 	CONTROL_HOLD_MS,
 	createGestureEngine,
+	DEFAULT_ACTIVE_ZONE,
 	type GestureEngineFrame,
 	type HandObservation,
 	type HandPointerFrame,
@@ -47,7 +48,7 @@ const emptyPointers: HandPointerFrame = {
 };
 const pointerFrame = shallowRef(emptyPointers);
 
-const engine = createGestureEngine();
+const engine = createGestureEngine({ activeZone: DEFAULT_ACTIVE_ZONE });
 const controlFrame = shallowRef(engine.getControlState());
 const actionState = shallowRef(engine.getActionState());
 const lastActionLabel = ref("None");
@@ -236,6 +237,28 @@ function drawHands(hands: readonly HandObservation[]) {
 	if (!ctx) return;
 
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	const az = engine.getActiveZone();
+	if (az) {
+		ctx.save();
+		ctx.strokeStyle = "#38bdf855";
+		ctx.lineWidth = 2;
+		ctx.setLineDash([6, 6]);
+		ctx.strokeRect(
+			az.minX * canvas.width,
+			az.minY * canvas.height,
+			(az.maxX - az.minX) * canvas.width,
+			(az.maxY - az.minY) * canvas.height,
+		);
+		ctx.fillStyle = "#38bdf8aa";
+		ctx.font = "11px monospace";
+		ctx.fillText(
+			"ZONE ACTIVE",
+			az.minX * canvas.width + 6,
+			az.minY * canvas.height + 14,
+		);
+		ctx.restore();
+	}
 
 	for (const observation of hands) {
 		const points = observation.landmarks;

@@ -10,10 +10,14 @@ export type {
 } from "./commands";
 export type { GestureControlFrame } from "./control/gesture-control";
 export { CONTROL_HOLD_MS } from "./control/gesture-control";
-export type { GestureEngineFrame } from "./gesture-engine";
+export type {
+	GestureEngineFrame,
+	GestureEngineOptions,
+} from "./gesture-engine";
 export { createGestureEngine } from "./gesture-engine";
 export type { Point } from "./gestures/pinch";
 export type {
+	PointerActionOptions,
 	PointerActionState,
 	PointerActionUpdate,
 } from "./gestures/pointer-actions";

@@ -8,6 +8,10 @@ import {
 	type PointerActionState,
 } from "./gestures/pointer-actions";
 import {
+	type ActiveZoneBounds,
+	createActiveZoneMapper,
+} from "./pointer/active-zone";
+import {
 	createHandPointerTracker,
 	type HandPointerFrame,
 } from "./pointer/hand-pointers";
@@ -16,6 +20,10 @@ import {
 	type TrackedHandPose,
 } from "./poses/hand-pose-tracker";
 import type { HandTrackingFrame } from "./tracking/hand-identity-tracker";
+
+export type GestureEngineOptions = {
+	readonly activeZone?: ActiveZoneBounds | null;
+};
 
 export type GestureEngineFrame = {
 	readonly tracking: HandTrackingFrame;
@@ -31,12 +39,26 @@ export type GestureEngineFrame = {
 };
 
 /** Interprétation commune ; les identités sont fournies par la session de suivi. */
-export function createGestureEngine() {
+export function createGestureEngine(options?: GestureEngineOptions) {
 	const poseTracker = createHandPoseTracker();
 	const pointerTracker = createHandPointerTracker();
 	const controlTracker = createGestureControl();
-	const actionTracker = createPointerActionTracker();
+	const actionTracker = createPointerActionTracker({
+		activeZone: options?.activeZone,
+	});
+	let activeZone: ActiveZoneBounds | null = options?.activeZone ?? null;
+	let mapper = activeZone ? createActiveZoneMapper(activeZone) : null;
 	let lastObservationTimestamp: number | null = null;
+
+	function setActiveZone(bounds: ActiveZoneBounds | null) {
+		activeZone = bounds;
+		mapper = bounds ? createActiveZoneMapper(bounds) : null;
+		actionTracker.setActiveZone(bounds);
+	}
+
+	function getActiveZone(): ActiveZoneBounds | null {
+		return activeZone;
+	}
 
 	function update(
 		tracking: HandTrackingFrame,
@@ -78,12 +100,13 @@ export function createGestureEngine() {
 			if (actionResult.dragMove) {
 				commands = [actionResult.dragMove];
 			} else if (main && !actionResult.freezeCursor) {
+				const rawMirrored = { x: 1 - main.position.x, y: main.position.y };
 				commands = [
 					{
 						type: "pointer:move",
 						handId: main.handId,
 						timestamp: main.timestamp,
-						position: { x: 1 - main.position.x, y: main.position.y },
+						position: mapper ? mapper.project(rawMirrored) : rawMirrored,
 					},
 				];
 			}
@@ -111,6 +134,8 @@ export function createGestureEngine() {
 		update,
 		getControlState: controlTracker.getState,
 		getActionState: actionTracker.getState,
+		setActiveZone,
+		getActiveZone,
 		reset,
 	};
 }
