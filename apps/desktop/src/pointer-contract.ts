@@ -36,10 +36,22 @@ export type SystemPointerBridge = {
 	subscribe(listener: (state: PointerControlState) => void): () => void;
 };
 
+export type OverlayHudState = {
+	readonly phase: PointerControlState["phase"];
+	readonly statusText: string;
+	readonly grabProgress: number;
+	readonly isLocked: boolean;
+	readonly lastAction: string | null;
+};
+
 /** Pont IPC dédié à l'overlay transparent sans perte de focus. */
 export type SystemOverlayBridge = {
 	toggle(): Promise<boolean>;
 	pressKey(key: string): void;
 	close(): void;
+	moveBy(deltaX: number, deltaY: number): void;
+	resetPosition(): void;
+	updateHud(state: OverlayHudState): void;
+	subscribeHud(listener: (state: OverlayHudState) => void): () => void;
 	subscribeFeedback(listener: (action: string) => void): () => void;
 };

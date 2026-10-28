@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 
 const props = defineProps<{
 	disabled?: boolean;
@@ -44,6 +44,48 @@ function cycleOpacity() {
 	opacityIndex.value = (opacityIndex.value + 1) % opacityOptions.length;
 }
 
+let isDragging = false;
+let lastScreenX = 0;
+let lastScreenY = 0;
+
+function onDragStart(event: PointerEvent) {
+	if (event.button !== 0) return;
+	isDragging = true;
+	lastScreenX = event.screenX;
+	lastScreenY = event.screenY;
+	const target = event.currentTarget as HTMLElement | null;
+	target?.setPointerCapture(event.pointerId);
+	window.addEventListener("pointermove", onDragMove);
+	window.addEventListener("pointerup", onDragEnd);
+	window.addEventListener("pointercancel", onDragEnd);
+}
+
+function onDragMove(event: PointerEvent) {
+	if (!isDragging) return;
+	const deltaX = event.screenX - lastScreenX;
+	const deltaY = event.screenY - lastScreenY;
+	lastScreenX = event.screenX;
+	lastScreenY = event.screenY;
+	if (deltaX !== 0 || deltaY !== 0) {
+		window.handfinityOverlay?.moveBy(deltaX, deltaY);
+	}
+}
+
+function onDragEnd() {
+	isDragging = false;
+	window.removeEventListener("pointermove", onDragMove);
+	window.removeEventListener("pointerup", onDragEnd);
+	window.removeEventListener("pointercancel", onDragEnd);
+}
+
+function resetPosition() {
+	window.handfinityOverlay?.resetPosition();
+}
+
+onBeforeUnmount(() => {
+	onDragEnd();
+});
+
 const rows = computed(() => {
 	const base =
 		layout.value === "azerty"
@@ -86,9 +128,22 @@ function send(key: string) {
 	<section
 		data-virtual-keyboard
 		aria-labelledby="virtual-keyboard-title"
-		class="space-y-2.5 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none"
+		class="space-y-2 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none"
 		:class="currentOpacityClass"
 	>
+		<!-- Poignée de glisser-déposer supérieure -->
+		<div
+			data-drag-handle
+			@pointerdown="onDragStart"
+			class="flex cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 active:cursor-grabbing"
+			title="Cliquer et glisser pour déplacer le clavier sur l'écran"
+		>
+			<span class="flex items-center gap-1.5">
+				<span class="font-mono text-cyan-400">⠿</span>
+				<span>Glisser pour déplacer le clavier</span>
+			</span>
+		</div>
+
 		<div
 			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2"
 		>
@@ -117,6 +172,14 @@ function send(key: string) {
 				>
 					{{ lastSentKey }}
 				</span>
+				<button
+					type="button"
+					@click="resetPosition"
+					title="Recentrer le clavier en bas de l'écran"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15"
+				>
+					↺ Recentrer
+				</button>
 				<button
 					type="button"
 					@click="cycleOpacity"

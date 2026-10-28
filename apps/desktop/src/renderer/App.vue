@@ -155,8 +155,28 @@ let sessionGeneration = 0;
 let unsubscribe: (() => void) | undefined;
 let disposed = false;
 
+function pushHudState(latestActionStr?: string | null) {
+	if (!window.handfinityOverlay) return;
+	const isLocked = actionState.value.leftButtonDown;
+	const grabProgress = actionState.value.grabProgress;
+	let action = latestActionStr ?? null;
+	if (!action && lastActionLabel.value && lastActionLabel.value !== "None") {
+		action = lastActionLabel.value;
+	}
+	window.handfinityOverlay.updateHud({
+		phase: state.value.phase,
+		statusText: pointerReadiness.value,
+		grabProgress,
+		isLocked,
+		lastAction: action,
+	});
+}
+
 function showState(next: PointerControlState) {
-	if (!disposed) state.value = next;
+	if (!disposed) {
+		state.value = next;
+		pushHudState();
+	}
 }
 
 function showError(error: unknown) {
@@ -193,13 +213,21 @@ async function togglePointer() {
 function formatAction(action: PointerActionCommand): string {
 	switch (action.type) {
 		case "pointer:down":
-			return `${action.button} button down`;
+			return action.button === "left"
+				? "✊ Saisie verrouillée"
+				: `Bouton ${action.button} enfoncé`;
 		case "pointer:up":
-			return `${action.button} button up`;
+			return action.button === "left"
+				? "🖐️ Relâchement"
+				: `Bouton ${action.button} relâché`;
 		case "pointer:click":
-			return `${action.button} click`;
+			return action.button === "left"
+				? "✌️ Clic gauche"
+				: action.button === "right"
+					? "🤟 Clic droit"
+					: `Clic ${action.button}`;
 		case "pointer:scroll":
-			return `scroll (${action.deltaY > 0 ? "+" : ""}${action.deltaY.toFixed(2)})`;
+			return `📜 Défilement (${action.deltaY > 0 ? "↓" : "↑"})`;
 	}
 }
 
@@ -391,12 +419,13 @@ function handleTrackingFrame({
 	bimanualState.value = frame.bimanual;
 	if (frame.bimanual.keyboardToggle) {
 		void toggleKeyboard();
-		lastActionLabel.value = "clavier virtuel Windows 👐";
+		lastActionLabel.value = "👐 Clavier virtuel Windows";
 	}
 	const latestAction = frame.actions.at(-1);
 	if (latestAction) {
 		lastActionLabel.value = formatAction(latestAction);
 	}
+	pushHudState(latestAction ? formatAction(latestAction) : null);
 	submit(frame);
 	const visible = frame.tracking.hands
 		.filter((hand) => hand.status === "tracked")
@@ -433,6 +462,7 @@ function stopCamera() {
 	handPoses.value = [];
 	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
+	pushHudState(null);
 }
 
 async function toggleCamera() {

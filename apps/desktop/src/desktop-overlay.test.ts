@@ -17,6 +17,9 @@ const electron = vi.hoisted(() => {
 		showInactive: vi.fn(),
 		hide: vi.fn(),
 		destroy: vi.fn(),
+		getPosition: vi.fn(() => [100, 200]),
+		setPosition: vi.fn(),
+		setBounds: vi.fn(),
 		isVisible: vi.fn(() => true),
 		isDestroyed: vi.fn(() => false),
 		loadURL: vi.fn().mockResolvedValue(undefined),
@@ -94,6 +97,7 @@ describe("desktop-overlay", () => {
 		electron.listeners.clear();
 		electron.mockWindow.isDestroyed.mockReturnValue(false);
 		electron.mockWindow.webContents.isDestroyed.mockReturnValue(false);
+		electron.mockWindow.getPosition.mockReturnValue([100, 200]);
 		onKeyPress = vi.fn();
 		session = {} as unknown as Session;
 	});
@@ -115,6 +119,7 @@ describe("desktop-overlay", () => {
 				alwaysOnTop: true,
 				skipTaskbar: true,
 				frame: false,
+				type: "toolbar",
 			}),
 		);
 		expect(electron.mockWindow.setAlwaysOnTop).toHaveBeenCalledWith(
@@ -134,7 +139,6 @@ describe("desktop-overlay", () => {
 			onKeyPress,
 		});
 
-		// Trigger lazy window creation
 		expect(overlay.window).toBeDefined();
 
 		const calls = electron.BrowserWindow.mock.calls;
@@ -145,12 +149,12 @@ describe("desktop-overlay", () => {
 			height: number;
 		};
 		expect(options.width).toBe(880);
-		expect(options.height).toBe(370);
+		expect(options.height).toBe(440);
 		expect(options.x).toBe(Math.round((1920 - 880) / 2));
-		expect(options.y).toBe(1040 - 370 - 16);
+		expect(options.y).toBe(1040 - 440 - 16);
 	});
 
-	it("shows without stealing focus via showInactive()", () => {
+	it("shows without stealing focus via showInactive() and reinforces topmost z-order", () => {
 		const overlay = createDesktopOverlay({
 			session,
 			preloadPath: "/test/preload.cjs",
@@ -158,6 +162,12 @@ describe("desktop-overlay", () => {
 		});
 
 		overlay.show();
+		expect(electron.mockWindow.setAlwaysOnTop).toHaveBeenCalledWith(
+			true,
+			"screen-saver",
+			1,
+		);
+		expect(electron.mockWindow.moveTop).toHaveBeenCalledOnce();
 		expect(electron.mockWindow.showInactive).toHaveBeenCalledOnce();
 		expect(overlay.isVisible()).toBe(true);
 
@@ -212,7 +222,7 @@ describe("desktop-overlay", () => {
 		expect(onKeyPress).not.toHaveBeenCalledWith("Escape");
 	});
 
-	it("hides overlay on trusted close IPC event", () => {
+	it("moves the overlay window smoothly via moveBy IPC", () => {
 		const overlay = createDesktopOverlay({
 			session,
 			preloadPath: "/test/preload.cjs",
@@ -221,20 +231,19 @@ describe("desktop-overlay", () => {
 
 		overlay.show();
 
-		const closeHandler = electron.listeners.get("handfinity:overlay:close");
-		expect(closeHandler).toBeTypeOf("function");
+		const moveHandler = electron.listeners.get("handfinity:overlay:move-by");
+		expect(moveHandler).toBeTypeOf("function");
 
 		const trustedEvent = {
 			sender: electron.mockWindow.webContents,
 			senderFrame: electron.mockWindow.webContents.mainFrame,
 		} as unknown as IpcMainEvent;
 
-		closeHandler?.(trustedEvent);
-		expect(electron.mockWindow.hide).toHaveBeenCalled();
-		expect(overlay.isVisible()).toBe(false);
+		moveHandler?.(trustedEvent, { deltaX: 25, deltaY: -15 });
+		expect(electron.mockWindow.setPosition).toHaveBeenCalledWith(125, 185);
 	});
 
-	it("sends feedback notifications to overlay webContents", () => {
+	it("resets overlay position to bottom center via resetPosition IPC", () => {
 		const overlay = createDesktopOverlay({
 			session,
 			preloadPath: "/test/preload.cjs",
@@ -242,14 +251,59 @@ describe("desktop-overlay", () => {
 		});
 
 		overlay.show();
-		overlay.sendActionFeedback("✊ Saisie");
+
+		const resetHandler = electron.listeners.get(
+			"handfinity:overlay:reset-position",
+		);
+		expect(resetHandler).toBeTypeOf("function");
+
+		const trustedEvent = {
+			sender: electron.mockWindow.webContents,
+			senderFrame: electron.mockWindow.webContents.mainFrame,
+		} as unknown as IpcMainEvent;
+
+		resetHandler?.(trustedEvent);
+		expect(electron.mockWindow.setBounds).toHaveBeenCalledWith({
+			x: Math.round((1920 - 880) / 2),
+			y: 1040 - 440 - 16,
+			width: 880,
+			height: 440,
+		});
+	});
+
+	it("broadcasts HUD state updates to overlay webContents", () => {
+		const overlay = createDesktopOverlay({
+			session,
+			preloadPath: "/test/preload.cjs",
+			onKeyPress,
+		});
+
+		overlay.show();
+
+		const hudHandler = electron.listeners.get("handfinity:overlay:update-hud");
+		expect(hudHandler).toBeTypeOf("function");
+
+		const trustedEvent = {
+			sender: electron.mockWindow.webContents,
+			senderFrame: electron.mockWindow.webContents.mainFrame,
+		} as unknown as IpcMainEvent;
+
+		const hudState = {
+			phase: "moving" as const,
+			statusText: "☝️ Mode pointeur",
+			grabProgress: 0.6,
+			isLocked: false,
+			lastAction: "click",
+		};
+
+		hudHandler?.(trustedEvent, hudState);
 		expect(electron.mockWindow.webContents.send).toHaveBeenCalledWith(
-			"handfinity:overlay:feedback",
-			"✊ Saisie",
+			"handfinity:overlay:hud-state",
+			hudState,
 		);
 	});
 
-	it("destroys window and clears IPC handlers on destroy()", () => {
+	it("destroys window and clears all IPC handlers on destroy()", () => {
 		const overlay = createDesktopOverlay({
 			session,
 			preloadPath: "/test/preload.cjs",
@@ -261,6 +315,18 @@ describe("desktop-overlay", () => {
 
 		expect(electron.ipcMain.removeHandler).toHaveBeenCalledWith(
 			"handfinity:overlay:toggle",
+		);
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:move-by",
+			expect.any(Function),
+		);
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:reset-position",
+			expect.any(Function),
+		);
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:update-hud",
+			expect.any(Function),
 		);
 		expect(electron.mockWindow.destroy).toHaveBeenCalledOnce();
 		expect(overlay.isVisible()).toBe(false);

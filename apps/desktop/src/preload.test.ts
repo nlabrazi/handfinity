@@ -143,6 +143,10 @@ describe("System pointer preload bridge", () => {
 			"toggle",
 			"pressKey",
 			"close",
+			"moveBy",
+			"resetPosition",
+			"updateHud",
+			"subscribeHud",
 			"subscribeFeedback",
 		]);
 
@@ -159,15 +163,55 @@ describe("System pointer preload bridge", () => {
 		overlay.close();
 		expect(electron.send).toHaveBeenCalledWith("handfinity:overlay:close");
 
-		const listener = vi.fn();
-		const unsubscribe = overlay.subscribeFeedback(listener);
+		overlay.moveBy(15, -10);
+		expect(electron.send).toHaveBeenCalledWith("handfinity:overlay:move-by", {
+			deltaX: 15,
+			deltaY: -10,
+		});
+
+		overlay.resetPosition();
+		expect(electron.send).toHaveBeenCalledWith(
+			"handfinity:overlay:reset-position",
+		);
+
+		const hudState = {
+			phase: "moving" as const,
+			statusText: "☝️ Mode pointeur",
+			grabProgress: 0.75,
+			isLocked: false,
+			lastAction: "click",
+		};
+		overlay.updateHud(hudState);
+		expect(electron.send).toHaveBeenCalledWith(
+			"handfinity:overlay:update-hud",
+			hudState,
+		);
+
+		const hudListener = vi.fn();
+		const unsubHud = overlay.subscribeHud(hudListener);
+		const hudCall = electron.on.mock.calls.find(
+			([ch]) => ch === "handfinity:overlay:hud-state",
+		);
+		expect(hudCall).toBeDefined();
+		const receiveHud = hudCall?.[1];
+		receiveHud?.({}, hudState);
+		expect(hudListener).toHaveBeenCalledWith(hudState);
+
+		unsubHud();
+		expect(electron.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:hud-state",
+			receiveHud,
+		);
+
+		const feedbackListener = vi.fn();
+		const unsubscribe = overlay.subscribeFeedback(feedbackListener);
 		const feedbackCall = electron.on.mock.calls.find(
 			([ch]) => ch === "handfinity:overlay:feedback",
 		);
 		expect(feedbackCall).toBeDefined();
 		const receive = feedbackCall?.[1];
 		receive?.({}, "clavier : ouvert");
-		expect(listener).toHaveBeenCalledWith("clavier : ouvert");
+		expect(feedbackListener).toHaveBeenCalledWith("clavier : ouvert");
 
 		unsubscribe();
 		expect(electron.removeListener).toHaveBeenCalledWith(
