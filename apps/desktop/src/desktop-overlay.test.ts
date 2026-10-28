@@ -148,10 +148,10 @@ describe("desktop-overlay", () => {
 			width: number;
 			height: number;
 		};
-		expect(options.width).toBe(880);
-		expect(options.height).toBe(440);
-		expect(options.x).toBe(Math.round((1920 - 880) / 2));
-		expect(options.y).toBe(1040 - 440 - 16);
+		expect(options.width).toBe(860);
+		expect(options.height).toBe(280);
+		expect(options.x).toBe(Math.round((1920 - 860) / 2));
+		expect(options.y).toBe(1040 - 280 - 20);
 	});
 
 	it("shows without stealing focus via showInactive() and reinforces topmost z-order", () => {
@@ -264,10 +264,10 @@ describe("desktop-overlay", () => {
 
 		resetHandler?.(trustedEvent);
 		expect(electron.mockWindow.setBounds).toHaveBeenCalledWith({
-			x: Math.round((1920 - 880) / 2),
-			y: 1040 - 440 - 16,
-			width: 880,
-			height: 440,
+			x: Math.round((1920 - 860) / 2),
+			y: 1040 - 280 - 20,
+			width: 860,
+			height: 280,
 		});
 	});
 
@@ -301,6 +301,39 @@ describe("desktop-overlay", () => {
 			"handfinity:overlay:hud-state",
 			hudState,
 		);
+	});
+
+	it("creates and manages a dedicated HUD window at top-center of workArea", () => {
+		const overlay = createDesktopOverlay({
+			session,
+			preloadPath: "/test/preload.cjs",
+			onKeyPress,
+		});
+
+		expect(overlay.hudWindow).toBeDefined();
+
+		const calls = electron.BrowserWindow.mock.calls;
+		const hudOptions = calls[0]?.[0] as {
+			title: string;
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+		};
+		expect(hudOptions.title).toBe("Handfinity HUD");
+		expect(hudOptions.width).toBe(500);
+		expect(hudOptions.height).toBe(90);
+		expect(hudOptions.x).toBe(Math.round((1920 - 500) / 2));
+		expect(hudOptions.y).toBe(16);
+
+		overlay.showHud();
+		expect(overlay.isHudVisible()).toBe(true);
+
+		overlay.hideHud();
+		expect(overlay.isHudVisible()).toBe(false);
+
+		overlay.toggleHud();
+		expect(overlay.isHudVisible()).toBe(true);
 	});
 
 	it("destroys window and clears all IPC handlers on destroy()", () => {

@@ -40,20 +40,24 @@ Au premier lancement depuis WSL2, `scripts/start.mjs` télécharge le binaire Wi
    - **👐 Paumes jointes puis écartées** : Afficher ou masquer le clavier virtuel en pop-up.
 3. **Arrêt d'urgence** : **`Ctrl + Alt + Esc`** (ou `Stop Windows pointer` / `Stop camera` / fermeture de la fenêtre) relâche tout bouton maintenu et désactive immédiatement le contrôle.
 
-## Overlay transparent, HUD et Clavier virtuel
+## HUD « On-Top » et Clavier virtuel indépendant
 
-- **Affichage au premier plan sans perte de focus** : Fenêtre non-activable (`focusable: false`, `WS_EX_NOACTIVATE`) restant toujours au-dessus des fenêtres Windows sans jamais voler le focus actif de l'application cible.
-- **HUD de statut & notifications on-top** :
-  - Statut du contrôle gestuel en temps réel (`Mode pointeur actif`, `Mode pause`, etc.).
+- **Affichage au premier plan sans perte de focus** : Deux fenêtres dédiées ultra-transparentes et non-activables (`focusable: false`, `WS_EX_NOACTIVATE`) restant toujours au-dessus des fenêtres Windows sans jamais voler le focus actif de l'application cible.
+- **Capsule HUD on-top au milieu de l'écran** :
+  - Positionnée en haut au centre de l'écran principal pour une visibilité immédiate sans gêner le travail.
+  - S'active automatiquement dès que le contrôle gestuel ou la caméra est actif (même avec la fenêtre principale minimisée ou dans la barre système).
+  - Statut en temps réel (`Mode pointeur actif`, `En pause`, etc.).
   - Jauge de progression du poing fermé pour la saisie / glisser-déposer (0,6 s avec pourcentage en direct et état verrouillé).
-  - Notifications discrètes et réactives pour les clics, défilements et frappes clavier.
+  - Notifications flash discrètes pour les clics (`✌️ Clic gauche`, `🤟 Clic droit`, touches, défilements).
+  - Déplaçable via sa poignée `⠿` et recentrable avec `↺`.
 - **Clavier virtuel déplaçable (Draggable)** :
-  - Déplaçable sur tout l'écran via la poignée supérieure `⠿ Glisser pour déplacer`.
-  - Bouton de recentrage `↺ Recentrer` pour repositionner l'overlay en bas de l'écran principal.
+  - Fenêtre dédiée distincte, libérée de tout compartiment de notification.
+  - Déplaçable nativement via Windows DWM (`-webkit-app-region: drag`) et souris sur tout l'écran via la poignée `⠿ Glisser pour déplacer le clavier`.
+  - Bouton de recentrage `↺ Recentrer` pour repositionner le clavier en bas au centre.
   - Niveaux de transparence ajustables (20 %, 40 %, 70 %) avec flou d'arrière-plan.
-  - Repliable (`⌨️ Masquer clavier`) pour ne conserver que la barre HUD compacte.
+  - Touches Azerty / Qwerty, bascule Maj (`⇧`) et fermeture rapide (`✕`).
 
 ## Barquette système Windows (System Tray)
 
 - La fermeture de la fenêtre principale (`X`) minimise l'application dans la zone de notification Windows au lieu de la quitter, garantissant la continuité du suivi visuel en arrière-plan.
-- L'icône de la barre d'état système fournit le statut en temps réel, permet d'activer/désactiver le pointeur, d'afficher/masquer l'overlay et de quitter proprement l'application.
+- L'icône de la barre d'état système fournit le statut en temps réel, permet d'activer/désactiver le pointeur, d'afficher/masquer le HUD on-top, d'ouvrir le clavier virtuel et de quitter proprement l'application.

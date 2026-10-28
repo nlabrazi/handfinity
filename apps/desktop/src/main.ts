@@ -99,6 +99,9 @@ async function start() {
 		onToggleOverlay: () => {
 			overlay?.toggle();
 		},
+		onToggleHud: () => {
+			overlay?.toggleHud();
+		},
 		onQuit: () => {
 			isQuitting = true;
 			app.quit();

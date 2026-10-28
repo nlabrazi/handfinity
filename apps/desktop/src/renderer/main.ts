@@ -1,10 +1,18 @@
 import { createApp } from "vue";
 import App from "./App.vue";
+import HudView from "./HudView.vue";
 import OverlayView from "./OverlayView.vue";
 import "./style.css";
 
-const isOverlay =
-	window.location.hash === "#overlay" ||
-	window.location.search.includes("view=overlay");
+const url = new URL(window.location.href);
+const view =
+	url.searchParams.get("view") || window.location.hash.replace("#", "");
 
-createApp(isOverlay ? OverlayView : App).mount("#app");
+let rootComponent = App;
+if (view === "hud") {
+	rootComponent = HudView;
+} else if (view === "overlay" || view === "keyboard") {
+	rootComponent = OverlayView;
+}
+
+createApp(rootComponent).mount("#app");

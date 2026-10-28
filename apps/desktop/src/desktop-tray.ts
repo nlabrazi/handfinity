@@ -85,6 +85,7 @@ export interface DesktopTrayOptions {
 	getPointerState(): PointerControlState;
 	onTogglePointer(): unknown;
 	onToggleOverlay?(): unknown;
+	onToggleHud?(): unknown;
 	onQuit(): void;
 	iconPath?: string;
 }
@@ -138,6 +139,12 @@ export function buildTrayMenuTemplate(
 			click: () => {
 				void options.onTogglePointer();
 				update();
+			},
+		},
+		{
+			label: "HUD de statut (on-top)",
+			click: () => {
+				void options.onToggleHud?.();
 			},
 		},
 		{

@@ -20,10 +20,16 @@ export interface DesktopOverlayOptions {
 
 export interface DesktopOverlay {
 	readonly window: BrowserWindow;
+	readonly keyboardWindow: BrowserWindow;
+	readonly hudWindow: BrowserWindow;
 	show(): void;
 	hide(): void;
 	toggle(): boolean;
 	isVisible(): boolean;
+	showHud(): void;
+	hideHud(): void;
+	toggleHud(): boolean;
+	isHudVisible(): boolean;
 	sendActionFeedback(action: string): void;
 	sendHudState(state: OverlayHudState): void;
 	moveBy(deltaX: number, deltaY: number): void;
@@ -34,19 +40,22 @@ export interface DesktopOverlay {
 export function createDesktopOverlay(
 	options: DesktopOverlayOptions,
 ): DesktopOverlay {
-	let overlayWindow: BrowserWindow | null = null;
-	let visible = false;
+	let keyboardWindow: BrowserWindow | null = null;
+	let hudWindow: BrowserWindow | null = null;
+	let keyboardVisible = false;
+	let hudVisible = false;
+	let hudDismissed = false;
 
-	function getOrCreateWindow(): BrowserWindow {
-		if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
+	function getOrCreateKeyboardWindow(): BrowserWindow {
+		if (keyboardWindow && !keyboardWindow.isDestroyed()) return keyboardWindow;
 
 		const primary = screen.getPrimaryDisplay();
 		const bounds = primary.workArea ??
 			primary.bounds ?? { x: 0, y: 0, width: 1280, height: 720 };
-		const width = Math.min(880, Math.max(360, bounds.width - 40));
-		const height = 440;
+		const width = Math.min(860, Math.max(360, bounds.width - 40));
+		const height = 280;
 		const x = Math.round(bounds.x + (bounds.width - width) / 2);
-		const y = Math.round(bounds.y + bounds.height - height - 16);
+		const y = Math.round(bounds.y + bounds.height - height - 20);
 
 		const win = new BrowserWindow({
 			title: "Handfinity Overlay",
@@ -87,51 +96,125 @@ export function createDesktopOverlay(
 		void win.loadURL(`${APP_URL}?view=overlay#overlay`);
 
 		win.on("closed", () => {
-			if (overlayWindow === win) {
-				overlayWindow = null;
-				visible = false;
+			if (keyboardWindow === win) {
+				keyboardWindow = null;
+				keyboardVisible = false;
 			}
 		});
 
-		overlayWindow = win;
+		keyboardWindow = win;
+		return win;
+	}
+
+	function getOrCreateHudWindow(): BrowserWindow {
+		if (hudWindow && !hudWindow.isDestroyed()) return hudWindow;
+
+		const primary = screen.getPrimaryDisplay();
+		const bounds = primary.workArea ??
+			primary.bounds ?? { x: 0, y: 0, width: 1280, height: 720 };
+		const width = Math.min(500, Math.max(360, bounds.width - 40));
+		const height = 90;
+		const x = Math.round(bounds.x + (bounds.width - width) / 2);
+		const y = Math.round(bounds.y + 16);
+
+		const win = new BrowserWindow({
+			title: "Handfinity HUD",
+			show: false,
+			width,
+			height,
+			x,
+			y,
+			frame: false,
+			transparent: true,
+			alwaysOnTop: true,
+			focusable: false,
+			skipTaskbar: true,
+			resizable: false,
+			hasShadow: false,
+			backgroundColor: "#00000000",
+			autoHideMenuBar: true,
+			type: "toolbar",
+			webPreferences: {
+				session: options.session,
+				preload: options.preloadPath,
+				backgroundThrottling: false,
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+			},
+		});
+
+		win.setMenu(null);
+		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+		win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+		win.webContents.on("will-navigate", (event) => event.preventDefault());
+		win.webContents.on("will-attach-webview", (event) =>
+			event.preventDefault(),
+		);
+
+		void win.loadURL(`${APP_URL}?view=hud#hud`);
+
+		win.on("closed", () => {
+			if (hudWindow === win) {
+				hudWindow = null;
+				hudVisible = false;
+			}
+		});
+
+		hudWindow = win;
 		return win;
 	}
 
 	function isTrusted(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
 		const frame = event.senderFrame;
-		return (
-			frame !== null &&
-			frame.origin === "handfinity://app" &&
-			isAppUrl(frame.url)
-		);
+		if (!frame) return false;
+		return isAppUrl(frame.url);
 	}
 
-	function moveBy(deltaX: number, deltaY: number) {
-		if (overlayWindow && !overlayWindow.isDestroyed()) {
-			const [curX, curY] = overlayWindow.getPosition();
-			overlayWindow.setPosition(
-				Math.round(curX + deltaX),
-				Math.round(curY + deltaY),
-			);
+	function moveWindowBy(
+		win: BrowserWindow | null,
+		deltaX: number,
+		deltaY: number,
+	) {
+		if (win && !win.isDestroyed()) {
+			const [curX, curY] = win.getPosition();
+			win.setPosition(Math.round(curX + deltaX), Math.round(curY + deltaY));
 		}
 	}
 
-	function resetPosition() {
-		if (overlayWindow && !overlayWindow.isDestroyed()) {
-			const primary = screen.getPrimaryDisplay();
-			const bounds = primary.workArea ??
-				primary.bounds ?? { x: 0, y: 0, width: 1280, height: 720 };
-			const width = Math.min(880, Math.max(360, bounds.width - 40));
-			const height = 440;
+	function resetWindowPosition(target?: BrowserWindow | null) {
+		const primary = screen.getPrimaryDisplay();
+		const bounds = primary.workArea ??
+			primary.bounds ?? { x: 0, y: 0, width: 1280, height: 720 };
+
+		if (target === hudWindow && hudWindow && !hudWindow.isDestroyed()) {
+			const width = Math.min(500, Math.max(360, bounds.width - 40));
+			const height = 90;
 			const x = Math.round(bounds.x + (bounds.width - width) / 2);
-			const y = Math.round(bounds.y + bounds.height - height - 16);
-			overlayWindow.setBounds({ x, y, width, height });
+			const y = Math.round(bounds.y + 16);
+			hudWindow.setBounds({ x, y, width, height });
+		} else {
+			const win = keyboardWindow;
+			if (win && !win.isDestroyed()) {
+				const width = Math.min(860, Math.max(360, bounds.width - 40));
+				const height = 280;
+				const x = Math.round(bounds.x + (bounds.width - width) / 2);
+				const y = Math.round(bounds.y + bounds.height - height - 20);
+				win.setBounds({ x, y, width, height });
+			}
 		}
 	}
 
 	const onToggle = () => toggle();
 	const onClose = (event: IpcMainEvent) => {
-		if (isTrusted(event)) hide();
+		if (!isTrusted(event)) return;
+		if (event.sender === hudWindow?.webContents) {
+			hideHud();
+			hudDismissed = true;
+		} else {
+			hide();
+		}
 	};
 	const onPressKey = (event: IpcMainEvent, key: unknown) => {
 		if (
@@ -153,16 +236,38 @@ export function createDesktopOverlay(
 		) {
 			const { deltaX, deltaY } = payload as { deltaX: number; deltaY: number };
 			if (Number.isFinite(deltaX) && Number.isFinite(deltaY)) {
-				moveBy(deltaX, deltaY);
+				const target =
+					event.sender === hudWindow?.webContents
+						? hudWindow
+						: getOrCreateKeyboardWindow();
+				moveWindowBy(target, deltaX, deltaY);
 			}
 		}
 	};
 	const onResetPosition = (event: IpcMainEvent) => {
-		if (isTrusted(event)) resetPosition();
+		if (!isTrusted(event)) return;
+		const target =
+			event.sender === hudWindow?.webContents
+				? hudWindow
+				: getOrCreateKeyboardWindow();
+		resetWindowPosition(target);
 	};
 	const onUpdateHud = (event: IpcMainEvent, state: unknown) => {
 		if (isTrusted(event) && state && typeof state === "object") {
-			sendHudState(state as OverlayHudState);
+			const hud = state as OverlayHudState;
+			sendHudState(hud);
+			if (
+				!hudDismissed &&
+				(hud.phase === "moving" ||
+					hud.phase === "waiting" ||
+					hud.phase === "paused")
+			) {
+				if (!hudVisible) {
+					showHud();
+				}
+			} else if (hud.phase === "disabled" && hudVisible) {
+				hideHud();
+			}
 		}
 	};
 
@@ -174,22 +279,22 @@ export function createDesktopOverlay(
 	ipcMain.on("handfinity:overlay:update-hud", onUpdateHud);
 
 	function show() {
-		const win = getOrCreateWindow();
-		visible = true;
+		const win = getOrCreateKeyboardWindow();
+		keyboardVisible = true;
 		win.setAlwaysOnTop(true, "screen-saver", 1);
 		win.moveTop();
 		win.showInactive();
 	}
 
 	function hide() {
-		if (overlayWindow && !overlayWindow.isDestroyed()) {
-			overlayWindow.hide();
+		if (keyboardWindow && !keyboardWindow.isDestroyed()) {
+			keyboardWindow.hide();
 		}
-		visible = false;
+		keyboardVisible = false;
 	}
 
 	function toggle(): boolean {
-		if (visible) {
+		if (keyboardVisible) {
 			hide();
 			return false;
 		}
@@ -199,30 +304,79 @@ export function createDesktopOverlay(
 
 	function isVisible(): boolean {
 		return (
-			visible &&
-			overlayWindow !== null &&
-			!overlayWindow.isDestroyed() &&
-			overlayWindow.isVisible()
+			keyboardVisible &&
+			keyboardWindow !== null &&
+			!keyboardWindow.isDestroyed() &&
+			keyboardWindow.isVisible()
+		);
+	}
+
+	function showHud() {
+		const win = getOrCreateHudWindow();
+		hudVisible = true;
+		hudDismissed = false;
+		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.moveTop();
+		win.showInactive();
+	}
+
+	function hideHud() {
+		if (hudWindow && !hudWindow.isDestroyed()) {
+			hudWindow.hide();
+		}
+		hudVisible = false;
+	}
+
+	function toggleHud(): boolean {
+		if (hudVisible) {
+			hideHud();
+			hudDismissed = true;
+			return false;
+		}
+		showHud();
+		return true;
+	}
+
+	function isHudVisible(): boolean {
+		return (
+			hudVisible &&
+			hudWindow !== null &&
+			!hudWindow.isDestroyed() &&
+			hudWindow.isVisible()
 		);
 	}
 
 	function sendActionFeedback(action: string) {
 		if (
-			overlayWindow &&
-			!overlayWindow.isDestroyed() &&
-			!overlayWindow.webContents.isDestroyed()
+			hudWindow &&
+			!hudWindow.isDestroyed() &&
+			!hudWindow.webContents.isDestroyed()
 		) {
-			overlayWindow.webContents.send(OVERLAY_FEEDBACK_CHANNEL, action);
+			hudWindow.webContents.send(OVERLAY_FEEDBACK_CHANNEL, action);
+		}
+		if (
+			keyboardWindow &&
+			!keyboardWindow.isDestroyed() &&
+			!keyboardWindow.webContents.isDestroyed()
+		) {
+			keyboardWindow.webContents.send(OVERLAY_FEEDBACK_CHANNEL, action);
 		}
 	}
 
 	function sendHudState(state: OverlayHudState) {
 		if (
-			overlayWindow &&
-			!overlayWindow.isDestroyed() &&
-			!overlayWindow.webContents.isDestroyed()
+			hudWindow &&
+			!hudWindow.isDestroyed() &&
+			!hudWindow.webContents.isDestroyed()
 		) {
-			overlayWindow.webContents.send(OVERLAY_HUD_CHANNEL, state);
+			hudWindow.webContents.send(OVERLAY_HUD_CHANNEL, state);
+		}
+		if (
+			keyboardWindow &&
+			!keyboardWindow.isDestroyed() &&
+			!keyboardWindow.webContents.isDestroyed()
+		) {
+			keyboardWindow.webContents.send(OVERLAY_HUD_CHANNEL, state);
 		}
 	}
 
@@ -236,25 +390,45 @@ export function createDesktopOverlay(
 			onResetPosition,
 		);
 		ipcMain.removeListener("handfinity:overlay:update-hud", onUpdateHud);
-		if (overlayWindow && !overlayWindow.isDestroyed()) {
-			overlayWindow.destroy();
-			overlayWindow = null;
+
+		if (keyboardWindow && !keyboardWindow.isDestroyed()) {
+			keyboardWindow.destroy();
+			keyboardWindow = null;
 		}
-		visible = false;
+		if (hudWindow && !hudWindow.isDestroyed()) {
+			hudWindow.destroy();
+			hudWindow = null;
+		}
+		keyboardVisible = false;
+		hudVisible = false;
 	}
 
 	return {
 		get window() {
-			return getOrCreateWindow();
+			return getOrCreateKeyboardWindow();
+		},
+		get keyboardWindow() {
+			return getOrCreateKeyboardWindow();
+		},
+		get hudWindow() {
+			return getOrCreateHudWindow();
 		},
 		show,
 		hide,
 		toggle,
 		isVisible,
+		showHud,
+		hideHud,
+		toggleHud,
+		isHudVisible,
 		sendActionFeedback,
 		sendHudState,
-		moveBy,
-		resetPosition,
+		moveBy(deltaX: number, deltaY: number) {
+			moveWindowBy(keyboardWindow, deltaX, deltaY);
+		},
+		resetPosition() {
+			resetWindowPosition(keyboardWindow);
+		},
 		destroy,
 	};
 }

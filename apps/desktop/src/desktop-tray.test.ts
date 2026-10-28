@@ -277,6 +277,25 @@ describe("desktop-tray", () => {
 		expect(onToggleOverlay).toHaveBeenCalledOnce();
 	});
 
+	it("invokes onToggleHud from the context menu", () => {
+		const onToggleHud = vi.fn();
+		createDesktopTray({
+			getWindow: () => window as unknown as BrowserWindow,
+			getPointerState: () => pointerState,
+			onTogglePointer,
+			onToggleHud,
+			onQuit,
+		});
+
+		const template = electron.Menu.buildFromTemplate.mock
+			.calls[0]?.[0] as MenuItemConstructorOptions[];
+		const hudItem = template?.find((i) => i.label === "HUD de statut (on-top)");
+		expect(hudItem).toBeDefined();
+
+		hudItem?.click?.({} as never, {} as never, {} as never);
+		expect(onToggleHud).toHaveBeenCalledOnce();
+	});
+
 	it("invokes onQuit when quitting from context menu", () => {
 		createDesktopTray({
 			getWindow: () => window as unknown as BrowserWindow,

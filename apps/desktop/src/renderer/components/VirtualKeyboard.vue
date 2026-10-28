@@ -45,37 +45,34 @@ function cycleOpacity() {
 }
 
 let isDragging = false;
-let lastScreenX = 0;
-let lastScreenY = 0;
+let startX = 0;
+let startY = 0;
 
-function onDragStart(event: PointerEvent) {
+function onMouseDown(event: MouseEvent) {
 	if (event.button !== 0) return;
 	isDragging = true;
-	lastScreenX = event.screenX;
-	lastScreenY = event.screenY;
-	const target = event.currentTarget as HTMLElement | null;
-	target?.setPointerCapture(event.pointerId);
-	window.addEventListener("pointermove", onDragMove);
-	window.addEventListener("pointerup", onDragEnd);
-	window.addEventListener("pointercancel", onDragEnd);
+	startX = event.screenX;
+	startY = event.screenY;
+	window.addEventListener("mousemove", onMouseMove);
+	window.addEventListener("mouseup", onMouseUp);
 }
 
-function onDragMove(event: PointerEvent) {
+function onMouseMove(event: MouseEvent) {
 	if (!isDragging) return;
-	const deltaX = event.screenX - lastScreenX;
-	const deltaY = event.screenY - lastScreenY;
-	lastScreenX = event.screenX;
-	lastScreenY = event.screenY;
+	const deltaX = event.screenX - startX;
+	const deltaY = event.screenY - startY;
 	if (deltaX !== 0 || deltaY !== 0) {
+		startX = event.screenX;
+		startY = event.screenY;
 		window.handfinityOverlay?.moveBy(deltaX, deltaY);
 	}
 }
 
-function onDragEnd() {
+function onMouseUp() {
+	if (!isDragging) return;
 	isDragging = false;
-	window.removeEventListener("pointermove", onDragMove);
-	window.removeEventListener("pointerup", onDragEnd);
-	window.removeEventListener("pointercancel", onDragEnd);
+	window.removeEventListener("mousemove", onMouseMove);
+	window.removeEventListener("mouseup", onMouseUp);
 }
 
 function resetPosition() {
@@ -83,7 +80,7 @@ function resetPosition() {
 }
 
 onBeforeUnmount(() => {
-	onDragEnd();
+	onMouseUp();
 });
 
 const rows = computed(() => {
@@ -132,19 +129,23 @@ function send(key: string) {
 		:class="currentOpacityClass"
 	>
 		<!-- Poignée de glisser-déposer supérieure -->
-		<div
+		<button
+			type="button"
 			data-drag-handle
-			@pointerdown="onDragStart"
-			class="flex cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 active:cursor-grabbing"
-			title="Cliquer et glisser pour déplacer le clavier sur l'écran"
+			@mousedown="onMouseDown"
+			@keydown.space.prevent="resetPosition"
+			style="-webkit-app-region: drag;"
+			class="flex w-full cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 active:cursor-grabbing select-none"
+			title="Cliquer et glisser pour déplacer le clavier sur l'écran (Espace pour recentrer)"
 		>
-			<span class="flex items-center gap-1.5">
+			<span class="flex items-center gap-1.5 pointer-events-none">
 				<span class="font-mono text-cyan-400">⠿</span>
 				<span>Glisser pour déplacer le clavier</span>
 			</span>
-		</div>
+		</button>
 
 		<div
+			style="-webkit-app-region: no-drag;"
 			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2"
 		>
 			<div class="flex items-center gap-2">
@@ -216,7 +217,7 @@ function send(key: string) {
 			</div>
 		</div>
 
-		<div class="space-y-1.5">
+		<div style="-webkit-app-region: no-drag;" class="space-y-1.5">
 			<div
 				v-for="(row, rowIndex) in rows"
 				:key="rowIndex"
