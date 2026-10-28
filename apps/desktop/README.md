@@ -39,3 +39,21 @@ Au premier lancement depuis WSL2, `scripts/start.mjs` télécharge le binaire Wi
    - **🖐️ Paume ouverte (maintenue 1,5 s)** : Pause / Reprise du contrôle.
    - **👐 Paumes jointes puis écartées** : Afficher ou masquer le clavier virtuel en pop-up.
 3. **Arrêt d'urgence** : **`Ctrl + Alt + Esc`** (ou `Stop Windows pointer` / `Stop camera` / fermeture de la fenêtre) relâche tout bouton maintenu et désactive immédiatement le contrôle.
+
+## Overlay transparent, HUD et Clavier virtuel
+
+- **Affichage au premier plan sans perte de focus** : Fenêtre non-activable (`focusable: false`, `WS_EX_NOACTIVATE`) restant toujours au-dessus des fenêtres Windows sans jamais voler le focus actif de l'application cible.
+- **HUD de statut & notifications on-top** :
+  - Statut du contrôle gestuel en temps réel (`Mode pointeur actif`, `Mode pause`, etc.).
+  - Jauge de progression du poing fermé pour la saisie / glisser-déposer (0,6 s avec pourcentage en direct et état verrouillé).
+  - Notifications discrètes et réactives pour les clics, défilements et frappes clavier.
+- **Clavier virtuel déplaçable (Draggable)** :
+  - Déplaçable sur tout l'écran via la poignée supérieure `⠿ Glisser pour déplacer`.
+  - Bouton de recentrage `↺ Recentrer` pour repositionner l'overlay en bas de l'écran principal.
+  - Niveaux de transparence ajustables (20 %, 40 %, 70 %) avec flou d'arrière-plan.
+  - Repliable (`⌨️ Masquer clavier`) pour ne conserver que la barre HUD compacte.
+
+## Barquette système Windows (System Tray)
+
+- La fermeture de la fenêtre principale (`X`) minimise l'application dans la zone de notification Windows au lieu de la quitter, garantissant la continuité du suivi visuel en arrière-plan.
+- L'icône de la barre d'état système fournit le statut en temps réel, permet d'activer/désactiver le pointeur, d'afficher/masquer l'overlay et de quitter proprement l'application.
