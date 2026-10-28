@@ -119,13 +119,12 @@ describe("desktop-overlay", () => {
 				alwaysOnTop: true,
 				skipTaskbar: true,
 				frame: false,
-				type: "toolbar",
 			}),
 		);
 		expect(electron.mockWindow.setAlwaysOnTop).toHaveBeenCalledWith(
 			true,
 			"screen-saver",
-			1,
+			1000,
 		);
 		expect(electron.mockWindow.loadURL).toHaveBeenCalledWith(
 			"handfinity://app/?view=overlay#overlay",
@@ -165,7 +164,7 @@ describe("desktop-overlay", () => {
 		expect(electron.mockWindow.setAlwaysOnTop).toHaveBeenCalledWith(
 			true,
 			"screen-saver",
-			1,
+			1000,
 		);
 		expect(electron.mockWindow.moveTop).toHaveBeenCalledOnce();
 		expect(electron.mockWindow.showInactive).toHaveBeenCalledOnce();

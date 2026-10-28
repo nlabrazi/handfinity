@@ -45,15 +45,27 @@ function clamp01(value: number): number {
 
 function isClosedFist(pose: TrackedHandPose): boolean {
 	const fingers = pose.measurements?.fingers;
-	if (!fingers || pose.pose === "pinch" || pose.candidate === "pinch") {
+	if (!fingers) return false;
+
+	// Si l'un des doigts principaux est tendu, ce n'est pas un poing
+	if (
+		fingers.index === "extended" ||
+		fingers.middle === "extended" ||
+		fingers.ring === "extended" ||
+		fingers.pinky === "extended"
+	) {
 		return false;
 	}
-	return (
-		fingers.index === "folded" &&
-		fingers.middle === "folded" &&
-		fingers.ring === "folded" &&
-		fingers.pinky === "folded"
-	);
+
+	// Nombre de doigts repliés parmi index, majeur, annulaire, auriculaire
+	const foldedCount =
+		(fingers.index === "folded" ? 1 : 0) +
+		(fingers.middle === "folded" ? 1 : 0) +
+		(fingers.ring === "folded" ? 1 : 0) +
+		(fingers.pinky === "folded" ? 1 : 0);
+
+	// Au moins 3 doigts strictement repliés et aucun tendu (tolère une détection incertaine d'un doigt ou la proximité du pouce)
+	return foldedCount >= 3;
 }
 
 function shouldReleaseGrab(pose: TrackedHandPose): boolean {
@@ -141,6 +153,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 	let lastMirroredPosition: Point = { x: 0.5, y: 0.5 };
 
 	let grabSince: number | null = null;
+	let lastFistTimestamp: number | null = null;
 	let grabProgress = 0;
 	let leftButtonDown = false;
 	let dragging = false;
@@ -177,6 +190,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 
 	function clearGestureTimers() {
 		grabSince = null;
+		lastFistTimestamp = null;
 		grabProgress = 0;
 		leftClickSince = null;
 		rightClickSince = null;
@@ -202,6 +216,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 		leftButtonDown = false;
 		dragging = false;
 		grabSince = null;
+		lastFistTimestamp = null;
 		grabProgress = 0;
 		dragOriginPalm = null;
 		dragStartScreenPos = null;
@@ -338,6 +353,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 			scrollAnchorY = null;
 			scrollVelocity = 0;
 
+			lastFistTimestamp = tracking.timestamp;
 			grabSince ??= tracking.timestamp;
 			const elapsed = tracking.timestamp - grabSince;
 			grabProgress = Number(clamp01(elapsed / GRAB_HOLD_MS).toFixed(4));
@@ -362,8 +378,19 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 				freezeCursor: true,
 			};
 		} else {
-			grabSince = null;
-			grabProgress = 0;
+			// Tolère un bref scintillement (100 ms) sans réinitialiser la jauge brutalement
+			if (
+				grabSince !== null &&
+				lastFistTimestamp !== null &&
+				tracking.timestamp - lastFistTimestamp <= 100
+			) {
+				const elapsed = tracking.timestamp - grabSince;
+				grabProgress = Number(clamp01(elapsed / GRAB_HOLD_MS).toFixed(4));
+			} else {
+				grabSince = null;
+				lastFistTimestamp = null;
+				grabProgress = 0;
+			}
 		}
 
 		// 2. Accord à 3 doigts (Index + Majeur + Annulaire) : Clic droit

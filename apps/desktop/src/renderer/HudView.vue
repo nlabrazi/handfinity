@@ -23,6 +23,11 @@ let startY = 0;
 
 function onMouseDown(event: MouseEvent) {
 	if (event.button !== 0) return;
+	const target = event.target as HTMLElement | null;
+	const button = target?.closest("button");
+	if (button && !button.hasAttribute("data-hud-drag-handle")) {
+		return;
+	}
 	isDragging = true;
 	startX = event.screenX;
 	startY = event.screenY;
@@ -147,19 +152,19 @@ onBeforeUnmount(() => {
 		class="flex h-screen w-screen flex-col items-center justify-start bg-transparent p-1.5 select-none"
 	>
 		<!-- Capsule HUD principale on-top au milieu -->
-		<div
+		<section
 			data-hud-capsule
-			class="w-full max-w-[480px] rounded-2xl border border-white/15 bg-slate-950/90 p-2 shadow-2xl shadow-black/80 backdrop-blur-xl"
+			aria-label="Handfinity HUD"
+			@mousedown="onMouseDown"
+			class="w-full max-w-[480px] rounded-2xl border border-white/15 bg-slate-950/90 p-2 shadow-2xl shadow-black/80 backdrop-blur-xl cursor-grab active:cursor-grabbing"
 		>
 			<!-- Ligne supérieure : poignée, pastille d'état, notification flash, boutons d'action -->
 			<div class="flex items-center justify-between gap-2 text-xs">
-				<!-- Poignée de glisser-déposer native + fallback souris -->
+				<!-- Poignée de glisser-déposer -->
 				<button
 					type="button"
 					data-hud-drag-handle
-					@mousedown="onMouseDown"
 					@keydown.space.prevent="resetPosition"
-					style="-webkit-app-region: drag;"
 					class="flex cursor-grab items-center gap-1.5 text-slate-400 hover:text-cyan-300 active:cursor-grabbing"
 					title="Cliquer et glisser pour déplacer le HUD sur l'écran (Espace pour recentrer)"
 				>
@@ -213,10 +218,7 @@ onBeforeUnmount(() => {
 				</div>
 
 				<!-- Actions rapides : ouvrir clavier, recentrer, fermer -->
-				<div
-					style="-webkit-app-region: no-drag;"
-					class="flex items-center gap-1"
-				>
+				<div class="flex items-center gap-1">
 					<button
 						type="button"
 						@click="toggleKeyboard"
@@ -297,6 +299,6 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</Transition>
-		</div>
+		</section>
 	</div>
 </template>

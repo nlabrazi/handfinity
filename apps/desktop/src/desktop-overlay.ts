@@ -73,7 +73,6 @@ export function createDesktopOverlay(
 			hasShadow: false,
 			backgroundColor: "#00000000",
 			autoHideMenuBar: true,
-			type: "toolbar",
 			webPreferences: {
 				session: options.session,
 				preload: options.preloadPath,
@@ -85,7 +84,7 @@ export function createDesktopOverlay(
 		});
 
 		win.setMenu(null);
-		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setAlwaysOnTop(true, "screen-saver", 1000);
 		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 		win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 		win.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -133,7 +132,6 @@ export function createDesktopOverlay(
 			hasShadow: false,
 			backgroundColor: "#00000000",
 			autoHideMenuBar: true,
-			type: "toolbar",
 			webPreferences: {
 				session: options.session,
 				preload: options.preloadPath,
@@ -145,7 +143,7 @@ export function createDesktopOverlay(
 		});
 
 		win.setMenu(null);
-		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setAlwaysOnTop(true, "screen-saver", 1000);
 		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 		win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 		win.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -167,6 +165,13 @@ export function createDesktopOverlay(
 	}
 
 	function isTrusted(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+		if (
+			event.sender === keyboardWindow?.webContents ||
+			event.sender === hudWindow?.webContents ||
+			event.sender.session === options.session
+		) {
+			return true;
+		}
 		const frame = event.senderFrame;
 		if (!frame) return false;
 		return isAppUrl(frame.url);
@@ -281,7 +286,8 @@ export function createDesktopOverlay(
 	function show() {
 		const win = getOrCreateKeyboardWindow();
 		keyboardVisible = true;
-		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setAlwaysOnTop(false);
+		win.setAlwaysOnTop(true, "screen-saver", 1000);
 		win.moveTop();
 		win.showInactive();
 	}
@@ -315,7 +321,8 @@ export function createDesktopOverlay(
 		const win = getOrCreateHudWindow();
 		hudVisible = true;
 		hudDismissed = false;
-		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setAlwaysOnTop(false);
+		win.setAlwaysOnTop(true, "screen-saver", 1000);
 		win.moveTop();
 		win.showInactive();
 	}

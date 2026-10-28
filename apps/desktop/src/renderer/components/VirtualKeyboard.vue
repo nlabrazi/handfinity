@@ -50,6 +50,12 @@ let startY = 0;
 
 function onMouseDown(event: MouseEvent) {
 	if (event.button !== 0) return;
+	const target = event.target as HTMLElement | null;
+	const button = target?.closest("button");
+	// Si le clic provient d'une touche ou d'un bouton de contrôle, ne pas démarrer le glissement
+	if (button) {
+		return;
+	}
 	isDragging = true;
 	startX = event.screenX;
 	startY = event.screenY;
@@ -125,27 +131,23 @@ function send(key: string) {
 	<section
 		data-virtual-keyboard
 		aria-labelledby="virtual-keyboard-title"
-		class="space-y-2 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none"
+		@mousedown="onMouseDown"
+		class="space-y-2 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none cursor-grab active:cursor-grabbing"
 		:class="currentOpacityClass"
 	>
-		<!-- Poignée de glisser-déposer supérieure -->
-		<button
-			type="button"
+		<!-- Barre supérieure indicatrice de déplacement -->
+		<div
 			data-drag-handle
-			@mousedown="onMouseDown"
-			@keydown.space.prevent="resetPosition"
-			style="-webkit-app-region: drag;"
-			class="flex w-full cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 active:cursor-grabbing select-none"
-			title="Cliquer et glisser pour déplacer le clavier sur l'écran (Espace pour recentrer)"
+			class="flex w-full cursor-grab items-center justify-center rounded-lg border border-white/10 bg-white/5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-400/40 hover:bg-white/10 select-none pointer-events-none"
+			title="Cliquer et glisser n'importe où sur le clavier pour le déplacer"
 		>
-			<span class="flex items-center gap-1.5 pointer-events-none">
+			<span class="flex items-center gap-1.5">
 				<span class="font-mono text-cyan-400">⠿</span>
-				<span>Glisser pour déplacer le clavier</span>
+				<span>Glisser n'importe quelle zone pour déplacer le clavier</span>
 			</span>
-		</button>
+		</div>
 
 		<div
-			style="-webkit-app-region: no-drag;"
 			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2"
 		>
 			<div class="flex items-center gap-2">
@@ -217,7 +219,7 @@ function send(key: string) {
 			</div>
 		</div>
 
-		<div style="-webkit-app-region: no-drag;" class="space-y-1.5">
+		<div class="space-y-1.5">
 			<div
 				v-for="(row, rowIndex) in rows"
 				:key="rowIndex"
