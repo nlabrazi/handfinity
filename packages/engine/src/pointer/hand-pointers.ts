@@ -3,7 +3,6 @@ import type { HandObservation } from "../hand-observation";
 import type { HandPoseKind, TrackedHandPose } from "../poses/hand-pose-tracker";
 import type { HandTrackingFrame } from "../tracking/hand-identity-tracker";
 import { createOneEuroFilter } from "./one-euro-filter";
-import { createPointSmoother } from "./point-smoother";
 
 export type HandPointer = {
 	readonly handId: number;
@@ -27,7 +26,7 @@ export type HandPointerFrame = {
 };
 
 type PointerState = {
-	smoother: ReturnType<typeof createPointSmoother>;
+	smoother: ReturnType<typeof createOneEuroFilter>;
 	palmFilter: ReturnType<typeof createOneEuroFilter>;
 	timestamp: number | null;
 	active: boolean;
@@ -108,7 +107,7 @@ export function createHandPointerTracker() {
 			let state = states.get(hand.id);
 			if (!state) {
 				state = {
-					smoother: createPointSmoother(),
+					smoother: createOneEuroFilter({ minCutoff: 0.9, beta: 0.04 }),
 					palmFilter: createOneEuroFilter({ minCutoff: 1.2, beta: 0.04 }),
 					timestamp: null,
 					active: false,

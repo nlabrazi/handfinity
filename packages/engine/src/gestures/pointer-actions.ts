@@ -93,6 +93,27 @@ function isThreeFingerChord(pose: TrackedHandPose): boolean {
 }
 
 /**
+ * Détecte le début d'un accord (dès que le majeur ou l'annulaire quitte l'état replié),
+ * pour geler immédiatement le curseur avant tout tremblement biomécanique de l'index.
+ */
+function isChordOnset(pose: TrackedHandPose): boolean {
+	const fingers = pose.measurements?.fingers;
+	if (
+		!fingers ||
+		pose.pose === "open-palm" ||
+		pose.candidate === "open-palm" ||
+		pose.pose === "pinch" ||
+		pose.candidate === "pinch"
+	) {
+		return false;
+	}
+	return (
+		fingers.index === "extended" &&
+		(fingers.middle !== "folded" || fingers.ring !== "folded")
+	);
+}
+
+/**
  * Modèle ergonomique multimodal ancré sur la paume :
  * - ✊ Poing fermé (600 ms) : Saisir & Glisser (Grab & Drag piloté par le centre de la paume)
  * - ✌️ 2 doigts tendus (Index + Majeur) : Clic gauche
@@ -240,6 +261,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 		const isFresh =
 			hand.observation.timestamp === tracking.timestamp &&
 			lastProcessedTimestamp !== tracking.timestamp;
+		const chordOnset = isChordOnset(pose);
 		if (!isFresh) {
 			return {
 				state: getState(),
@@ -250,7 +272,8 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 					grabSince !== null ||
 					leftClickSince !== null ||
 					rightClickSince !== null ||
-					scrolling,
+					scrolling ||
+					chordOnset,
 			};
 		}
 		lastProcessedTimestamp = tracking.timestamp;
@@ -268,6 +291,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 			!twoFinger &&
 			!threeFinger &&
 			!pinchScroll &&
+			!chordOnset &&
 			!leftButtonDown
 		) {
 			lastMirroredPosition = project({
@@ -448,7 +472,7 @@ export function createPointerActionTracker(options?: PointerActionOptions) {
 			state: getState(),
 			actions,
 			dragMove,
-			freezeCursor: false,
+			freezeCursor: chordOnset,
 		};
 	}
 

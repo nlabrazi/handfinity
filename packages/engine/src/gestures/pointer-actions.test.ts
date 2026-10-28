@@ -201,6 +201,29 @@ describe("Palm-anchored pointer actions (fist grab, finger chords, joystick scro
 		]);
 	});
 
+	it("freezes the cursor immediately when chord onset begins, preventing index twitch from moving the cursor", () => {
+		const identities = createHandIdentityTracker();
+		const engine = createGestureEngine();
+		const observe = (
+			kind: TestFixtureKind,
+			timestamp: number,
+			dx = 0,
+			dy = 0,
+		) =>
+			engine.update(
+				identities.update([makeHand(kind, timestamp, dx, dy)], timestamp),
+			);
+
+		observe("pointing", 0);
+		const pointed = observe("pointing", 80);
+		expect(pointed.commands).toHaveLength(1);
+
+		// Le majeur commence à s'ouvrir (accord à deux doigts avec sursaut de l'index dx = 0.03) :
+		// le curseur est immédiatement figé, aucune commande parasite de déplacement n'est émise.
+		const twitching = observe("two-fingers", 100, 0.03, 0.02);
+		expect(twitching.commands).toEqual([]);
+	});
+
 	it("emits a right-click on a 3-finger chord without firing a false left-click during transition", () => {
 		const identities = createHandIdentityTracker();
 		const engine = createGestureEngine();
