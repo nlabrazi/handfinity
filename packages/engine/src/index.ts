@@ -15,6 +15,18 @@ export type {
 	GestureEngineOptions,
 } from "./gesture-engine";
 export { createGestureEngine } from "./gesture-engine";
+export type {
+	BimanualGesturePhase,
+	BimanualGestureState,
+} from "./gestures/bimanual-gestures";
+export {
+	BIMANUAL_COOLDOWN_MS,
+	createBimanualGestureTracker,
+	MAX_BIMANUAL_WINDOW_MS,
+	MIN_TOGETHER_CONFIRM_MS,
+	PALMS_APART_THRESHOLD,
+	PALMS_CLOSE_THRESHOLD,
+} from "./gestures/bimanual-gestures";
 export type { Point } from "./gestures/pinch";
 export type {
 	PointerActionOptions,

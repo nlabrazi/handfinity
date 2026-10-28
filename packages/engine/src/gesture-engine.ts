@@ -4,6 +4,10 @@ import {
 	type GestureControlFrame,
 } from "./control/gesture-control";
 import {
+	type BimanualGestureState,
+	createBimanualGestureTracker,
+} from "./gestures/bimanual-gestures";
+import {
 	createPointerActionTracker,
 	type PointerActionState,
 } from "./gestures/pointer-actions";
@@ -36,6 +40,8 @@ export type GestureEngineFrame = {
 	readonly actions: readonly PointerActionCommand[];
 	/** État courant des actions (bouton maintenu, glisser-déposer, défilement). */
 	readonly actionState: PointerActionState;
+	/** État du geste bimanuel (ex: rapprochement puis écartement des paumes). */
+	readonly bimanual: BimanualGestureState;
 };
 
 /** Interprétation commune ; les identités sont fournies par la session de suivi. */
@@ -43,6 +49,7 @@ export function createGestureEngine(options?: GestureEngineOptions) {
 	const poseTracker = createHandPoseTracker();
 	const pointerTracker = createHandPointerTracker();
 	const controlTracker = createGestureControl();
+	const bimanualTracker = createBimanualGestureTracker();
 	const actionTracker = createPointerActionTracker({
 		activeZone: options?.activeZone,
 	});
@@ -81,6 +88,7 @@ export function createGestureEngine(options?: GestureEngineOptions) {
 			pointers,
 			control.paused,
 		);
+		const bimanual = bimanualTracker.update(tracking);
 		const hasNewObservation = tracking.hands.some(
 			(hand) =>
 				hand.status === "tracked" &&
@@ -119,6 +127,7 @@ export function createGestureEngine(options?: GestureEngineOptions) {
 			commands,
 			actions: actionResult.actions,
 			actionState: actionResult.state,
+			bimanual,
 		};
 	}
 
@@ -126,6 +135,7 @@ export function createGestureEngine(options?: GestureEngineOptions) {
 		poseTracker.reset();
 		pointerTracker.reset();
 		controlTracker.reset();
+		bimanualTracker.reset();
 		actionTracker.reset();
 		lastObservationTimestamp = null;
 	}
