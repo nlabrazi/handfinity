@@ -13,5 +13,10 @@
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true
 	},
-	"include": ["src/main.ts", "src/application-policy.ts", "src/preload.cts"]
+	"include": [
+		"src/main.ts",
+		"src/desktop-tray.ts",
+		"src/application-policy.ts",
+		"src/preload.cts"
+	]
 }

@@ -18,6 +18,7 @@ import {
 	isAppUrl,
 	resolveRendererFile,
 } from "./application-policy.js";
+import { createDesktopTray, type DesktopTray } from "./desktop-tray.js";
 import { createPointerController } from "./pointer-controller.js";
 import { POINTER_STATE_CHANNEL, registerPointerIpc } from "./pointer-ipc.js";
 import { createWindowsPointer } from "./windows-pointer.js";
@@ -34,6 +35,8 @@ app.setName("Handfinity");
 // La vision reste une tâche interactive même lorsque sa fenêtre est réduite.
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
+let tray: DesktopTray | null = null;
 
 async function start() {
 	const stopShortcut = "Control+Alt+Escape";
@@ -51,12 +54,34 @@ async function start() {
 				!mainWindow.webContents.isDestroyed()
 			)
 				mainWindow.webContents.send(POINTER_STATE_CHANNEL, state);
+			tray?.update();
 		},
 	});
 	const disposePointerIpc = registerPointerIpc(() => mainWindow, pointer);
+
+	tray = createDesktopTray({
+		getWindow: () => mainWindow,
+		getPointerState: () => pointer.getState(),
+		onTogglePointer: async () => {
+			const current = pointer.getState();
+			if (current.phase === "disabled") {
+				await pointer.enable();
+			} else {
+				pointer.disable();
+			}
+		},
+		onQuit: () => {
+			isQuitting = true;
+			app.quit();
+		},
+	});
+
 	app.on("before-quit", () => {
+		isQuitting = true;
 		pointer.disable();
 		disposePointerIpc();
+		tray?.destroy();
+		tray = null;
 	});
 	const appSession = session.fromPartition("handfinity");
 	const rendererRoot = join(import.meta.dirname, "renderer");
@@ -162,10 +187,22 @@ async function start() {
 		});
 		window.webContents.on("render-process-gone", () => pointer.disable());
 		window.webContents.on("destroyed", () => pointer.disable());
+		window.on("show", () => tray?.update());
+		window.on("hide", () => tray?.update());
+		window.on("minimize", () => tray?.update());
+		window.on("restore", () => tray?.update());
+		window.on("close", (event) => {
+			if (!isQuitting) {
+				event.preventDefault();
+				window.hide();
+				tray?.update();
+			}
+		});
 		window.on("closed", () => {
 			preparation.abort();
 			if (mainWindow === window) mainWindow = null;
 			pointer.disable();
+			tray?.update();
 		});
 		try {
 			await window.loadURL(APP_URL);
@@ -181,7 +218,13 @@ async function start() {
 
 	await createWindow();
 	app.on("activate", () => {
-		if (!mainWindow) void createWindow().catch(reportFailure);
+		if (mainWindow) {
+			if (mainWindow.isMinimized()) mainWindow.restore();
+			mainWindow.show();
+			mainWindow.focus();
+		} else {
+			void createWindow().catch(reportFailure);
+		}
 	});
 }
 

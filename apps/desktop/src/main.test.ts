@@ -10,9 +10,21 @@ type PointerOptions = {
 };
 
 const electron = vi.hoisted(() => {
+	class MockTray {
+		setToolTip = vi.fn();
+		setContextMenu = vi.fn();
+		on = vi.fn();
+		destroy = vi.fn();
+	}
+
 	const window = {
 		setMenu: vi.fn(),
 		show: vi.fn(),
+		hide: vi.fn(),
+		restore: vi.fn(),
+		focus: vi.fn(),
+		isVisible: vi.fn(() => true),
+		isMinimized: vi.fn(() => false),
 		loadURL: vi.fn().mockResolvedValue(undefined),
 		isDestroyed: vi.fn(() => false),
 		on: vi.fn<
@@ -32,6 +44,15 @@ const electron = vi.hoisted(() => {
 	};
 	return {
 		window,
+		MockTray,
+		Tray: vi.fn(MockTray),
+		Menu: {
+			buildFromTemplate: vi.fn((template) => ({ template })),
+		},
+		nativeImage: {
+			createFromPath: vi.fn(() => ({ isEmpty: () => false })),
+			createFromDataURL: vi.fn(() => ({ isEmpty: () => false })),
+		},
 		BrowserWindow: vi.fn(
 			class {
 				constructor(_options: unknown) {
@@ -109,6 +130,9 @@ vi.mock("electron", () => ({
 	ipcMain: electron.ipcMain,
 	screen: electron.screen,
 	globalShortcut: electron.globalShortcut,
+	Tray: electron.Tray,
+	Menu: electron.Menu,
+	nativeImage: electron.nativeImage,
 }));
 vi.mock("./pointer-controller", () => ({
 	createPointerController: pointer.create,
@@ -280,6 +304,28 @@ describe("Desktop background tracking lifecycle", () => {
 		expect(electron.app.quit).not.toHaveBeenCalled();
 		emit(electron.app.on.mock.calls, "window-all-closed");
 		expect(electron.app.quit).toHaveBeenCalledOnce();
+	});
+
+	it("hides the window instead of quitting when close event is triggered before application quit", () => {
+		const event = { preventDefault: vi.fn() };
+		emit(electron.window.on.mock.calls, "close", event);
+		expect(event.preventDefault).toHaveBeenCalledOnce();
+		expect(electron.window.hide).toHaveBeenCalledOnce();
+	});
+
+	it("allows the window to close when application is quitting", () => {
+		emit(electron.app.on.mock.calls, "before-quit");
+		const event = { preventDefault: vi.fn() };
+		emit(electron.window.on.mock.calls, "close", event);
+		expect(event.preventDefault).not.toHaveBeenCalled();
+	});
+
+	it("restores and focuses an existing minimized window on app activate", () => {
+		electron.window.isMinimized.mockReturnValue(true);
+		emit(electron.app.on.mock.calls, "activate");
+		expect(electron.window.restore).toHaveBeenCalledOnce();
+		expect(electron.window.show).toHaveBeenCalled();
+		expect(electron.window.focus).toHaveBeenCalledOnce();
 	});
 });
 
