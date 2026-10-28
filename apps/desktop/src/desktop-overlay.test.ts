@@ -11,6 +11,8 @@ const electron = vi.hoisted(() => {
 	const mockWindow = {
 		setMenu: vi.fn(),
 		setAlwaysOnTop: vi.fn(),
+		setVisibleOnAllWorkspaces: vi.fn(),
+		moveTop: vi.fn(),
 		show: vi.fn(),
 		showInactive: vi.fn(),
 		hide: vi.fn(),
@@ -118,6 +120,7 @@ describe("desktop-overlay", () => {
 		expect(electron.mockWindow.setAlwaysOnTop).toHaveBeenCalledWith(
 			true,
 			"screen-saver",
+			1,
 		);
 		expect(electron.mockWindow.loadURL).toHaveBeenCalledWith(
 			"handfinity://app/?view=overlay#overlay",

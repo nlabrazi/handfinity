@@ -59,6 +59,7 @@ export function createDesktopOverlay(
 			hasShadow: false,
 			backgroundColor: "#00000000",
 			autoHideMenuBar: true,
+			type: "toolbar",
 			webPreferences: {
 				session: options.session,
 				preload: options.preloadPath,
@@ -70,7 +71,8 @@ export function createDesktopOverlay(
 		});
 
 		win.setMenu(null);
-		win.setAlwaysOnTop(true, "screen-saver");
+		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 		win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 		win.webContents.on("will-navigate", (event) => event.preventDefault());
 		win.webContents.on("will-attach-webview", (event) =>
@@ -121,6 +123,8 @@ export function createDesktopOverlay(
 	function show() {
 		const win = getOrCreateWindow();
 		visible = true;
+		win.setAlwaysOnTop(true, "screen-saver", 1);
+		win.moveTop();
 		win.showInactive();
 	}
 

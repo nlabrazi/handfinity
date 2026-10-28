@@ -14,6 +14,36 @@ const layout = ref<"azerty" | "qwerty">("azerty");
 const uppercase = ref(false);
 const lastSentKey = ref<string | null>(null);
 
+const opacityOptions = [
+	{
+		label: "20%",
+		class:
+			"bg-slate-950/20 border-cyan-500/25 shadow-black/40 backdrop-blur-md",
+	},
+	{
+		label: "40%",
+		class:
+			"bg-slate-950/40 border-cyan-500/35 shadow-black/60 backdrop-blur-lg",
+	},
+	{
+		label: "70%",
+		class:
+			"bg-slate-900/70 border-cyan-500/45 shadow-black/80 backdrop-blur-xl",
+	},
+] as const;
+
+const opacityIndex = ref(0);
+const currentOpacityClass = computed(
+	() => opacityOptions[opacityIndex.value]?.class ?? opacityOptions[0].class,
+);
+const currentOpacityLabel = computed(
+	() => opacityOptions[opacityIndex.value]?.label ?? "20%",
+);
+
+function cycleOpacity() {
+	opacityIndex.value = (opacityIndex.value + 1) % opacityOptions.length;
+}
+
 const rows = computed(() => {
 	const base =
 		layout.value === "azerty"
@@ -56,47 +86,58 @@ function send(key: string) {
 	<section
 		data-virtual-keyboard
 		aria-labelledby="virtual-keyboard-title"
-		class="space-y-3 rounded-xl border border-cyan-500/40 bg-slate-900/95 p-4 text-sm shadow-2xl shadow-cyan-950/60 backdrop-blur-md"
+		class="space-y-2.5 rounded-2xl border p-3 text-sm shadow-2xl transition-all duration-200 select-none"
+		:class="currentOpacityClass"
 	>
 		<div
-			class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3"
+			class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2"
 		>
 			<div class="flex items-center gap-2">
 				<span
-					class="rounded bg-cyan-950 px-2 py-0.5 text-xs font-semibold text-cyan-400 border border-cyan-800"
+					class="rounded bg-cyan-950/60 px-2 py-0.5 text-xs font-semibold text-cyan-300 border border-cyan-800/50"
 				>
-					POP-UP
+					OVERLAY
 				</span>
 				<div>
-					<h2 id="virtual-keyboard-title" class="font-medium text-white">
+					<h2
+						id="virtual-keyboard-title"
+						class="font-medium text-white/95 text-xs"
+					>
 						Clavier virtuel Windows
 					</h2>
-					<p class="text-xs text-slate-400">
-						Pointez et pincez une touche · Geste : rapprochez puis écartez les
-						paumes 👐
+					<p class="text-[11px] text-slate-400">
+						Sans perte de focus · Pointez et cliquez ou touchez
 					</p>
 				</div>
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex items-center gap-1.5 text-xs">
 				<span
 					v-if="lastSentKey"
-					class="rounded bg-slate-800 px-2 py-1 font-mono text-xs text-cyan-300"
+					class="rounded bg-slate-800/60 px-2 py-0.5 font-mono text-cyan-300 border border-cyan-700/40"
 				>
-					Touche : {{ lastSentKey }}
+					{{ lastSentKey }}
 				</span>
+				<button
+					type="button"
+					@click="cycleOpacity"
+					title="Changer le niveau de transparence"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-slate-300 hover:bg-white/15"
+				>
+					Transparence : {{ currentOpacityLabel }}
+				</button>
 				<button
 					type="button"
 					@click="uppercase = !uppercase"
 					:aria-pressed="uppercase"
-					class="rounded border border-slate-600 px-2.5 py-1 text-xs font-medium hover:bg-slate-800"
-					:class="uppercase ? 'bg-cyan-800 text-white' : 'bg-slate-950 text-slate-300'"
+					class="rounded border px-2 py-0.5 font-medium transition-colors"
+					:class="uppercase ? 'bg-cyan-600/50 text-white border-cyan-400/60' : 'bg-white/5 text-slate-300 border-white/15 hover:bg-white/15'"
 				>
 					⇧ Maj
 				</button>
 				<button
 					type="button"
 					@click="layout = layout === 'azerty' ? 'qwerty' : 'azerty'"
-					class="rounded border border-slate-600 bg-slate-950 px-2.5 py-1 text-xs font-medium uppercase text-slate-300 hover:bg-slate-800"
+					class="rounded border border-white/15 bg-white/5 px-2 py-0.5 font-medium uppercase text-slate-300 hover:bg-white/15"
 				>
 					{{ layout }}
 				</button>
@@ -105,9 +146,9 @@ function send(key: string) {
 					data-close-keyboard
 					@click="emit('close')"
 					aria-label="Fermer le clavier virtuel"
-					class="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 hover:border-slate-500 hover:bg-slate-700 hover:text-white"
+					class="rounded-lg border border-red-500/30 bg-red-950/30 px-2 py-0.5 font-medium text-red-300 hover:bg-red-900/50 hover:text-white"
 				>
-					✕ Fermer
+					✕
 				</button>
 			</div>
 		</div>
@@ -124,20 +165,20 @@ function send(key: string) {
 					type="button"
 					:disabled="disabled"
 					@click="send(key)"
-					class="rounded-md border border-slate-700 bg-slate-950 py-2.5 font-mono text-sm font-semibold text-white hover:border-cyan-500 hover:bg-slate-800 active:bg-cyan-700 disabled:opacity-40"
+					class="rounded-lg border border-white/10 bg-slate-900/30 py-2 font-mono text-sm font-semibold text-white/95 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30"
 				>
 					{{ key }}
 				</button>
 			</div>
 
-			<div class="grid grid-cols-4 gap-1.5 pt-1 sm:grid-cols-8">
+			<div class="grid grid-cols-4 gap-1.5 pt-0.5 sm:grid-cols-8">
 				<button
 					v-for="special in specialKeys"
 					:key="special.value"
 					type="button"
 					:disabled="disabled"
 					@click="send(special.value)"
-					class="rounded-md border border-slate-700 bg-slate-800/80 px-2 py-2 text-xs font-medium text-slate-200 hover:border-cyan-500 hover:bg-slate-700 active:bg-cyan-700 disabled:opacity-40"
+					class="rounded-lg border border-white/10 bg-slate-800/30 px-2 py-1.5 text-xs font-medium text-slate-200/90 shadow-sm transition-all hover:border-cyan-400/60 hover:bg-cyan-950/40 active:bg-cyan-500/50 disabled:opacity-30"
 				>
 					{{ special.label }}
 				</button>

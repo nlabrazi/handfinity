@@ -18,7 +18,6 @@ import {
 } from "@handfinity/vision";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import type { PointerControlState } from "../pointer-contract";
-import VirtualKeyboard from "./components/VirtualKeyboard.vue";
 import { toPointerUpdate } from "./pointer-update";
 
 const bridge = window.handfinityPointer;
@@ -33,7 +32,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 const isRunning = ref(false);
 const isLoading = ref(false);
-const showKeyboard = ref(false);
+const overlayKeyboardOpen = ref(false);
 const handCount = ref(0);
 const processedFrames = ref(0);
 const cameraError = ref("");
@@ -211,19 +210,6 @@ function submit(frame: GestureEngineFrame) {
 	if (update) bridge.submit(update);
 }
 
-function sendVirtualKey(key: string) {
-	const sessionId = state.value.sessionId;
-	lastActionLabel.value = `key: ${key}`;
-	if (!bridge || sessionId === null) return;
-	bridge.submit({
-		sessionId,
-		capturedAt: performance.timeOrigin + performance.now(),
-		paused: controlFrame.value.paused,
-		command: null,
-		keys: [key],
-	});
-}
-
 function handColor(id: number) {
 	return (
 		["#22d3ee", "#fb923c", "#a78bfa", "#4ade80"][(id - 1) % 4] ?? "#22d3ee"
@@ -381,9 +367,12 @@ function drawHands(hands: readonly HandObservation[]) {
 	}
 }
 
-function toggleKeyboard() {
-	void window.handfinityOverlay?.toggle();
-	showKeyboard.value = !showKeyboard.value;
+async function toggleKeyboard() {
+	if (window.handfinityOverlay) {
+		overlayKeyboardOpen.value = await window.handfinityOverlay.toggle();
+	} else {
+		overlayKeyboardOpen.value = !overlayKeyboardOpen.value;
+	}
 }
 
 function handleTrackingFrame({
@@ -401,10 +390,8 @@ function handleTrackingFrame({
 	actionState.value = frame.actionState;
 	bimanualState.value = frame.bimanual;
 	if (frame.bimanual.keyboardToggle) {
-		toggleKeyboard();
-		lastActionLabel.value = showKeyboard.value
-			? "clavier : pop-up ouvert 👐"
-			: "clavier : masqué 👐";
+		void toggleKeyboard();
+		lastActionLabel.value = "clavier virtuel Windows 👐";
 	}
 	const latestAction = frame.actions.at(-1);
 	if (latestAction) {
@@ -511,9 +498,13 @@ onBeforeUnmount(() => {
 						data-toggle-keyboard
 						@click="toggleKeyboard"
 						class="rounded border px-2.5 py-1 text-slate-200 transition-colors hover:bg-slate-800"
-						:class="showKeyboard ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300' : 'border-slate-700 bg-slate-900'"
+						:class="overlayKeyboardOpen ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300' : 'border-slate-700 bg-slate-900'"
 					>
-						{{ showKeyboard ? "Masquer le clavier" : "Clavier pop-up (ou 👐)" }}
+						{{
+							overlayKeyboardOpen
+								? "Masquer clavier Windows"
+								: "Clavier virtuel Windows (👐)"
+						}}
 					</button>
 					<span>
 						Emergency stop:
@@ -688,30 +679,5 @@ onBeforeUnmount(() => {
 				</div>
 			</section>
 		</div>
-
-		<Teleport to="body">
-			<Transition
-				enter-active-class="transition duration-200 ease-out"
-				enter-from-class="opacity-0 translate-y-6 scale-95"
-				enter-to-class="opacity-100 translate-y-0 scale-100"
-				leave-active-class="transition duration-150 ease-in"
-				leave-from-class="opacity-100 translate-y-0 scale-100"
-				leave-to-class="opacity-0 translate-y-6 scale-95"
-			>
-				<div
-					v-if="showKeyboard"
-					class="fixed inset-x-0 bottom-4 z-50 mx-auto max-w-3xl px-4 filter drop-shadow-2xl"
-					role="dialog"
-					aria-modal="true"
-					aria-label="Clavier virtuel pop-up"
-				>
-					<VirtualKeyboard
-						:disabled="!enabled"
-						@close="showKeyboard = false"
-						@press-key="sendVirtualKey"
-					/>
-				</div>
-			</Transition>
-		</Teleport>
 	</main>
 </template>
