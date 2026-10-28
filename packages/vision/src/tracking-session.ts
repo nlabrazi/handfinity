@@ -4,7 +4,11 @@ import {
 	type HandTrackingFrame,
 } from "@handfinity/engine";
 import { startCamera, stopCamera } from "./camera";
-import { createHandTracker, type HandTracker } from "./hand-tracker";
+import {
+	createHandTracker,
+	type HandTracker,
+	type HandTrackerOptions,
+} from "./hand-tracker";
 
 export type TrackingSessionFrame = {
 	/** Vide si hasNewFrame vaut false ; aucun résultat vidéo n'est rejoué. */
@@ -32,6 +36,8 @@ export type TrackingSession = {
 export type TrackingSessionOptions = {
 	/** Le bureau utilise un timer avec le throttling Electron désactivé. */
 	scheduling?: "animation-frame" | "timer";
+	/** Options de chargement des modèles et binaires WASM MediaPipe. */
+	tracker?: HandTrackerOptions;
 };
 
 type SessionRun = {
@@ -99,7 +105,7 @@ export function createTrackingSession(
 				throw run.abort.signal.reason;
 			}
 			run.stream = stream;
-			const tracker = await createHandTracker();
+			const tracker = await createHandTracker(options.tracker);
 			if (current !== run) {
 				tracker.close();
 				throw run.abort.signal.reason;

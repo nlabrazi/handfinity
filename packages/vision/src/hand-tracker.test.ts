@@ -5,7 +5,12 @@ import type {
 	NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHandTracker } from "./hand-tracker";
+import {
+	createHandTracker,
+	DEFAULT_LOCAL_WASM_PATH,
+	DEFAULT_REMOTE_MODEL_PATH,
+	DEFAULT_REMOTE_WASM_PATH,
+} from "./hand-tracker";
 
 const landmarker = vi.hoisted(() => ({
 	detectForVideo: vi.fn<HandLandmarker["detectForVideo"]>(),
@@ -229,6 +234,58 @@ describe("Hand observations", () => {
 			expect.anything(),
 			expect.objectContaining({
 				baseOptions: expect.objectContaining({ delegate: "CPU" }),
+			}),
+		);
+	});
+
+	it("attempts local offline assets first, and falls back to remote CDN URLs when local loading fails", async () => {
+		const { FilesetResolver, HandLandmarker } = await import(
+			"@mediapipe/tasks-vision"
+		);
+
+		// Local wasm succeeds, but local model loading fails (both GPU and CPU)
+		vi.mocked(HandLandmarker.createFromOptions)
+			.mockRejectedValueOnce(new Error("Local model 404 (GPU)"))
+			.mockRejectedValueOnce(new Error("Local model 404 (CPU)"));
+
+		await createHandTracker();
+
+		// Should have tried local wasm first
+		expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(
+			1,
+			DEFAULT_LOCAL_WASM_PATH,
+		);
+		// Then fallen back to remote wasm and model
+		expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(
+			2,
+			DEFAULT_REMOTE_WASM_PATH,
+		);
+		expect(HandLandmarker.createFromOptions).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				baseOptions: expect.objectContaining({
+					modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
+				}),
+			}),
+		);
+	});
+
+	it("uses remote URLs directly when preferLocal is false", async () => {
+		const { FilesetResolver, HandLandmarker } = await import(
+			"@mediapipe/tasks-vision"
+		);
+
+		await createHandTracker({ preferLocal: false });
+
+		expect(FilesetResolver.forVisionTasks).toHaveBeenCalledWith(
+			DEFAULT_REMOTE_WASM_PATH,
+		);
+		expect(HandLandmarker.createFromOptions).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				baseOptions: expect.objectContaining({
+					modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
+				}),
 			}),
 		);
 	});
