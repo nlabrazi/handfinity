@@ -18,6 +18,10 @@ import {
 	isAppUrl,
 	resolveRendererFile,
 } from "./application-policy.js";
+import {
+	createDesktopOverlay,
+	type DesktopOverlay,
+} from "./desktop-overlay.js";
 import { createDesktopTray, type DesktopTray } from "./desktop-tray.js";
 import { createPointerController } from "./pointer-controller.js";
 import { POINTER_STATE_CHANNEL, registerPointerIpc } from "./pointer-ipc.js";
@@ -37,12 +41,14 @@ app.commandLine.appendSwitch("disable-renderer-backgrounding");
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let tray: DesktopTray | null = null;
+let overlay: DesktopOverlay | null = null;
 
 async function start() {
 	const stopShortcut = "Control+Alt+Escape";
+	const windowsDriver = createWindowsPointer();
 	const pointer = createPointerController({
 		supported: process.platform === "win32",
-		driver: createWindowsPointer(),
+		driver: windowsDriver,
 		getBounds: () =>
 			screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds),
 		registerStop: (stop) => globalShortcut.register(stopShortcut, stop),
@@ -58,6 +64,26 @@ async function start() {
 		},
 	});
 	const disposePointerIpc = registerPointerIpc(() => mainWindow, pointer);
+	const appSession = session.fromPartition("handfinity");
+
+	overlay = createDesktopOverlay({
+		session: appSession,
+		preloadPath: join(import.meta.dirname, "preload.cjs"),
+		onKeyPress: (key) => {
+			const state = pointer.getState();
+			if (state.sessionId !== null) {
+				pointer.submit({
+					sessionId: state.sessionId,
+					capturedAt: performance.timeOrigin + performance.now(),
+					paused: false,
+					command: null,
+					keys: [key],
+				});
+			} else if (windowsDriver.sendKey) {
+				void windowsDriver.sendKey(key, performance.now() + 500);
+			}
+		},
+	});
 
 	tray = createDesktopTray({
 		getWindow: () => mainWindow,
@@ -69,6 +95,9 @@ async function start() {
 			} else {
 				pointer.disable();
 			}
+		},
+		onToggleOverlay: () => {
+			overlay?.toggle();
 		},
 		onQuit: () => {
 			isQuitting = true;
@@ -82,8 +111,9 @@ async function start() {
 		disposePointerIpc();
 		tray?.destroy();
 		tray = null;
+		overlay?.destroy();
+		overlay = null;
 	});
-	const appSession = session.fromPartition("handfinity");
 	const rendererRoot = join(import.meta.dirname, "renderer");
 	appSession.protocol.handle(APP_SCHEME, async (request) => {
 		const file = resolveRendererFile(request.url, rendererRoot);

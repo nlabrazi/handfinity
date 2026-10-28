@@ -2,6 +2,7 @@ import electron = require("electron");
 
 import type {
 	PointerControlState,
+	SystemOverlayBridge,
 	SystemPointerBridge,
 } from "./pointer-contract.js" with { "resolution-mode": "import" };
 
@@ -26,4 +27,26 @@ const bridge: SystemPointerBridge = {
 	},
 };
 
+const overlayBridge: SystemOverlayBridge = {
+	toggle: () => electron.ipcRenderer.invoke("handfinity:overlay:toggle"),
+	pressKey: (key: string) =>
+		electron.ipcRenderer.send("handfinity:overlay:press-key", key),
+	close: () => electron.ipcRenderer.send("handfinity:overlay:close"),
+	subscribeFeedback(listener) {
+		if (typeof listener !== "function") {
+			throw new TypeError("A feedback listener is required");
+		}
+		const receive = (_event: electron.IpcRendererEvent, action: string) =>
+			listener(action);
+		electron.ipcRenderer.on("handfinity:overlay:feedback", receive);
+		return () => {
+			electron.ipcRenderer.removeListener(
+				"handfinity:overlay:feedback",
+				receive,
+			);
+		};
+	},
+};
+
 electron.contextBridge.exposeInMainWorld("handfinityPointer", bridge);
+electron.contextBridge.exposeInMainWorld("handfinityOverlay", overlayBridge);

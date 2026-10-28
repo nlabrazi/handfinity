@@ -256,6 +256,27 @@ describe("desktop-tray", () => {
 		expect(onTogglePointer).toHaveBeenCalledOnce();
 	});
 
+	it("invokes onToggleOverlay from the context menu", () => {
+		const onToggleOverlay = vi.fn();
+		createDesktopTray({
+			getWindow: () => window as unknown as BrowserWindow,
+			getPointerState: () => pointerState,
+			onTogglePointer,
+			onToggleOverlay,
+			onQuit,
+		});
+
+		const template = electron.Menu.buildFromTemplate.mock
+			.calls[0]?.[0] as MenuItemConstructorOptions[];
+		const overlayItem = template?.find(
+			(i) => i.label === "Clavier virtuel (Overlay)",
+		);
+		expect(overlayItem).toBeDefined();
+
+		overlayItem?.click?.({} as never, {} as never, {} as never);
+		expect(onToggleOverlay).toHaveBeenCalledOnce();
+	});
+
 	it("invokes onQuit when quitting from context menu", () => {
 		createDesktopTray({
 			getWindow: () => window as unknown as BrowserWindow,

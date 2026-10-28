@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+html:has([data-overlay-root]),
+body:has([data-overlay-root]) {
+	background: transparent;
+	background-color: transparent;
+	overflow: hidden;
+}

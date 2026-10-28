@@ -84,6 +84,7 @@ export interface DesktopTrayOptions {
 	getWindow(): BrowserWindow | null;
 	getPointerState(): PointerControlState;
 	onTogglePointer(): unknown;
+	onToggleOverlay?(): unknown;
 	onQuit(): void;
 	iconPath?: string;
 }
@@ -137,6 +138,12 @@ export function buildTrayMenuTemplate(
 			click: () => {
 				void options.onTogglePointer();
 				update();
+			},
+		},
+		{
+			label: "Clavier virtuel (Overlay)",
+			click: () => {
+				void options.onToggleOverlay?.();
 			},
 		},
 		{ type: "separator" },

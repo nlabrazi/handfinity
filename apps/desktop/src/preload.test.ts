@@ -4,6 +4,7 @@ import ts from "typescript";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	PointerControlState,
+	SystemOverlayBridge,
 	SystemPointerBridge,
 } from "./pointer-contract";
 
@@ -15,7 +16,10 @@ const electron = vi.hoisted(() => ({
 	removeListener: vi.fn(),
 }));
 
-function loadBridge(): SystemPointerBridge {
+function loadBridges(): {
+	pointer: SystemPointerBridge;
+	overlay: SystemOverlayBridge;
+} {
 	const source = readFileSync(
 		new URL("./preload.cts", import.meta.url),
 		"utf8",
@@ -44,10 +48,23 @@ function loadBridge(): SystemPointerBridge {
 	});
 	runInNewContext(compiled, { exports: {}, require: loadModule });
 	expect(loadModule).toHaveBeenCalledExactlyOnceWith("electron");
-	expect(electron.expose).toHaveBeenCalledOnce();
-	const [name, bridge] = electron.expose.mock.calls[0] ?? [];
-	expect(name).toBe("handfinityPointer");
-	return bridge;
+	expect(electron.expose).toHaveBeenCalledTimes(2);
+
+	const pointerCall = electron.expose.mock.calls.find(
+		([name]) => name === "handfinityPointer",
+	);
+	const overlayCall = electron.expose.mock.calls.find(
+		([name]) => name === "handfinityOverlay",
+	);
+
+	if (!pointerCall || !overlayCall) {
+		throw new Error("Preload bridges not properly exposed");
+	}
+
+	return {
+		pointer: pointerCall[1] as SystemPointerBridge,
+		overlay: overlayCall[1] as SystemOverlayBridge,
+	};
 }
 
 beforeEach(() => {
@@ -56,7 +73,7 @@ beforeEach(() => {
 
 describe("System pointer preload bridge", () => {
 	it("exposes fixed capabilities without a general Electron API", async () => {
-		const bridge = await loadBridge();
+		const { pointer: bridge } = loadBridges();
 		expect(Object.keys(bridge)).toEqual([
 			"getState",
 			"enable",
@@ -92,7 +109,7 @@ describe("System pointer preload bridge", () => {
 	});
 
 	it("forwards state without the privileged event and unsubscribes the exact listener", async () => {
-		const bridge = await loadBridge();
+		const { pointer: bridge } = loadBridges();
 		const listener = vi.fn();
 		const unsubscribe = bridge.subscribe(listener);
 		expect(electron.on).toHaveBeenCalledOnce();
@@ -111,12 +128,51 @@ describe("System pointer preload bridge", () => {
 	});
 
 	it("rejects an invalid state callback before registering a listener", async () => {
-		const bridge = await loadBridge();
+		const { pointer: bridge } = loadBridges();
 		expect(() =>
 			bridge.subscribe(
 				null as unknown as Parameters<typeof bridge.subscribe>[0],
 			),
 		).toThrow("A pointer state listener is required");
 		expect(electron.on).not.toHaveBeenCalled();
+	});
+
+	it("exposes fixed overlay capabilities and delegates messages properly", async () => {
+		const { overlay } = loadBridges();
+		expect(Object.keys(overlay)).toEqual([
+			"toggle",
+			"pressKey",
+			"close",
+			"subscribeFeedback",
+		]);
+
+		electron.invoke.mockResolvedValue(true);
+		expect(await overlay.toggle()).toBe(true);
+		expect(electron.invoke).toHaveBeenCalledWith("handfinity:overlay:toggle");
+
+		overlay.pressKey("a");
+		expect(electron.send).toHaveBeenCalledWith(
+			"handfinity:overlay:press-key",
+			"a",
+		);
+
+		overlay.close();
+		expect(electron.send).toHaveBeenCalledWith("handfinity:overlay:close");
+
+		const listener = vi.fn();
+		const unsubscribe = overlay.subscribeFeedback(listener);
+		const feedbackCall = electron.on.mock.calls.find(
+			([ch]) => ch === "handfinity:overlay:feedback",
+		);
+		expect(feedbackCall).toBeDefined();
+		const receive = feedbackCall?.[1];
+		receive?.({}, "clavier : ouvert");
+		expect(listener).toHaveBeenCalledWith("clavier : ouvert");
+
+		unsubscribe();
+		expect(electron.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:feedback",
+			receive,
+		);
 	});
 });

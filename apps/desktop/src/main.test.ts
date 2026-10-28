@@ -459,10 +459,19 @@ describe("Desktop system pointer integration", () => {
 			["handfinity:pointer:get-state"],
 			["handfinity:pointer:enable"],
 			["handfinity:pointer:disable"],
+			["handfinity:overlay:toggle"],
 		]);
-		expect(electron.ipcMain.removeListener).toHaveBeenCalledExactlyOnceWith(
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
 			"handfinity:pointer:update",
 			updateListener,
+		);
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:close",
+			expect.any(Function),
+		);
+		expect(electron.ipcMain.removeListener).toHaveBeenCalledWith(
+			"handfinity:overlay:press-key",
+			expect.any(Function),
 		);
 	});
 });

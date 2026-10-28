@@ -16,6 +16,7 @@
 	"include": [
 		"src/main.ts",
 		"src/desktop-tray.ts",
+		"src/desktop-overlay.ts",
 		"src/application-policy.ts",
 		"src/preload.cts"
 	]

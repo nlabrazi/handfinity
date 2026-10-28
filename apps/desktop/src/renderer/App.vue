@@ -381,6 +381,11 @@ function drawHands(hands: readonly HandObservation[]) {
 	}
 }
 
+function toggleKeyboard() {
+	void window.handfinityOverlay?.toggle();
+	showKeyboard.value = !showKeyboard.value;
+}
+
 function handleTrackingFrame({
 	tracking,
 	aspectRatio,
@@ -396,7 +401,7 @@ function handleTrackingFrame({
 	actionState.value = frame.actionState;
 	bimanualState.value = frame.bimanual;
 	if (frame.bimanual.keyboardToggle) {
-		showKeyboard.value = !showKeyboard.value;
+		toggleKeyboard();
 		lastActionLabel.value = showKeyboard.value
 			? "clavier : pop-up ouvert 👐"
 			: "clavier : masqué 👐";
@@ -504,7 +509,7 @@ onBeforeUnmount(() => {
 					<button
 						type="button"
 						data-toggle-keyboard
-						@click="showKeyboard = !showKeyboard"
+						@click="toggleKeyboard"
 						class="rounded border px-2.5 py-1 text-slate-200 transition-colors hover:bg-slate-800"
 						:class="showKeyboard ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300' : 'border-slate-700 bg-slate-900'"
 					>

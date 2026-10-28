@@ -35,3 +35,11 @@ export type SystemPointerBridge = {
 	submit(update: PointerUpdate): void;
 	subscribe(listener: (state: PointerControlState) => void): () => void;
 };
+
+/** Pont IPC dédié à l'overlay transparent sans perte de focus. */
+export type SystemOverlayBridge = {
+	toggle(): Promise<boolean>;
+	pressKey(key: string): void;
+	close(): void;
+	subscribeFeedback(listener: (action: string) => void): () => void;
+};
