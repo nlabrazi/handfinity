@@ -70,7 +70,8 @@ La feuille de route détaillée est disponible dans [`docs/roadmap.md`](docs/roa
 - [x] **Phase 4 — Clavier virtuel pop-up**
   - [x] Clavier virtuel pop-up modal (`VirtualKeyboard.vue`) déclenchable sur demande via bouton ou geste bimanuel dédié (rapprocher puis écarter les paumes 👐)
 - [ ] **Phase 5 — Expérience quotidienne & distribution**
-  - [ ] Barre système (Tray), overlay HUD sans perte de focus, assets MediaPipe hors-ligne et installeur Windows
+  - [x] Embarquement local des fichiers WASM et du modèle MediaPipe (`npm run setup:assets`) avec repli automatique sur CDN
+  - [ ] Barre système (Tray), overlay HUD sans perte de focus et installeur Windows
 
 ---
 

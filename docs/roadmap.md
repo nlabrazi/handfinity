@@ -36,8 +36,8 @@ Corriger les problèmes ergonomiques qui gênent le clic et l'accès aux bords d
 
 Modèle gestuel multimodal dans `@handfinity/engine` (`createPointerActionTracker`) :
 
-- [x] **Stabilisation immédiate au geste** : figer instantanément la position du curseur dès le début d'un geste d'action (poing, accord à 2 ou 3 doigts, pincement).
-- [x] **Clic gauche (`✌️ 2 doigts`)** : index + majeur tendus (`CHORD_HOLD_MS = 140 ms`) avec réarmement obligatoire.
+- [x] **Stabilisation immédiate au geste** : figer instantanément la position du curseur dès l'amorce d'un geste d'action ou d'un accord (dès que le majeur quitte la position repliée, avant tout sursaut musculaire de l'index).
+- [x] **Clic gauche (`✌️ 2 doigts`)** : index + majeur tendus (`CHORD_HOLD_MS = 140 ms`) avec gel anticipé et réarmement obligatoire.
 - [x] **Clic droit (`🤟 3 doigts`)** : index + majeur + annulaire tendus (`CHORD_HOLD_MS = 140 ms`) sans déclencher de faux clic gauche pendant la transition.
 - [x] **Saisir & Glisser (`✊ Poing fermé 600 ms`)** : verrouillage progressif avec jauge visuelle (`grabProgress`), déplacement piloté par la paume (`palmPosition`) et relâchement automatique à l'ouverture de la main.
 - [x] **Défilement continu type « Joystick » (`🤏 Pincement + Haut/Bas`)** : point d'ancrage vertical avec zone morte (`SCROLL_DEADZONE`) et défilement continu proportionnel à l'écart vertical.
@@ -56,8 +56,8 @@ Permettre la saisie de texte et les touches d'édition sans encombrer l'écran :
 
 ## Phase 5 — Expérience quotidienne & distribution
 
+- [x] **Embarquement local des fichiers WASM et du modèle MediaPipe** (`npm run setup:assets`) avec repli automatique sur CDN (multi-plateforme web/desktop/mobile).
 - [ ] Icône dans la barre système (System Tray) et retour visuel léger en surimpression (HUD/overlay).
 - [ ] Persistance des réglages utilisateur (sensibilité, zone active, main préférée).
-- [ ] Embarquement local des fichiers WASM et du modèle MediaPipe pour un fonctionnement 100 % hors-ligne.
 - [ ] Packaging Windows distribuable (`electron-builder`).
 - [ ] Adaptation du driver système pour Linux (`uinput`).
