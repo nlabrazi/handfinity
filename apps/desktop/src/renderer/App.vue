@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+	type BimanualGestureState,
 	CONTROL_HOLD_MS,
 	createGestureEngine,
 	DEFAULT_ACTIVE_ZONE,
@@ -32,7 +33,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 const isRunning = ref(false);
 const isLoading = ref(false);
-const showKeyboard = ref(true);
+const showKeyboard = ref(false);
 const handCount = ref(0);
 const processedFrames = ref(0);
 const cameraError = ref("");
@@ -51,6 +52,12 @@ const pointerFrame = shallowRef(emptyPointers);
 const engine = createGestureEngine({ activeZone: DEFAULT_ACTIVE_ZONE });
 const controlFrame = shallowRef(engine.getControlState());
 const actionState = shallowRef(engine.getActionState());
+const bimanualState = shallowRef<BimanualGestureState>({
+	phase: "idle",
+	distance: null,
+	progress: 0,
+	keyboardToggle: false,
+});
 const lastActionLabel = ref("None");
 
 const enabled = computed(() => state.value.sessionId !== null);
@@ -93,6 +100,9 @@ const selectionStatus = computed(() => {
 
 const pointerReadiness = computed(() => {
 	if (!isRunning.value) return "Start the camera to begin.";
+	if (bimanualState.value.phase === "palms-together") {
+		return "Paumes jointes détectées 👐 — écartez les mains pour afficher/masquer le clavier pop-up !";
+	}
 	if (controlFrame.value.handId !== null)
 		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
 	if (controlFrame.value.paused)
@@ -341,6 +351,34 @@ function drawHands(hands: readonly HandObservation[]) {
 		ctx.stroke();
 		ctx.restore();
 	}
+
+	if (
+		bimanualState.value.phase === "palms-together" &&
+		pointerFrame.value.pointers.length >= 2
+	) {
+		const p1 = pointerFrame.value.pointers[0]?.palmPosition;
+		const p2 = pointerFrame.value.pointers[1]?.palmPosition;
+		if (p1 && p2) {
+			ctx.save();
+			ctx.strokeStyle = "#38bdf8";
+			ctx.lineWidth = 3;
+			ctx.setLineDash([6, 4]);
+			ctx.beginPath();
+			ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+			ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+			ctx.stroke();
+			ctx.fillStyle = "#38bdf8";
+			ctx.font = "bold 12px sans-serif";
+			const midX = ((p1.x + p2.x) / 2) * canvas.width;
+			const midY = ((p1.y + p2.y) / 2) * canvas.height;
+			ctx.fillText(
+				"👐 Écartez pour ouvrir le clavier",
+				Math.max(10, midX - 90),
+				midY - 12,
+			);
+			ctx.restore();
+		}
+	}
 }
 
 function handleTrackingFrame({
@@ -356,6 +394,13 @@ function handleTrackingFrame({
 	pointerFrame.value = frame.pointers;
 	controlFrame.value = frame.control;
 	actionState.value = frame.actionState;
+	bimanualState.value = frame.bimanual;
+	if (frame.bimanual.keyboardToggle) {
+		showKeyboard.value = !showKeyboard.value;
+		lastActionLabel.value = showKeyboard.value
+			? "clavier : pop-up ouvert 👐"
+			: "clavier : masqué 👐";
+	}
 	const latestAction = frame.actions.at(-1);
 	if (latestAction) {
 		lastActionLabel.value = formatAction(latestAction);
@@ -386,6 +431,12 @@ function stopCamera() {
 	engine.reset();
 	controlFrame.value = engine.getControlState();
 	actionState.value = engine.getActionState();
+	bimanualState.value = {
+		phase: "idle",
+		distance: null,
+		progress: 0,
+		keyboardToggle: false,
+	};
 	lastActionLabel.value = "None";
 	handPoses.value = [];
 	pointerFrame.value = emptyPointers;
@@ -452,10 +503,12 @@ onBeforeUnmount(() => {
 				<div class="flex items-center gap-3 text-xs text-slate-400">
 					<button
 						type="button"
+						data-toggle-keyboard
 						@click="showKeyboard = !showKeyboard"
-						class="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-slate-200 hover:bg-slate-800"
+						class="rounded border px-2.5 py-1 text-slate-200 transition-colors hover:bg-slate-800"
+						:class="showKeyboard ? 'border-cyan-500 bg-cyan-950/60 text-cyan-300' : 'border-slate-700 bg-slate-900'"
 					>
-						{{ showKeyboard ? "Hide keyboard" : "Show keyboard" }}
+						{{ showKeyboard ? "Masquer le clavier" : "Clavier pop-up (ou 👐)" }}
 					</button>
 					<span>
 						Emergency stop:
@@ -574,7 +627,7 @@ onBeforeUnmount(() => {
 						</button>
 					</div>
 					<div
-						class="grid grid-cols-2 gap-1.5 text-xs text-slate-400 sm:grid-cols-3"
+						class="grid grid-cols-2 gap-1.5 text-xs text-slate-400 sm:grid-cols-4"
 					>
 						<span class="rounded bg-slate-900 px-2 py-1">☝️ 1 Finger: Move</span>
 						<span class="rounded bg-slate-900 px-2 py-1"
@@ -592,6 +645,10 @@ onBeforeUnmount(() => {
 						<span class="rounded bg-slate-900 px-2 py-1"
 							>🖐️ Palm (1.5s): Pause</span
 						>
+						<span
+							class="col-span-2 rounded border border-cyan-800/60 bg-cyan-950/40 px-2 py-1 font-medium text-cyan-300"
+							>👐 Paumes jointes → écartées : Clavier</span
+						>
 					</div>
 					<p
 						v-if="bridge && state.phase !== 'unsupported' && !enabled && !starting && !isRunning"
@@ -601,12 +658,6 @@ onBeforeUnmount(() => {
 					</p>
 				</section>
 			</section>
-
-			<VirtualKeyboard
-				v-if="showKeyboard"
-				:disabled="!enabled"
-				@press-key="sendVirtualKey"
-			/>
 
 			<section
 				aria-label="Camera preview"
@@ -632,5 +683,30 @@ onBeforeUnmount(() => {
 				</div>
 			</section>
 		</div>
+
+		<Teleport to="body">
+			<Transition
+				enter-active-class="transition duration-200 ease-out"
+				enter-from-class="opacity-0 translate-y-6 scale-95"
+				enter-to-class="opacity-100 translate-y-0 scale-100"
+				leave-active-class="transition duration-150 ease-in"
+				leave-from-class="opacity-100 translate-y-0 scale-100"
+				leave-to-class="opacity-0 translate-y-6 scale-95"
+			>
+				<div
+					v-if="showKeyboard"
+					class="fixed inset-x-0 bottom-4 z-50 mx-auto max-w-3xl px-4 filter drop-shadow-2xl"
+					role="dialog"
+					aria-modal="true"
+					aria-label="Clavier virtuel pop-up"
+				>
+					<VirtualKeyboard
+						:disabled="!enabled"
+						@close="showKeyboard = false"
+						@press-key="sendVirtualKey"
+					/>
+				</div>
+			</Transition>
+		</Teleport>
 	</main>
 </template>

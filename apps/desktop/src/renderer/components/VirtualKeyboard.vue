@@ -7,6 +7,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	"press-key": [key: string];
+	close: [];
 }>();
 
 const layout = ref<"azerty" | "qwerty">("azerty");
@@ -55,23 +56,33 @@ function send(key: string) {
 	<section
 		data-virtual-keyboard
 		aria-labelledby="virtual-keyboard-title"
-		class="space-y-3 rounded-lg border border-slate-700 bg-slate-900 p-4 text-sm"
+		class="space-y-3 rounded-xl border border-cyan-500/40 bg-slate-900/95 p-4 text-sm shadow-2xl shadow-cyan-950/60 backdrop-blur-md"
 	>
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div>
-				<h2 id="virtual-keyboard-title" class="font-medium">
-					Virtual keyboard
-				</h2>
-				<p class="text-xs text-slate-400">
-					Point and pinch a key to type into the active Windows application.
-				</p>
+		<div
+			class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3"
+		>
+			<div class="flex items-center gap-2">
+				<span
+					class="rounded bg-cyan-950 px-2 py-0.5 text-xs font-semibold text-cyan-400 border border-cyan-800"
+				>
+					POP-UP
+				</span>
+				<div>
+					<h2 id="virtual-keyboard-title" class="font-medium text-white">
+						Clavier virtuel Windows
+					</h2>
+					<p class="text-xs text-slate-400">
+						Pointez et pincez une touche · Geste : rapprochez puis écartez les
+						paumes 👐
+					</p>
+				</div>
 			</div>
 			<div class="flex items-center gap-2">
 				<span
 					v-if="lastSentKey"
 					class="rounded bg-slate-800 px-2 py-1 font-mono text-xs text-cyan-300"
 				>
-					Last key: {{ lastSentKey }}
+					Touche : {{ lastSentKey }}
 				</span>
 				<button
 					type="button"
@@ -80,7 +91,7 @@ function send(key: string) {
 					class="rounded border border-slate-600 px-2.5 py-1 text-xs font-medium hover:bg-slate-800"
 					:class="uppercase ? 'bg-cyan-800 text-white' : 'bg-slate-950 text-slate-300'"
 				>
-					⇧ Shift
+					⇧ Maj
 				</button>
 				<button
 					type="button"
@@ -88,6 +99,15 @@ function send(key: string) {
 					class="rounded border border-slate-600 bg-slate-950 px-2.5 py-1 text-xs font-medium uppercase text-slate-300 hover:bg-slate-800"
 				>
 					{{ layout }}
+				</button>
+				<button
+					type="button"
+					data-close-keyboard
+					@click="emit('close')"
+					aria-label="Fermer le clavier virtuel"
+					class="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 hover:border-slate-500 hover:bg-slate-700 hover:text-white"
+				>
+					✕ Fermer
 				</button>
 			</div>
 		</div>
