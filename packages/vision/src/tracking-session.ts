@@ -2,9 +2,13 @@ import {
 	createHandIdentityTracker,
 	type HandObservation,
 	type HandTrackingFrame,
-} from "@handfinity/core";
+} from "@handfinity/engine";
 import { startCamera, stopCamera } from "./camera";
-import { createHandTracker, type HandTracker } from "./hand-tracker";
+import {
+	createHandTracker,
+	type HandTracker,
+	type HandTrackerOptions,
+} from "./hand-tracker";
 
 export type TrackingSessionFrame = {
 	/** Vide si hasNewFrame vaut false ; aucun résultat vidéo n'est rejoué. */
@@ -29,6 +33,13 @@ export type TrackingSession = {
 	stop(): void;
 };
 
+export type TrackingSessionOptions = {
+	/** Le bureau utilise un timer avec le throttling Electron désactivé. */
+	scheduling?: "animation-frame" | "timer";
+	/** Options de chargement des modèles et binaires WASM MediaPipe. */
+	tracker?: HandTrackerOptions;
+};
+
 type SessionRun = {
 	video: HTMLVideoElement;
 	abort: AbortController;
@@ -40,16 +51,27 @@ type SessionRun = {
 /** Une instance par propriétaire : aucune caméra globale ou persistante. */
 export function createTrackingSession(
 	callbacks: TrackingCallbacks,
+	options: TrackingSessionOptions = {},
 ): TrackingSession {
 	const identities = createHandIdentityTracker();
 	let current: SessionRun | null = null;
+	const useTimer = options.scheduling === "timer";
+
+	function schedule(tick: () => void, startedAt?: number) {
+		// Une fenêtre réduite peut recevoir très peu de frames d'animation.
+		if (!useTimer) return requestAnimationFrame(tick);
+		// Le budget inclut la vision et les callbacks, sans rattraper les retards.
+		const elapsed = startedAt === undefined ? 0 : performance.now() - startedAt;
+		return window.setTimeout(tick, Math.max(0, 1000 / 30 - elapsed));
+	}
 
 	function stop() {
 		const run = current;
 		if (!run) return;
 		current = null;
 		run.abort.abort();
-		cancelAnimationFrame(run.frameId);
+		if (useTimer) window.clearTimeout(run.frameId);
+		else cancelAnimationFrame(run.frameId);
 		identities.reset();
 		try {
 			run.tracker?.close();
@@ -83,24 +105,36 @@ export function createTrackingSession(
 				throw run.abort.signal.reason;
 			}
 			run.stream = stream;
-			const tracker = await createHandTracker();
+			const tracker = await createHandTracker(options.tracker);
 			if (current !== run) {
 				tracker.close();
 				throw run.abort.signal.reason;
 			}
 			run.tracker = tracker;
-			let lastVideoTime = -1;
+			let hasFrameCounter = false;
+			let lastFrameToken: string | null = null;
 			let aspectRatio = 1;
 
 			function tick() {
 				if (current !== run) return;
+				const timestamp = performance.now();
 				try {
-					const timestamp = performance.now();
+					// currentTime peut avancer sans nouvelle image pour un flux en direct.
+					const frameCount = video.getVideoPlaybackQuality?.().totalVideoFrames;
+					// Firefox peut exposer un compteur toujours nul pour un MediaStream.
+					// Après une première valeur positive, il reste la seule référence.
+					if (frameCount !== undefined && frameCount > 0)
+						hasFrameCounter = true;
+					const frameToken = hasFrameCounter
+						? `frames:${frameCount}`
+						: `time:${video.currentTime}`;
 					const hasNewFrame =
-						video.readyState >= 2 && video.currentTime !== lastVideoTime;
+						video.readyState >= 2 &&
+						!video.paused &&
+						frameToken !== lastFrameToken;
 					let observations: HandObservation[] = [];
 					if (hasNewFrame) {
-						lastVideoTime = video.currentTime;
+						lastFrameToken = frameToken;
 						aspectRatio = video.videoWidth / video.videoHeight;
 						observations = tracker.detect(video, timestamp);
 					}
@@ -123,10 +157,10 @@ export function createTrackingSession(
 					}
 					return;
 				}
-				if (current === run) run.frameId = requestAnimationFrame(tick);
+				if (current === run) run.frameId = schedule(tick, timestamp);
 			}
 
-			run.frameId = requestAnimationFrame(tick);
+			run.frameId = schedule(tick);
 		} catch (error) {
 			// Une ancienne initialisation ne peut pas arrêter sa remplaçante.
 			if (current === run) stop();

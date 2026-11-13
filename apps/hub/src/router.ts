@@ -7,13 +7,7 @@ export const router = createRouter({
 			path: "/",
 			name: "home",
 			component: () => import("./views/HomeView.vue"),
-			meta: { title: "Handfinity — Entrez dans le mouvement" },
-		},
-		{
-			path: "/paint",
-			name: "paint",
-			component: () => import("paint/view"),
-			meta: { title: "Paint — Handfinity" },
+			meta: { title: "Handfinity — Vos mains, votre interface" },
 		},
 		{
 			path: "/playground",

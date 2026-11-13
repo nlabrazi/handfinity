@@ -1,28 +1,16 @@
-export { startCamera, stopCamera } from "./camera";
-
-export { createHandTracker, HAND_CONNECTIONS } from "./hand-tracker";
-
-export type { HandTracker } from "./hand-tracker";
-
-export { createTrackingSession } from "./tracking-session";
+export type { HandTracker, HandTrackerOptions } from "./hand-tracker";
+export {
+	createHandTracker,
+	DEFAULT_LOCAL_MODEL_PATH,
+	DEFAULT_LOCAL_WASM_PATH,
+	DEFAULT_REMOTE_MODEL_PATH,
+	DEFAULT_REMOTE_WASM_PATH,
+	HAND_CONNECTIONS,
+} from "./hand-tracker";
 export type {
-	TrackingSession,
 	TrackingCallbacks,
+	TrackingSession,
 	TrackingSessionFrame,
+	TrackingSessionOptions,
 } from "./tracking-session";
-
-export { createPinchSession, startPinchSession } from "./pinch-session";
-
-export type {
-	PinchCallbacks,
-	PinchSession,
-} from "./pinch-session";
-
-export type {
-	Handedness,
-	HandObservation,
-	HandPoint,
-	PinchEvent,
-	Point,
-} from "@handfinity/core";
-export { createPointSmoother } from "@handfinity/core";
+export { createTrackingSession } from "./tracking-session";

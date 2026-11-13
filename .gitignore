@@ -16,3 +16,6 @@ dist/
 
 # Cache
 *.tsbuildinfo
+
+# MediaPipe offline assets
+public/mediapipe/

@@ -1,87 +1,83 @@
-# Handfinity — Vision Playground
+# Handfinity — Playground
 
-Laboratoire de suivi des mains et d'interactions gestuelles. Depuis la racine
-du monorepo :
+Le Playground sert à observer les mains, les postures reconnues, les pointeurs
+et les commandes de déplacement produits par le moteur partagé. Il affiche les
+diagnostics vidéo et simule les commandes dans une zone dédiée :
+**il ne contrôle pas encore la souris ou le clavier du PC.**
+
+Depuis la racine :
 
 ```bash
+npm run dev
+# http://localhost:3000/playground
+
+# Ou le laboratoire autonome :
 npm run dev -w playground
+# http://localhost:3002
 ```
 
-L'application autonome est disponible sur `http://localhost:3002`. Le hub
-(`npm run dev`) propose le même laboratoire sur `http://localhost:3000/playground`,
-avec un retour vers l'accueil immersif. Cliquer sur
-**Start camera** puis autoriser l'accès à la webcam.
+Cliquer sur **Start camera** puis autoriser la webcam. L'aperçu est en miroir.
+**Stop camera** et la sortie de la page libèrent la caméra et le détecteur.
 
-## Suivi de deux mains
+## Diagnostics
 
-Le panneau **Hand identities** et les numéros près des poignets permettent
-d'observer les identités produites par `createHandIdentityTracker` dans `core`.
-La couleur accompagne le numéro ; elle ne désigne pas une main gauche ou droite.
+La caméra, la simulation et l’état de la main sont regroupés pour limiter le
+défilement sur écran large. Les détails **Tracking and gesture details** et le
+journal des commandes sont repliés, mais restent accessibles.
 
-- Deux mains séparées conservent leur numéro pendant les déplacements ordinaires,
-  même lorsque l'ordre des résultats du détecteur change.
-- Une main absente devient `missing`. Son identité peut être retrouvée à proximité
-  pendant 120 ms ; au-delà, elle expire (`timeout`). Une image figée provoque
-  également cette expiration. Une nouvelle apparition reçoit un nouveau numéro.
-- Des paumes trop proches ou plusieurs associations presque équivalentes
-  déclenchent `Ambiguous positions`. Les anciennes identités prennent fin et
-  de nouveaux numéros sont attribués quand les observations sont à nouveau distinctes.
-- **Last tracking event** indique les apparitions et les pertes : `timeout`,
-  `ambiguous`, ou `replaced` lorsqu'une main visible remplace une piste manquante.
-- L'arrêt caméra efface le suivi. Les numéros ne sont pas réutilisés pendant
-  la vie du tracker ; ils ne constituent pas une reconnaissance persistante
-  d'une personne ou de sa main.
+- **Controlling hand** : numéro attribué automatiquement. Le cercle plein marque
+  la main de contrôle et le pointillé l’autre main.
+- **Images processed** : nouvelles images analysées, indépendamment des commandes.
+- **Hand identities**, **Hand poses** et coordonnées : détails de suivi et de posture.
+- **Gesture control** : état de pause, progression et besoin de relâcher le geste.
+- **Pointer commands** : simulation, coordonnées et journal des huit dernières commandes.
 
-Le suivi compare les centres des paumes et leur taille, en tenant compte du
-format vidéo. La latéralité fiable sert seulement d'indice complémentaire.
-Ces seuils sont des heuristiques à éprouver avec la webcam : un mouvement très
-rapide peut entraîner une nouvelle identité, et deux mains indiscernables ne
-peuvent pas être réidentifiées avec certitude après une occultation.
+Tendre l’index, replier majeur, annulaire et auriculaire et séparer le pouce :
+la main en pointage confirmé commande automatiquement. Deux mains peuvent rester
+visibles ; si elles pointent simultanément, la main déjà active conserve le rôle.
+Si elle ne pointe plus et qu’une autre pointe, celle-ci peut prendre le relais.
+La paume ouverte de la main de contrôle reste prioritaire pendant le maintien et
+la pause. En cas
+d’absence ou d’ambiguïté, les déplacements s’arrêtent et reprennent après une
+nouvelle observation confirmée, sans menu. Au démarrage simultané, le plus petit
+numéro est choisi. Les numéros sont locaux et ne prouvent pas l’identité physique
+après une disparition ; une autre main pointante peut prendre le contrôle.
 
-Le curseur et le pincement restent limités à une seule main à cette étape.
-Un changement d'identité réinitialise le curseur et le geste. Paint utilise
-également ce suivi pour terminer le trait avant de recevoir une autre identité.
+Une seule main visible au repos peut effectuer le geste de pause. Maintenir la
+paume ouverte confirmée pendant **1,5 seconde** bascule la pause ; il faut
+relâcher le geste avant un nouveau maintien. La pause reste active pendant la
+perte et le retour d’une main. Si deux mains sont visibles sans main de contrôle,
+pointer d’abord avec celle qui doit réaliser le geste. La caméra continue.
 
-## Navigation sandbox — étape 1
+Le moteur applique le miroir horizontal : **Destination x = 1 − Source x**,
+**Destination y = Source y**. La simulation utilise les mêmes commandes que le
+bureau. Sans commande, elle garde sa dernière position. Le pincement n’émet pas
+encore de clic.
 
-La zone **Navigation sandbox** permet de tester le pointage sur quatre cartes :
-Paint, Playground et deux projets à venir. Elle est affichée à côté des diagnostics
-sur grand écran, et en dessous sur petit écran.
+## Cycle de vie
 
-- Déplacer l'index déplace le curseur dans la zone de cartes. Le repère est en
-  miroir, comme l'aperçu caméra.
-- La position est lissée avec `createPointSmoother`, partagé dans
-  `@handfinity/core` et réexporté par `@handfinity/vision` pour Paint.
-  Le filtre conserve sa constante de temps de 30 ms et ses tests existants.
-- La carte située sous le centre du curseur reçoit une bordure lumineuse et un
-  indicateur rempli. Un statut textuel annonce la carte survolée.
-- Les dimensions réelles des cartes servent au calcul du survol, y compris
-  après redimensionnement. Leur position reste stable pendant le survol.
-- Une absence de main, deux mains ou l'arrêt de la caméra retirent le curseur
-  et le survol. Une image vidéo figée retire également le curseur après plus de
-  120 ms sans nouveau point valide. Le filtre repart de la nouvelle position
-  lorsque la main est retrouvée.
-- Le squelette des mains, leur compteur et les transitions de pincement restent
-  disponibles dans le panneau caméra.
+`createTrackingSession` possède la caméra, le détecteur, la boucle vidéo et le
+suivi des identités. Seules les nouvelles images alimentent la détection.
+L'expiration des identités continue sans nouvelle image tant que la boucle tourne.
 
-Cette première étape porte sur le **survol** : les cartes ne déclenchent aucune
-navigation, y compris lors d'un pincement. La sélection au relâchement puis le
-défilement gestuel feront l'objet des deux prochaines itérations.
+`createGestureEngine` assemble postures, pointeurs, choix automatique et
+commandes, sans Vue ni caméra. `update(tracking, aspectRatio)` consomme le suivi ;
+`reset()` efface l’interprétation à l’arrêt. Aucun second suivi d’identités.
 
-## Session partagée avec Paint
+Chaque résultat de la session est traité, même sans nouvelle image : une image
+répétée ne confirme pas de posture, n'est pas filtrée à nouveau et n'émet aucune
+commande, mais les identités peuvent expirer. Le diagnostic peut conserver une
+main jusqu'à son expiration de 120 ms sans produire de nouveau déplacement.
+`createPointerSimulation` reçoit uniquement les commandes du moteur ; l'arrêt
+efface aussi sa position, son journal et son compteur. L'application bureau
+exécute ces déplacements sur le PC après activation explicite.
 
-`createTrackingSession` dans `@handfinity/vision` possède la caméra, le détecteur,
-la boucle vidéo et le suivi des identités. Playground traite les résultats pour
-ses diagnostics, son pincement et le survol ; il ne gère plus sa propre boucle
-d'acquisition. Une même session peut être redémarrée sans réutiliser les numéros
-de main déjà attribués.
+Un arrêt pendant l'initialisation libère les ressources déjà disponibles.
+Une caméra ou un détecteur reçu tardivement est libéré sans relancer la session.
+La même session peut être arrêtée puis redémarrée. Quitter la route détruit le
+laboratoire ; le retour demande un nouveau démarrage explicite.
 
-Quitter Playground ou arrêter la caméra arrête sa session. Si le démarrage est
-encore en attente, les ressources disponibles sont libérées immédiatement et
-les résultats tardifs sont ignorés et nettoyés. L'ouverture d'un autre projet
-demande un nouveau démarrage explicite de la caméra.
-
-## Vérifications
+## Vérifications automatiques
 
 ```bash
 npm test
@@ -90,43 +86,28 @@ npm run format:check
 npm run build
 ```
 
-Pour valider le suivi dans le hub :
+Les tests du socle vérifient identités, ambiguïtés, durées de confirmation,
+images répétées, lissage indépendant, choix principal et nettoyage des sessions.
+Les tests d'intégration du moteur utilisent les vrais trackers pour vérifier
+leur enchaînement, la production déterministe des commandes, leur déduplication
+et la remise à zéro commune. Les tests de l’étape 11 couvrent les 1 500 ms, les
+images répétées, les interruptions, le relâchement obligatoire, la main autorisée
+et la persistance de la pause. Une intégration vérifie le même arrêt des commandes
+dans la simulation et le contrôleur Windows. Les tests de simulation vérifient l'exécution
+directe des destinations, le journal borné, les instantanés et le nettoyage.
 
-1. Lancer `npm run dev`, ouvrir `http://localhost:3000/playground`, puis cliquer
-   sur **Start camera** et autoriser la webcam.
-2. Présenter une main, puis la seconde en les gardant séparées. Déplacer chacune
-   lentement : les numéros doivent rester attachés aux mêmes mains ; l'arrivée
-   de la seconde ne doit pas renuméroter la première.
-3. Retirer une main pendant environ une seconde : seul son numéro doit disparaître,
-   avec une perte `timeout`. La ramener : elle doit recevoir un nouveau numéro.
-   La fenêtre de récupération de 120 ms est vérifiée précisément par les tests unitaires.
-4. Rapprocher les paumes jusqu'à les superposer. Lorsque le suivi signale une
-   ambiguïté, les anciens numéros doivent disparaître. Séparer les mains pour
-   retrouver deux nouvelles identités.
-5. Arrêter la caméra : les numéros, le curseur, le compteur et le pincement doivent
-   être effacés. Redémarrer et vérifier que les numéros repartent avec de nouvelles valeurs.
-6. Ouvrir `http://localhost:3000/paint`, démarrer la caméra et dessiner par pincement.
-   Faire entrer une seconde main : le trait doit s'arrêter. Retirer les mains,
-   puis dessiner ailleurs : aucun segment ne doit relier les deux traits.
+## Vérifications manuelles
 
-Pour valider le cycle de vie commun :
-
-1. Dans chaque projet, répéter **Start camera** / **Stop camera** trois fois :
-   le suivi doit reprendre normalement et l'usage de la caméra cesser à l'arrêt.
-2. Dessiner dans Paint, passer à Playground, y démarrer la caméra puis revenir
-   dans Paint : le dessin et Undo/Redo doivent être conservés, avec la caméra
-   arrêtée jusqu'au prochain démarrage explicite.
-3. Pour observer un démarrage lent, activer une limitation réseau dans les outils
-   du navigateur et désactiver le cache, puis recharger la page. Démarrer la caméra
-   et quitter le projet pendant **Initializing...**. La caméra déjà acquise doit
-   être libérée ; la fin tardive du chargement ne doit pas la réactiver. Revenir,
-   rétablir le réseau normal et démarrer une nouvelle session.
-4. Refuser l'autorisation caméra, vérifier le message d'erreur et le bouton à nouveau
-   disponible, puis autoriser la caméra dans les réglages du site et réessayer.
-
-Pour un essai avec la webcam, viser successivement les quatre cartes puis les
-espaces entre elles. Déplacer l'index lentement, puis plus rapidement ; masquer
-la main et la faire réapparaître ailleurs ; présenter deux mains ; arrêter et
-redémarrer la caméra. Vérifier que le curseur et le survol disparaissent et
-reprennent correctement. Essayer également une fenêtre étroite et le défilement
-manuel de la page pour vérifier l'alignement des cibles.
+1. Démarrer la caméra et pointer avec une main : un cercle plein apparaît et la
+   simulation suit l’index sans sélection. But : vérifier le contrôle automatique.
+2. Présenter une deuxième main puis pointer avec les deux : la première garde le
+   contrôle. Retirer la première en laissant l’autre pointer : le rôle passe à
+   l’autre. But : vérifier la présence de deux mains et le transfert.
+3. Retirer la main contrôlante puis la ramener et repointer : la simulation se
+   fige pendant l’absence puis reprend sans utiliser la souris. But : vérifier le retour.
+4. Mettre en pause par paume ouverte 1,5 seconde, retirer et ramener la main :
+   la pause reste active. Relâcher puis refaire le geste pour reprendre. But :
+   vérifier que le retour automatique ne contourne pas la pause. Refaire le
+   maintien avec l’autre main en pointage : la paume doit garder la priorité.
+5. Arrêter et redémarrer la caméra : les diagnostics, le journal et le moteur
+   repartent à zéro. But : vérifier le nettoyage de la session.

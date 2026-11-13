@@ -1,10 +1,10 @@
 import {
 	computed,
+	type InjectionKey,
 	inject,
 	onScopeDispose,
 	provide,
 	ref,
-	type InjectionKey,
 } from "vue";
 
 const motionKey: InjectionKey<ReturnType<typeof createMotionPreferences>> =

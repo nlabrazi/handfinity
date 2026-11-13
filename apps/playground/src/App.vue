@@ -1,21 +1,30 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, shallowRef } from "vue";
+import {
+	createGestureEngine,
+	type GestureEngineFrame,
+	type HandObservation,
+	type HandPointerFrame,
+	type HandTrackingFrame,
+	type TrackedHand,
+	type TrackedHandPose,
+} from "@handfinity/engine";
 import {
 	createTrackingSession,
 	HAND_CONNECTIONS,
-	type HandObservation,
 	type TrackingSessionFrame,
+	type TrackingSessionOptions,
 } from "@handfinity/vision";
-import {
-	createPinchDetector,
-	createPointSmoother,
-	type HandPose,
-	type HandTrackingFrame,
-	type PinchEvent,
-	type Point,
-	type TrackedHand,
-} from "@handfinity/core";
-import NavigationSandbox from "./components/NavigationSandbox.vue";
+import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
+import GestureControlDiagnostics from "./components/GestureControlDiagnostics.vue";
+import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
+import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
+import { createPointerSimulation } from "./pointer-simulation";
+
+const props = defineProps<{ trackingOptions?: TrackingSessionOptions }>();
+const emit = defineEmits<{
+	"gesture-frame": [frame: GestureEngineFrame];
+	"tracking-stop": [];
+}>();
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -23,48 +32,72 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const isRunning = ref(false);
 const isLoading = ref(false);
 const handCount = ref(0);
+const processedFrames = ref(0);
 const error = ref("");
 
-const pinchActive = ref(false);
-const pinchTransition = ref("Aucun");
-const pointer = ref<Point | null>(null);
 const trackedHands = shallowRef<readonly TrackedHand[]>([]);
 const trackingAmbiguous = ref(false);
 const trackingTransition = ref("None");
-
-const pinch = createPinchDetector();
-const pointSmoother = createPointSmoother();
-let activeHandId: number | null = null;
-
-const session = createTrackingSession({
-	onFrame: handleTrackingFrame,
-	onError(err) {
-		stop();
-		error.value = err instanceof Error ? err.message : "Tracking failed";
-	},
+const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
+const emptyPointers: HandPointerFrame = {
+	timestamp: 0,
+	pointers: [],
+	primaryHandId: null,
+	selectionStatus: "unselected",
+};
+const pointerFrame = shallowRef(emptyPointers);
+const selectionStatus = computed(() => {
+	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
+	switch (status) {
+		case "tracked":
+			return `Controlling hand: #${primaryHandId} (automatic).`;
+		case "missing":
+			return `Waiting for hand #${primaryHandId} to return.`;
+		case "ambiguous":
+			return "Hands are ambiguous. Separate them and point again.";
+		default:
+			return "Show a pointing hand to start controlling the pointer.";
+	}
 });
+
+const engine = createGestureEngine();
+const controlFrame = shallowRef(engine.getControlState());
+const simulator = createPointerSimulation();
+const pointerSimulation = shallowRef(simulator.reset());
+const pointerReadiness = computed(() => {
+	if (!isRunning.value) return "Start the camera to begin.";
+	if (controlFrame.value.handId !== null)
+		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
+	if (controlFrame.value.paused)
+		return controlFrame.value.requiresRelease
+			? "Paused — point or fold your fingers before holding your palm to resume."
+			: "Paused — hold your open palm for 1.5 seconds to resume.";
+	if (controlFrame.value.requiresRelease)
+		return "Point or fold your fingers before holding your palm to pause again.";
+	if (pointerFrame.value.selectionStatus !== "tracked")
+		return "Show a pointing hand to control the pointer.";
+	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
+	if (pointer?.active) return "Pointing detected — pointer active.";
+	const pose = handPoses.value.find(
+		(item) => item.handId === pointerFrame.value.primaryHandId,
+	);
+	if (pose?.pose === "pointing")
+		return "Pointer inactive — keep your index inside the camera image.";
+	return `Pointer inactive — detected pose: ${pose?.pose ?? "unknown"}. Show a pointing hand.`;
+});
+
+const session = createTrackingSession(
+	{
+		onFrame: handleTrackingFrame,
+		onError(err) {
+			stop();
+			error.value = err instanceof Error ? err.message : "Tracking failed";
+		},
+	},
+	props.trackingOptions,
+);
 let sessionGeneration = 0;
 let disposed = false;
-
-function resetPointer() {
-	pointer.value = null;
-	pointSmoother.reset();
-}
-
-function recordGesture(event: PinchEvent | null) {
-	if (!event) return;
-	pinchActive.value = event.type !== "pinch:end";
-	if (event.type !== "pinch:move") {
-		pinchTransition.value = event.type;
-		console.info("[Handfinity]", event);
-	}
-}
-
-function endInteraction(timestamp: number) {
-	recordGesture(pinch.update(null, 1, timestamp));
-	activeHandId = null;
-	resetPointer();
-}
 
 function showTracking(frame: HandTrackingFrame) {
 	trackedHands.value = frame.hands;
@@ -77,12 +110,6 @@ function showTracking(frame: HandTrackingFrame) {
 					: `Hand #${event.handId} lost (${event.reason})`,
 			)
 			.join(" · ");
-	}
-	if (
-		activeHandId !== null &&
-		!frame.hands.some((hand) => hand.id === activeHandId)
-	) {
-		endInteraction(frame.timestamp);
 	}
 }
 
@@ -158,56 +185,59 @@ function drawHands(hands: readonly HandObservation[]) {
 			ctx.restore();
 		}
 	}
+
+	// Même repère que les repères vidéo ; le miroir reste celui du canvas.
+	for (const pointer of pointerFrame.value.pointers) {
+		if (!pointer.active) continue;
+		ctx.save();
+		ctx.translate(
+			pointer.position.x * canvas.width,
+			pointer.position.y * canvas.height,
+		);
+		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
+		ctx.fillStyle = "#020617dd";
+		ctx.lineWidth = 3;
+		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
+		ctx.beginPath();
+		ctx.arc(0, 0, 18, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+		ctx.scale(-1, 1);
+		ctx.font = "bold 12px sans-serif";
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		ctx.fillStyle = ctx.strokeStyle;
+		ctx.fillText(`#${pointer.handId}`, 0, 0);
+		ctx.restore();
+	}
 }
 
 function handleTrackingFrame({
-	observations: hands,
 	tracking,
 	aspectRatio,
 	hasNewFrame,
 }: TrackingSessionFrame) {
-	showTracking(tracking);
-	const timestamp = tracking.timestamp;
-	if (!hasNewFrame) {
-		if (tracking.events.length) {
-			const visible = tracking.hands
-				.filter((hand) => hand.status === "tracked")
-				.map((hand) => hand.observation);
-			handCount.value = visible.length;
-			drawHands(visible);
-		}
-		return;
-	}
+	showGestureFrame(engine.update(tracking, aspectRatio), hasNewFrame);
+}
 
-	handCount.value = hands.length;
-	// Le suivi accepte deux mains ; le curseur reste à une seule main.
-	const tracked =
-		hands.length === 1 && !tracking.ambiguous
-			? tracking.hands.find((item) => item.status === "tracked")
-			: undefined;
-	if (activeHandId !== tracked?.id) endInteraction(timestamp);
-	const hand = tracked?.observation.landmarks;
-	const pose: HandPose | null =
-		hand?.[0] && hand[4] && hand[8] && hand[9]
-			? {
-					wrist: hand[0],
-					thumbTip: hand[4],
-					indexTip: hand[8],
-					middleBase: hand[9],
-				}
-			: null;
-	if (pose && tracked) {
-		activeHandId = tracked.id;
-		pointer.value = pointSmoother.update(pose.indexTip, timestamp);
-	} else {
-		resetPointer();
-	}
-	recordGesture(pinch.update(pose, aspectRatio, timestamp));
-	drawHands(hands);
+function showGestureFrame(frame: GestureEngineFrame, hasNewFrame = false) {
+	if (hasNewFrame) processedFrames.value += 1;
+	showTracking(frame.tracking);
+	handPoses.value = frame.poses;
+	pointerFrame.value = frame.pointers;
+	controlFrame.value = frame.control;
+	pointerSimulation.value = simulator.execute(frame.commands);
+	emit("gesture-frame", frame);
+	const visible = frame.tracking.hands
+		.filter((hand) => hand.status === "tracked")
+		.map((hand) => hand.observation);
+	handCount.value = visible.length;
+	drawHands(visible);
 }
 
 function stop() {
 	sessionGeneration += 1;
+	emit("tracking-stop");
 	session.stop();
 
 	const canvas = canvasRef.value;
@@ -218,15 +248,15 @@ function stop() {
 	isRunning.value = false;
 	isLoading.value = false;
 	handCount.value = 0;
+	processedFrames.value = 0;
 	trackedHands.value = [];
+	engine.reset();
+	controlFrame.value = engine.getControlState();
+	pointerSimulation.value = simulator.reset();
+	handPoses.value = [];
+	pointerFrame.value = emptyPointers;
 	trackingAmbiguous.value = false;
 	trackingTransition.value = "None";
-	activeHandId = null;
-
-	pinch.reset();
-	resetPointer();
-	pinchActive.value = false;
-	pinchTransition.value = "Aucun";
 }
 
 async function toggleCamera() {
@@ -264,43 +294,31 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-8">
-		<div class="mx-auto max-w-6xl space-y-6">
-			<header>
-				<h1 class="text-3xl font-bold">Handfinity</h1>
-				<p class="text-slate-400">Vision Playground</p>
+	<main class="min-h-screen bg-slate-950 p-4 text-white sm:p-5">
+		<div class="mx-auto max-w-7xl space-y-3">
+			<header class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+				<h1 class="text-2xl font-bold">Playground</h1>
+				<p class="text-sm text-slate-400">
+					<slot name="description">
+						Hand tracking and pointer simulation. This web view does not control
+						the system pointer.
+					</slot>
+				</p>
 			</header>
 
-			<div class="grid items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
-				<section
-					aria-label="Camera and gesture diagnostics"
-					class="min-w-0 space-y-4"
+			<section
+				aria-label="Camera and hand controls"
+				class="space-y-2 rounded-lg bg-slate-900 p-3"
+			>
+				<div
+					class="grid items-end gap-3 lg:grid-cols-[auto_minmax(12rem,1fr)_minmax(20rem,1.4fr)]"
 				>
-					<div
-						class="relative aspect-video overflow-hidden rounded-xl bg-black"
-					>
-						<video
-							ref="videoRef"
-							autoplay
-							muted
-							playsinline
-							aria-label="Live camera preview"
-							class="absolute inset-0 h-full w-full -scale-x-100 object-contain"
-						/>
-
-						<canvas
-							ref="canvasRef"
-							aria-hidden="true"
-							class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
-						/>
-					</div>
-
-					<div class="flex flex-wrap items-center gap-4">
+					<div class="space-y-1">
 						<button
 							type="button"
 							:disabled="isLoading"
 							@click="toggleCamera"
-							class="rounded-lg bg-blue-600 px-5 py-3 font-medium hover:bg-blue-500 disabled:opacity-50"
+							class="rounded-lg bg-blue-600 px-4 py-2 font-medium hover:bg-blue-500 disabled:opacity-50"
 						>
 							{{
 								isLoading
@@ -310,17 +328,91 @@ onBeforeUnmount(() => {
 										: "Start camera"
 							}}
 						</button>
-
-						<span class="text-sm text-slate-400">
-							Hands detected: {{ handCount }}
-						</span>
+						<p class="text-xs text-slate-400">
+							Hands detected: {{ handCount }} ·
+							<span data-processed-frames
+								>Images processed: {{ processedFrames }}</span
+							>
+						</p>
 					</div>
 
+					<div data-hand-pointers class="min-w-0 space-y-1 text-sm">
+						<p class="font-medium">Controlling hand</p>
+						<p
+							data-hand-selection
+							:data-status="pointerFrame.selectionStatus"
+							role="status"
+							:class="pointerFrame.selectionStatus === 'tracked' ? 'text-sky-300' : 'text-amber-300'"
+						>
+							{{ selectionStatus }}
+						</p>
+					</div>
+					<slot
+						name="controls"
+						:is-running="isRunning"
+						:needs-gesture-release="controlFrame.requiresRelease"
+					/>
+				</div>
+				<p
+					data-pointer-readiness
+					role="status"
+					class="text-sm"
+					:class="controlFrame.paused ? 'text-amber-300' : 'text-slate-300'"
+				>
+					{{ pointerReadiness }}
+				</p>
+				<p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
+			</section>
+
+			<div class="grid items-start gap-3 lg:grid-cols-2">
+				<section
+					aria-label="Camera preview"
+					class="min-w-0 space-y-2 rounded-lg bg-slate-900 p-3"
+				>
+					<h2 class="font-medium">Camera preview</h2>
 					<div
-						class="space-y-2 rounded-lg bg-slate-900 p-3 text-sm"
-						data-hand-tracking
+						class="relative aspect-video overflow-hidden rounded-lg bg-black"
 					>
-						<p class="font-medium">Hand identities</p>
+						<video
+							ref="videoRef"
+							autoplay
+							muted
+							playsinline
+							aria-label="Live camera preview"
+							class="absolute inset-0 h-full w-full -scale-x-100 object-contain"
+						/>
+						<canvas
+							ref="canvasRef"
+							aria-hidden="true"
+							class="pointer-events-none absolute inset-0 h-full w-full -scale-x-100 object-contain"
+						/>
+					</div>
+					<p class="text-xs text-slate-400">
+						Point with your index, fold the other three fingers and keep your
+						thumb separate. The solid circle marks the controlling hand.
+					</p>
+				</section>
+				<PointerCommandDiagnostics :frame="pointerSimulation" />
+			</div>
+
+			<details
+				data-advanced-diagnostics
+				class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
+			>
+				<summary class="cursor-pointer font-medium">
+					Tracking and gesture details
+				</summary>
+				<div class="mt-3 grid items-start gap-3 lg:grid-cols-3">
+					<GestureControlDiagnostics
+						:state="controlFrame"
+						:running="isRunning"
+						:selection-status="pointerFrame.selectionStatus"
+					/>
+					<div
+						data-hand-tracking
+						class="space-y-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm"
+					>
+						<h2 class="font-medium">Hand identities and pointers</h2>
 						<ul v-if="trackedHands.length" class="space-y-1">
 							<li
 								v-for="hand in trackedHands"
@@ -338,31 +430,26 @@ onBeforeUnmount(() => {
 						<p class="text-slate-400">
 							Last tracking event: {{ trackingTransition }}
 						</p>
+						<ul v-if="pointerFrame.pointers.length" class="space-y-1">
+							<li
+								v-for="pointer in pointerFrame.pointers"
+								:key="pointer.handId"
+								:data-pointer-hand="pointer.handId"
+								class="rounded border border-slate-700 p-2"
+							>
+								Hand #{{ pointer.handId }} ·
+								{{ pointer.isPrimary ? "main" : "secondary" }} ·
+								{{ pointer.active ? "active" : "resting" }}
+								<p class="mt-1 font-mono text-xs text-slate-400">
+									Source x: {{ pointer.position.x.toFixed(3) }} · y:
+									{{ pointer.position.y.toFixed(3) }}
+								</p>
+							</li>
+						</ul>
 					</div>
-
-					<div class="flex flex-wrap items-center gap-4 text-sm">
-						<span
-							class="rounded-lg px-4 py-2 font-medium"
-							:class="pinchActive
-		            ? 'bg-green-500/20 text-green-400'
-		            : 'bg-slate-800 text-slate-400'
-		          "
-						>
-							{{ pinchActive ? "PINCH ACTIVE" : "PINCH INACTIVE" }}
-						</span>
-
-						<span class="text-slate-400">
-							Last transition: {{ pinchTransition }}
-						</span>
-					</div>
-
-					<p v-if="error" role="alert" class="text-red-400">
-						{{ error }}
-					</p>
-				</section>
-
-				<NavigationSandbox :pointer="pointer" :is-running="isRunning" />
-			</div>
+					<HandPoseDiagnostics :hands="handPoses" />
+				</div>
+			</details>
 		</div>
 	</main>
 </template>
