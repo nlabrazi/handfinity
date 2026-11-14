@@ -1,292 +1,260 @@
 import type {
-	Category,
-	HandLandmarker,
-	HandLandmarkerResult,
-	NormalizedLandmark,
-} from "@mediapipe/tasks-vision";
-import { afterEach, describe, expect, it, vi } from "vitest";
+  Category,
+  HandLandmarker,
+  HandLandmarkerResult,
+  NormalizedLandmark,
+} from '@mediapipe/tasks-vision'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-	createHandTracker,
-	DEFAULT_LOCAL_WASM_PATH,
-	DEFAULT_REMOTE_MODEL_PATH,
-	DEFAULT_REMOTE_WASM_PATH,
-} from "./hand-tracker";
+  createHandTracker,
+  DEFAULT_LOCAL_WASM_PATH,
+  DEFAULT_REMOTE_MODEL_PATH,
+  DEFAULT_REMOTE_WASM_PATH,
+} from './hand-tracker'
 
 const landmarker = vi.hoisted(() => ({
-	detectForVideo: vi.fn<HandLandmarker["detectForVideo"]>(),
-	close: vi.fn(),
-}));
+  detectForVideo: vi.fn<HandLandmarker['detectForVideo']>(),
+  close: vi.fn(),
+}))
 
-vi.mock("@mediapipe/tasks-vision", () => ({
-	FilesetResolver: { forVisionTasks: vi.fn().mockResolvedValue({}) },
-	HandLandmarker: {
-		HAND_CONNECTIONS: [],
-		createFromOptions: vi.fn(async () => landmarker),
-	},
-}));
+vi.mock('@mediapipe/tasks-vision', () => ({
+  FilesetResolver: { forVisionTasks: vi.fn().mockResolvedValue({}) },
+  HandLandmarker: {
+    HAND_CONNECTIONS: [],
+    createFromOptions: vi.fn(async () => landmarker),
+  },
+}))
 
 function landmarks(offset = 0): NormalizedLandmark[] {
-	return Array.from({ length: 21 }, (_, index) => ({
-		x: index / 40 + offset,
-		y: index / 50,
-		z: -index / 100,
-		visibility: 0.9,
-	}));
+  return Array.from({ length: 21 }, (_, index) => ({
+    x: index / 40 + offset,
+    y: index / 50,
+    z: -index / 100,
+    visibility: 0.9,
+  }))
 }
 
 function category(categoryName: string, score: number): Category {
-	// Les noms d'affichage peuvent être traduits ; seul categoryName fait foi.
-	return { categoryName, score, index: 0, displayName: "Nom traduit" };
+  // Les noms d'affichage peuvent être traduits ; seul categoryName fait foi.
+  return { categoryName, score, index: 0, displayName: 'Nom traduit' }
 }
 
 function result(
-	points: NormalizedLandmark[][] = [],
-	handedness: Category[][] = [],
+  points: NormalizedLandmark[][] = [],
+  handedness: Category[][] = [],
 ): HandLandmarkerResult {
-	return {
-		landmarks: points,
-		handedness,
-		worldLandmarks: [],
-		handednesses: [],
-	};
+  return {
+    landmarks: points,
+    handedness,
+    worldLandmarks: [],
+    handednesses: [],
+  }
 }
 
 afterEach(() => {
-	landmarker.detectForVideo.mockReset();
-	vi.clearAllMocks();
-});
+  landmarker.detectForVideo.mockReset()
+  vi.clearAllMocks()
+})
 
-describe("Hand observations", () => {
-	it("preserves source coordinates and the supplied timestamp without mirroring", async () => {
-		landmarker.detectForVideo.mockReturnValue(
-			result([landmarks()], [[category("Left", 0.97)]]),
-		);
-		const tracker = await createHandTracker();
-		const video = {} as HTMLVideoElement;
-		const observations = tracker.detect(video, 1234.5);
+describe('Hand observations', () => {
+  it('preserves source coordinates and the supplied timestamp without mirroring', async () => {
+    landmarker.detectForVideo.mockReturnValue(result([landmarks()], [[category('Left', 0.97)]]))
+    const tracker = await createHandTracker()
+    const video = {} as HTMLVideoElement
+    const observations = tracker.detect(video, 1234.5)
 
-		expect(landmarker.detectForVideo).toHaveBeenCalledExactlyOnceWith(
-			video,
-			1234.5,
-		);
-		expect(observations).toHaveLength(1);
-		expect(observations[0]).toMatchObject({
-			handedness: "left",
-			handednessConfidence: 0.97,
-			timestamp: 1234.5,
-		});
-		expect(observations[0]?.landmarks).toHaveLength(21);
-		expect(observations[0]?.landmarks[8]).toEqual({
-			x: 0.2,
-			y: 0.16,
-			z: -0.08,
-		});
-	});
+    expect(landmarker.detectForVideo).toHaveBeenCalledExactlyOnceWith(video, 1234.5)
+    expect(observations).toHaveLength(1)
+    expect(observations[0]).toMatchObject({
+      handedness: 'left',
+      handednessConfidence: 0.97,
+      timestamp: 1234.5,
+    })
+    expect(observations[0]?.landmarks).toHaveLength(21)
+    expect(observations[0]?.landmarks[8]).toEqual({
+      x: 0.2,
+      y: 0.16,
+      z: -0.08,
+    })
+  })
 
-	it("keeps landmarks and handedness paired when the detector changes hand order", async () => {
-		const left = landmarks();
-		const right = landmarks(0.4);
-		landmarker.detectForVideo
-			.mockReturnValueOnce(
-				result(
-					[left, right],
-					[[category("Left", 0.92)], [category("Right", 0.84)]],
-				),
-			)
-			.mockReturnValueOnce(
-				result(
-					[right, left],
-					[[category("Right", 0.86)], [category("Left", 0.94)]],
-				),
-			);
-		const tracker = await createHandTracker();
-		const video = {} as HTMLVideoElement;
+  it('keeps landmarks and handedness paired when the detector changes hand order', async () => {
+    const left = landmarks()
+    const right = landmarks(0.4)
+    landmarker.detectForVideo
+      .mockReturnValueOnce(
+        result([left, right], [[category('Left', 0.92)], [category('Right', 0.84)]]),
+      )
+      .mockReturnValueOnce(
+        result([right, left], [[category('Right', 0.86)], [category('Left', 0.94)]]),
+      )
+    const tracker = await createHandTracker()
+    const video = {} as HTMLVideoElement
 
-		const first = tracker.detect(video, 0);
-		expect(first).toMatchObject([
-			{
-				handedness: "left",
-				handednessConfidence: 0.92,
-				timestamp: 0,
-			},
-			{
-				handedness: "right",
-				handednessConfidence: 0.84,
-				timestamp: 0,
-			},
-		]);
-		expect(first[0]?.landmarks[0]?.x).toBe(0);
-		expect(first[1]?.landmarks[0]?.x).toBe(0.4);
+    const first = tracker.detect(video, 0)
+    expect(first).toMatchObject([
+      {
+        handedness: 'left',
+        handednessConfidence: 0.92,
+        timestamp: 0,
+      },
+      {
+        handedness: 'right',
+        handednessConfidence: 0.84,
+        timestamp: 0,
+      },
+    ])
+    expect(first[0]?.landmarks[0]?.x).toBe(0)
+    expect(first[1]?.landmarks[0]?.x).toBe(0.4)
 
-		const second = tracker.detect(video, 40);
-		expect(second).toMatchObject([
-			{
-				handedness: "right",
-				handednessConfidence: 0.86,
-				timestamp: 40,
-			},
-			{
-				handedness: "left",
-				handednessConfidence: 0.94,
-				timestamp: 40,
-			},
-		]);
-		expect(second[0]?.landmarks[0]?.x).toBe(0.4);
-		expect(second[1]?.landmarks[0]?.x).toBe(0);
-	});
+    const second = tracker.detect(video, 40)
+    expect(second).toMatchObject([
+      {
+        handedness: 'right',
+        handednessConfidence: 0.86,
+        timestamp: 40,
+      },
+      {
+        handedness: 'left',
+        handednessConfidence: 0.94,
+        timestamp: 40,
+      },
+    ])
+    expect(second[0]?.landmarks[0]?.x).toBe(0.4)
+    expect(second[1]?.landmarks[0]?.x).toBe(0)
+  })
 
-	it.each([
-		{ name: "missing", handedness: [] },
-		{ name: "empty", handedness: [[]] },
-		{ name: "unrecognized", handedness: [[category("Other", 0.9)]] },
-	])(
-		"keeps a hand with $name handedness as unknown",
-		async ({ handedness }) => {
-			landmarker.detectForVideo.mockReturnValue(
-				result([landmarks()], handedness),
-			);
-			const tracker = await createHandTracker();
+  it.each([
+    { name: 'missing', handedness: [] },
+    { name: 'empty', handedness: [[]] },
+    { name: 'unrecognized', handedness: [[category('Other', 0.9)]] },
+  ])('keeps a hand with $name handedness as unknown', async ({ handedness }) => {
+    landmarker.detectForVideo.mockReturnValue(result([landmarks()], handedness))
+    const tracker = await createHandTracker()
 
-			const observations = tracker.detect({} as HTMLVideoElement, 40);
-			expect(observations).toHaveLength(1);
-			expect(observations[0]).toMatchObject({
-				handedness: "unknown",
-				handednessConfidence: null,
-				timestamp: 40,
-			});
-			expect(observations[0]?.landmarks).toHaveLength(21);
-		},
-	);
+    const observations = tracker.detect({} as HTMLVideoElement, 40)
+    expect(observations).toHaveLength(1)
+    expect(observations[0]).toMatchObject({
+      handedness: 'unknown',
+      handednessConfidence: null,
+      timestamp: 40,
+    })
+    expect(observations[0]?.landmarks).toHaveLength(21)
+  })
 
-	it("does not borrow another hand's classification when one is missing", async () => {
-		landmarker.detectForVideo.mockReturnValue(
-			result([landmarks(), landmarks(0.4)], [[], [category("Right", 0.9)]]),
-		);
-		const tracker = await createHandTracker();
+  it("does not borrow another hand's classification when one is missing", async () => {
+    landmarker.detectForVideo.mockReturnValue(
+      result([landmarks(), landmarks(0.4)], [[], [category('Right', 0.9)]]),
+    )
+    const tracker = await createHandTracker()
 
-		expect(tracker.detect({} as HTMLVideoElement, 40)).toMatchObject([
-			{ handedness: "unknown", handednessConfidence: null },
-			{ handedness: "right", handednessConfidence: 0.9 },
-		]);
-	});
+    expect(tracker.detect({} as HTMLVideoElement, 40)).toMatchObject([
+      { handedness: 'unknown', handednessConfidence: null },
+      { handedness: 'right', handednessConfidence: 0.9 },
+    ])
+  })
 
-	it("preserves a zero confidence instead of treating it as unavailable", async () => {
-		landmarker.detectForVideo.mockReturnValue(
-			result([landmarks()], [[category("Right", 0)]]),
-		);
-		const tracker = await createHandTracker();
+  it('preserves a zero confidence instead of treating it as unavailable', async () => {
+    landmarker.detectForVideo.mockReturnValue(result([landmarks()], [[category('Right', 0)]]))
+    const tracker = await createHandTracker()
 
-		expect(tracker.detect({} as HTMLVideoElement, 0)[0]).toMatchObject({
-			handedness: "right",
-			handednessConfidence: 0,
-			timestamp: 0,
-		});
-	});
+    expect(tracker.detect({} as HTMLVideoElement, 0)[0]).toMatchObject({
+      handedness: 'right',
+      handednessConfidence: 0,
+      timestamp: 0,
+    })
+  })
 
-	it("returns no observations when no hands are detected", async () => {
-		landmarker.detectForVideo.mockReturnValue(result());
-		const tracker = await createHandTracker();
+  it('returns no observations when no hands are detected', async () => {
+    landmarker.detectForVideo.mockReturnValue(result())
+    const tracker = await createHandTracker()
 
-		expect(tracker.detect({} as HTMLVideoElement, 40)).toEqual([]);
-	});
+    expect(tracker.detect({} as HTMLVideoElement, 40)).toEqual([])
+  })
 
-	it("keeps observations independent from subsequent detector buffer changes", async () => {
-		const points = landmarks();
-		landmarker.detectForVideo.mockReturnValue(
-			result([points], [[category("Left", 0.9)]]),
-		);
-		const tracker = await createHandTracker();
-		const observations = tracker.detect({} as HTMLVideoElement, 40);
-		const indexTip = points[8];
-		if (!indexTip) throw new Error("Missing test landmark");
-		indexTip.x = 0.9;
-		points.length = 0;
+  it('keeps observations independent from subsequent detector buffer changes', async () => {
+    const points = landmarks()
+    landmarker.detectForVideo.mockReturnValue(result([points], [[category('Left', 0.9)]]))
+    const tracker = await createHandTracker()
+    const observations = tracker.detect({} as HTMLVideoElement, 40)
+    const indexTip = points[8]
+    if (!indexTip) throw new Error('Missing test landmark')
+    indexTip.x = 0.9
+    points.length = 0
 
-		expect(observations[0]?.landmarks).toHaveLength(21);
-		expect(observations[0]?.landmarks[8]?.x).toBe(0.2);
-	});
+    expect(observations[0]?.landmarks).toHaveLength(21)
+    expect(observations[0]?.landmarks[8]?.x).toBe(0.2)
+  })
 
-	it("closes the underlying detector", async () => {
-		const tracker = await createHandTracker();
-		tracker.close();
+  it('closes the underlying detector', async () => {
+    const tracker = await createHandTracker()
+    tracker.close()
 
-		expect(landmarker.close).toHaveBeenCalledOnce();
-	});
+    expect(landmarker.close).toHaveBeenCalledOnce()
+  })
 
-	it("requests GPU delegation first and falls back to CPU when GPU initialization fails", async () => {
-		const { HandLandmarker } = await import("@mediapipe/tasks-vision");
-		vi.mocked(HandLandmarker.createFromOptions).mockRejectedValueOnce(
-			new Error("WebGL unavailable"),
-		);
+  it('requests GPU delegation first and falls back to CPU when GPU initialization fails', async () => {
+    const { HandLandmarker } = await import('@mediapipe/tasks-vision')
+    vi.mocked(HandLandmarker.createFromOptions).mockRejectedValueOnce(
+      new Error('WebGL unavailable'),
+    )
 
-		await createHandTracker();
+    await createHandTracker()
 
-		expect(HandLandmarker.createFromOptions).toHaveBeenCalledTimes(2);
-		expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
-			1,
-			expect.anything(),
-			expect.objectContaining({
-				baseOptions: expect.objectContaining({ delegate: "GPU" }),
-			}),
-		);
-		expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
-			2,
-			expect.anything(),
-			expect.objectContaining({
-				baseOptions: expect.objectContaining({ delegate: "CPU" }),
-			}),
-		);
-	});
+    expect(HandLandmarker.createFromOptions).toHaveBeenCalledTimes(2)
+    expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: expect.objectContaining({ delegate: 'GPU' }),
+      }),
+    )
+    expect(HandLandmarker.createFromOptions).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: expect.objectContaining({ delegate: 'CPU' }),
+      }),
+    )
+  })
 
-	it("attempts local offline assets first, and falls back to remote CDN URLs when local loading fails", async () => {
-		const { FilesetResolver, HandLandmarker } = await import(
-			"@mediapipe/tasks-vision"
-		);
+  it('attempts local offline assets first, and falls back to remote CDN URLs when local loading fails', async () => {
+    const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
 
-		// Local wasm succeeds, but local model loading fails (both GPU and CPU)
-		vi.mocked(HandLandmarker.createFromOptions)
-			.mockRejectedValueOnce(new Error("Local model 404 (GPU)"))
-			.mockRejectedValueOnce(new Error("Local model 404 (CPU)"));
+    // Local wasm succeeds, but local model loading fails (both GPU and CPU)
+    vi.mocked(HandLandmarker.createFromOptions)
+      .mockRejectedValueOnce(new Error('Local model 404 (GPU)'))
+      .mockRejectedValueOnce(new Error('Local model 404 (CPU)'))
 
-		await createHandTracker();
+    await createHandTracker()
 
-		// Should have tried local wasm first
-		expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(
-			1,
-			DEFAULT_LOCAL_WASM_PATH,
-		);
-		// Then fallen back to remote wasm and model
-		expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(
-			2,
-			DEFAULT_REMOTE_WASM_PATH,
-		);
-		expect(HandLandmarker.createFromOptions).toHaveBeenLastCalledWith(
-			expect.anything(),
-			expect.objectContaining({
-				baseOptions: expect.objectContaining({
-					modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
-				}),
-			}),
-		);
-	});
+    // Should have tried local wasm first
+    expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(1, DEFAULT_LOCAL_WASM_PATH)
+    // Then fallen back to remote wasm and model
+    expect(FilesetResolver.forVisionTasks).toHaveBeenNthCalledWith(2, DEFAULT_REMOTE_WASM_PATH)
+    expect(HandLandmarker.createFromOptions).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: expect.objectContaining({
+          modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
+        }),
+      }),
+    )
+  })
 
-	it("uses remote URLs directly when preferLocal is false", async () => {
-		const { FilesetResolver, HandLandmarker } = await import(
-			"@mediapipe/tasks-vision"
-		);
+  it('uses remote URLs directly when preferLocal is false', async () => {
+    const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
 
-		await createHandTracker({ preferLocal: false });
+    await createHandTracker({ preferLocal: false })
 
-		expect(FilesetResolver.forVisionTasks).toHaveBeenCalledWith(
-			DEFAULT_REMOTE_WASM_PATH,
-		);
-		expect(HandLandmarker.createFromOptions).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({
-				baseOptions: expect.objectContaining({
-					modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
-				}),
-			}),
-		);
-	});
-});
+    expect(FilesetResolver.forVisionTasks).toHaveBeenCalledWith(DEFAULT_REMOTE_WASM_PATH)
+    expect(HandLandmarker.createFromOptions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        baseOptions: expect.objectContaining({
+          modelAssetPath: DEFAULT_REMOTE_MODEL_PATH,
+        }),
+      }),
+    )
+  })
+})

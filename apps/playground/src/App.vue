@@ -1,296 +1,276 @@
 <script setup lang="ts">
 import {
-	createGestureEngine,
-	type GestureEngineFrame,
-	type HandObservation,
-	type HandPointerFrame,
-	type HandTrackingFrame,
-	type TrackedHand,
-	type TrackedHandPose,
-} from "@handfinity/engine";
+  createGestureEngine,
+  type GestureEngineFrame,
+  type HandObservation,
+  type HandPointerFrame,
+  type HandTrackingFrame,
+  type TrackedHand,
+  type TrackedHandPose,
+} from '@handfinity/engine'
 import {
-	createTrackingSession,
-	HAND_CONNECTIONS,
-	type TrackingSessionFrame,
-	type TrackingSessionOptions,
-} from "@handfinity/vision";
-import { computed, onBeforeUnmount, ref, shallowRef } from "vue";
-import GestureControlDiagnostics from "./components/GestureControlDiagnostics.vue";
-import HandPoseDiagnostics from "./components/HandPoseDiagnostics.vue";
-import PointerCommandDiagnostics from "./components/PointerCommandDiagnostics.vue";
-import { createPointerSimulation } from "./pointer-simulation";
+  createTrackingSession,
+  HAND_CONNECTIONS,
+  type TrackingSessionFrame,
+  type TrackingSessionOptions,
+} from '@handfinity/vision'
+import { computed, onBeforeUnmount, ref, shallowRef } from 'vue'
+import GestureControlDiagnostics from './components/GestureControlDiagnostics.vue'
+import HandPoseDiagnostics from './components/HandPoseDiagnostics.vue'
+import PointerCommandDiagnostics from './components/PointerCommandDiagnostics.vue'
+import { createPointerSimulation } from './pointer-simulation'
 
-const props = defineProps<{ trackingOptions?: TrackingSessionOptions }>();
+const props = defineProps<{ trackingOptions?: TrackingSessionOptions }>()
 const emit = defineEmits<{
-	"gesture-frame": [frame: GestureEngineFrame];
-	"tracking-stop": [];
-}>();
+  'gesture-frame': [frame: GestureEngineFrame]
+  'tracking-stop': []
+}>()
 
-const videoRef = ref<HTMLVideoElement | null>(null);
-const canvasRef = ref<HTMLCanvasElement | null>(null);
+const videoRef = ref<HTMLVideoElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-const isRunning = ref(false);
-const isLoading = ref(false);
-const handCount = ref(0);
-const processedFrames = ref(0);
-const error = ref("");
+const isRunning = ref(false)
+const isLoading = ref(false)
+const handCount = ref(0)
+const processedFrames = ref(0)
+const error = ref('')
 
-const trackedHands = shallowRef<readonly TrackedHand[]>([]);
-const trackingAmbiguous = ref(false);
-const trackingTransition = ref("None");
-const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
+const trackedHands = shallowRef<readonly TrackedHand[]>([])
+const trackingAmbiguous = ref(false)
+const trackingTransition = ref('None')
+const handPoses = shallowRef<readonly TrackedHandPose[]>([])
 const emptyPointers: HandPointerFrame = {
-	timestamp: 0,
-	pointers: [],
-	primaryHandId: null,
-	selectionStatus: "unselected",
-};
-const pointerFrame = shallowRef(emptyPointers);
+  timestamp: 0,
+  pointers: [],
+  primaryHandId: null,
+  selectionStatus: 'unselected',
+}
+const pointerFrame = shallowRef(emptyPointers)
 const selectionStatus = computed(() => {
-	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
-	switch (status) {
-		case "tracked":
-			return `Controlling hand: #${primaryHandId} (automatic).`;
-		case "missing":
-			return `Waiting for hand #${primaryHandId} to return.`;
-		case "ambiguous":
-			return "Hands are ambiguous. Separate them and point again.";
-		default:
-			return "Show a pointing hand to start controlling the pointer.";
-	}
-});
+  const { primaryHandId, selectionStatus: status } = pointerFrame.value
+  switch (status) {
+    case 'tracked':
+      return `Controlling hand: #${primaryHandId} (automatic).`
+    case 'missing':
+      return `Waiting for hand #${primaryHandId} to return.`
+    case 'ambiguous':
+      return 'Hands are ambiguous. Separate them and point again.'
+    default:
+      return 'Show a pointing hand to start controlling the pointer.'
+  }
+})
 
-const engine = createGestureEngine();
-const controlFrame = shallowRef(engine.getControlState());
-const simulator = createPointerSimulation();
-const pointerSimulation = shallowRef(simulator.reset());
+const engine = createGestureEngine()
+const controlFrame = shallowRef(engine.getControlState())
+const simulator = createPointerSimulation()
+const pointerSimulation = shallowRef(simulator.reset())
 const pointerReadiness = computed(() => {
-	if (!isRunning.value) return "Start the camera to begin.";
-	if (controlFrame.value.handId !== null)
-		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
-	if (controlFrame.value.paused)
-		return controlFrame.value.requiresRelease
-			? "Paused — point or fold your fingers before holding your palm to resume."
-			: "Paused — hold your open palm for 1.5 seconds to resume.";
-	if (controlFrame.value.requiresRelease)
-		return "Point or fold your fingers before holding your palm to pause again.";
-	if (pointerFrame.value.selectionStatus !== "tracked")
-		return "Show a pointing hand to control the pointer.";
-	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
-	if (pointer?.active) return "Pointing detected — pointer active.";
-	const pose = handPoses.value.find(
-		(item) => item.handId === pointerFrame.value.primaryHandId,
-	);
-	if (pose?.pose === "pointing")
-		return "Pointer inactive — keep your index inside the camera image.";
-	return `Pointer inactive — detected pose: ${pose?.pose ?? "unknown"}. Show a pointing hand.`;
-});
+  if (!isRunning.value) return 'Start the camera to begin.'
+  if (controlFrame.value.handId !== null)
+    return `Hold your open palm to ${controlFrame.value.paused ? 'resume' : 'pause'} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`
+  if (controlFrame.value.paused)
+    return controlFrame.value.requiresRelease
+      ? 'Paused — point or fold your fingers before holding your palm to resume.'
+      : 'Paused — hold your open palm for 1.5 seconds to resume.'
+  if (controlFrame.value.requiresRelease)
+    return 'Point or fold your fingers before holding your palm to pause again.'
+  if (pointerFrame.value.selectionStatus !== 'tracked')
+    return 'Show a pointing hand to control the pointer.'
+  const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary)
+  if (pointer?.active) return 'Pointing detected — pointer active.'
+  const pose = handPoses.value.find((item) => item.handId === pointerFrame.value.primaryHandId)
+  if (pose?.pose === 'pointing')
+    return 'Pointer inactive — keep your index inside the camera image.'
+  return `Pointer inactive — detected pose: ${pose?.pose ?? 'unknown'}. Show a pointing hand.`
+})
 
 const session = createTrackingSession(
-	{
-		onFrame: handleTrackingFrame,
-		onError(err) {
-			stop();
-			error.value = err instanceof Error ? err.message : "Tracking failed";
-		},
-	},
-	props.trackingOptions,
-);
-let sessionGeneration = 0;
-let disposed = false;
+  {
+    onFrame: handleTrackingFrame,
+    onError(err) {
+      stop()
+      error.value = err instanceof Error ? err.message : 'Tracking failed'
+    },
+  },
+  props.trackingOptions,
+)
+let sessionGeneration = 0
+let disposed = false
 
 function showTracking(frame: HandTrackingFrame) {
-	trackedHands.value = frame.hands;
-	trackingAmbiguous.value = frame.ambiguous;
-	if (frame.events.length) {
-		trackingTransition.value = frame.events
-			.map((event) =>
-				event.type === "hand:found"
-					? `Hand #${event.handId} appeared`
-					: `Hand #${event.handId} lost (${event.reason})`,
-			)
-			.join(" · ");
-	}
+  trackedHands.value = frame.hands
+  trackingAmbiguous.value = frame.ambiguous
+  if (frame.events.length) {
+    trackingTransition.value = frame.events
+      .map((event) =>
+        event.type === 'hand:found'
+          ? `Hand #${event.handId} appeared`
+          : `Hand #${event.handId} lost (${event.reason})`,
+      )
+      .join(' · ')
+  }
 }
 
 function handColor(id: number) {
-	return (
-		["#22d3ee", "#fb923c", "#a78bfa", "#4ade80"][(id - 1) % 4] ?? "#22d3ee"
-	);
+  return ['#22d3ee', '#fb923c', '#a78bfa', '#4ade80'][(id - 1) % 4] ?? '#22d3ee'
 }
 
 function drawHands(hands: readonly HandObservation[]) {
-	const canvas = canvasRef.value;
-	const video = videoRef.value;
-	if (!canvas || !video) return;
+  const canvas = canvasRef.value
+  const video = videoRef.value
+  if (!canvas || !video) return
 
-	if (
-		canvas.width !== video.videoWidth ||
-		canvas.height !== video.videoHeight
-	) {
-		canvas.width = video.videoWidth;
-		canvas.height = video.videoHeight;
-	}
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+  }
 
-	const ctx = canvas.getContext("2d");
-	if (!ctx) return;
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
 
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-	for (const observation of hands) {
-		const points = observation.landmarks;
-		const tracked = trackedHands.value.find(
-			(hand) => hand.status === "tracked" && hand.observation === observation,
-		);
-		ctx.strokeStyle = tracked ? handColor(tracked.id) : "#94a3b8";
-		ctx.lineWidth = 3;
+  for (const observation of hands) {
+    const points = observation.landmarks
+    const tracked = trackedHands.value.find(
+      (hand) => hand.status === 'tracked' && hand.observation === observation,
+    )
+    ctx.strokeStyle = tracked ? handColor(tracked.id) : '#94a3b8'
+    ctx.lineWidth = 3
 
-		for (const connection of HAND_CONNECTIONS) {
-			const start = points[connection.start];
-			const end = points[connection.end];
-			if (!start || !end) continue;
+    for (const connection of HAND_CONNECTIONS) {
+      const start = points[connection.start]
+      const end = points[connection.end]
+      if (!start || !end) continue
 
-			ctx.beginPath();
-			ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-			ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
-			ctx.stroke();
-		}
+      ctx.beginPath()
+      ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
+      ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
+      ctx.stroke()
+    }
 
-		ctx.fillStyle = "#facc15";
+    ctx.fillStyle = '#facc15'
 
-		for (const point of points) {
-			ctx.beginPath();
-			ctx.arc(
-				point.x * canvas.width,
-				point.y * canvas.height,
-				5,
-				0,
-				Math.PI * 2,
-			);
-			ctx.fill();
-		}
+    for (const point of points) {
+      ctx.beginPath()
+      ctx.arc(point.x * canvas.width, point.y * canvas.height, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
 
-		const wrist = points[0];
-		if (tracked && wrist) {
-			ctx.save();
-			ctx.translate(wrist.x * canvas.width, wrist.y * canvas.height);
-			// Le canvas entier est affiché en miroir : retourner aussi le texte.
-			ctx.scale(-1, 1);
-			ctx.font = "bold 24px sans-serif";
-			ctx.lineWidth = 4;
-			ctx.strokeStyle = "#020617";
-			ctx.fillStyle = handColor(tracked.id);
-			ctx.strokeText(`#${tracked.id}`, 10, -12);
-			ctx.fillText(`#${tracked.id}`, 10, -12);
-			ctx.restore();
-		}
-	}
+    const wrist = points[0]
+    if (tracked && wrist) {
+      ctx.save()
+      ctx.translate(wrist.x * canvas.width, wrist.y * canvas.height)
+      // Le canvas entier est affiché en miroir : retourner aussi le texte.
+      ctx.scale(-1, 1)
+      ctx.font = 'bold 24px sans-serif'
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#020617'
+      ctx.fillStyle = handColor(tracked.id)
+      ctx.strokeText(`#${tracked.id}`, 10, -12)
+      ctx.fillText(`#${tracked.id}`, 10, -12)
+      ctx.restore()
+    }
+  }
 
-	// Même repère que les repères vidéo ; le miroir reste celui du canvas.
-	for (const pointer of pointerFrame.value.pointers) {
-		if (!pointer.active) continue;
-		ctx.save();
-		ctx.translate(
-			pointer.position.x * canvas.width,
-			pointer.position.y * canvas.height,
-		);
-		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
-		ctx.fillStyle = "#020617dd";
-		ctx.lineWidth = 3;
-		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
-		ctx.beginPath();
-		ctx.arc(0, 0, 18, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.stroke();
-		ctx.scale(-1, 1);
-		ctx.font = "bold 12px sans-serif";
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		ctx.fillStyle = ctx.strokeStyle;
-		ctx.fillText(`#${pointer.handId}`, 0, 0);
-		ctx.restore();
-	}
+  // Même repère que les repères vidéo ; le miroir reste celui du canvas.
+  for (const pointer of pointerFrame.value.pointers) {
+    if (!pointer.active) continue
+    ctx.save()
+    ctx.translate(pointer.position.x * canvas.width, pointer.position.y * canvas.height)
+    ctx.strokeStyle = pointer.isPrimary ? '#ffffff' : '#fb923c'
+    ctx.fillStyle = '#020617dd'
+    ctx.lineWidth = 3
+    ctx.setLineDash(pointer.isPrimary ? [] : [5, 4])
+    ctx.beginPath()
+    ctx.arc(0, 0, 18, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.scale(-1, 1)
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = ctx.strokeStyle
+    ctx.fillText(`#${pointer.handId}`, 0, 0)
+    ctx.restore()
+  }
 }
 
-function handleTrackingFrame({
-	tracking,
-	aspectRatio,
-	hasNewFrame,
-}: TrackingSessionFrame) {
-	showGestureFrame(engine.update(tracking, aspectRatio), hasNewFrame);
+function handleTrackingFrame({ tracking, aspectRatio, hasNewFrame }: TrackingSessionFrame) {
+  showGestureFrame(engine.update(tracking, aspectRatio), hasNewFrame)
 }
 
 function showGestureFrame(frame: GestureEngineFrame, hasNewFrame = false) {
-	if (hasNewFrame) processedFrames.value += 1;
-	showTracking(frame.tracking);
-	handPoses.value = frame.poses;
-	pointerFrame.value = frame.pointers;
-	controlFrame.value = frame.control;
-	pointerSimulation.value = simulator.execute(frame.commands);
-	emit("gesture-frame", frame);
-	const visible = frame.tracking.hands
-		.filter((hand) => hand.status === "tracked")
-		.map((hand) => hand.observation);
-	handCount.value = visible.length;
-	drawHands(visible);
+  if (hasNewFrame) processedFrames.value += 1
+  showTracking(frame.tracking)
+  handPoses.value = frame.poses
+  pointerFrame.value = frame.pointers
+  controlFrame.value = frame.control
+  pointerSimulation.value = simulator.execute(frame.commands)
+  emit('gesture-frame', frame)
+  const visible = frame.tracking.hands
+    .filter((hand) => hand.status === 'tracked')
+    .map((hand) => hand.observation)
+  handCount.value = visible.length
+  drawHands(visible)
 }
 
 function stop() {
-	sessionGeneration += 1;
-	emit("tracking-stop");
-	session.stop();
+  sessionGeneration += 1
+  emit('tracking-stop')
+  session.stop()
 
-	const canvas = canvasRef.value;
-	if (canvas) {
-		canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
-	}
+  const canvas = canvasRef.value
+  if (canvas) {
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+  }
 
-	isRunning.value = false;
-	isLoading.value = false;
-	handCount.value = 0;
-	processedFrames.value = 0;
-	trackedHands.value = [];
-	engine.reset();
-	controlFrame.value = engine.getControlState();
-	pointerSimulation.value = simulator.reset();
-	handPoses.value = [];
-	pointerFrame.value = emptyPointers;
-	trackingAmbiguous.value = false;
-	trackingTransition.value = "None";
+  isRunning.value = false
+  isLoading.value = false
+  handCount.value = 0
+  processedFrames.value = 0
+  trackedHands.value = []
+  engine.reset()
+  controlFrame.value = engine.getControlState()
+  pointerSimulation.value = simulator.reset()
+  handPoses.value = []
+  pointerFrame.value = emptyPointers
+  trackingAmbiguous.value = false
+  trackingTransition.value = 'None'
 }
 
 async function toggleCamera() {
-	if (disposed || isLoading.value) return;
+  if (disposed || isLoading.value) return
 
-	if (isRunning.value) {
-		stop();
-		return;
-	}
+  if (isRunning.value) {
+    stop()
+    return
+  }
 
-	const video = videoRef.value;
-	if (!video) return;
+  const video = videoRef.value
+  if (!video) return
 
-	isLoading.value = true;
-	error.value = "";
+  isLoading.value = true
+  error.value = ''
 
-	const generation = sessionGeneration;
-	try {
-		await session.start(video);
-		if (disposed || generation !== sessionGeneration) return;
-		isRunning.value = true;
-	} catch (err) {
-		if (disposed || generation !== sessionGeneration) return;
-		stop();
-		error.value = err instanceof Error ? err.message : "Camera unavailable";
-	} finally {
-		if (generation === sessionGeneration) isLoading.value = false;
-	}
+  const generation = sessionGeneration
+  try {
+    await session.start(video)
+    if (disposed || generation !== sessionGeneration) return
+    isRunning.value = true
+  } catch (err) {
+    if (disposed || generation !== sessionGeneration) return
+    stop()
+    error.value = err instanceof Error ? err.message : 'Camera unavailable'
+  } finally {
+    if (generation === sessionGeneration) isLoading.value = false
+  }
 }
 
 onBeforeUnmount(() => {
-	disposed = true;
-	stop();
-});
+  disposed = true
+  stop()
+})
 </script>
 
 <template>

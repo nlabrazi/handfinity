@@ -1,4 +1,3 @@
-
 @Library('nabster-ci') _
 
 pipeline {
@@ -20,21 +19,24 @@ pipeline {
             }
         }
 
+        stage('Notify Renovate PR') {
+            when {
+                changeRequest target: 'staging'
+            }
+            steps {
+                notifyRenovatePr()
+            }
+        }
+
         stage('Install') {
             steps {
-                sh 'npm ci'
+                npmCi()
             }
         }
 
-        stage('Lint') {
+        stage('Check') {
             steps {
-                sh 'npm run lint'
-            }
-        }
-
-        stage('Format check') {
-            steps {
-                sh 'npm run format:check'
+                sh 'npm run check'
             }
         }
 

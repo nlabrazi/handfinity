@@ -1,243 +1,225 @@
-import { describe, expect, it } from "vitest";
-import type { HandPoint } from "../hand-observation";
-import { createPinchDetector, type HandPose, type PinchEvent } from "./pinch";
+import { describe, expect, it } from 'vitest'
+import type { HandPoint } from '../hand-observation'
+import { createPinchDetector, type HandPose, type PinchEvent } from './pinch'
 
 function createHand(gap: number): HandPose {
-	return {
-		wrist: { x: 0.5, y: 0.85, z: 0 },
-		middleBase: { x: 0.5, y: 0.6, z: 0 },
-		thumbTip: { x: 0.5, y: 0.4, z: 0 },
-		indexTip: { x: 0.5 + gap, y: 0.4, z: 0 },
-	};
+  return {
+    wrist: { x: 0.5, y: 0.85, z: 0 },
+    middleBase: { x: 0.5, y: 0.6, z: 0 },
+    thumbTip: { x: 0.5, y: 0.4, z: 0 },
+    indexTip: { x: 0.5 + gap, y: 0.4, z: 0 },
+  }
 }
 
-function transformHand(
-	hand: HandPose,
-	transform: (point: HandPoint) => HandPoint,
-): HandPose {
-	return {
-		wrist: transform(hand.wrist),
-		middleBase: transform(hand.middleBase),
-		thumbTip: transform(hand.thumbTip),
-		indexTip: transform(hand.indexTip),
-	};
+function transformHand(hand: HandPose, transform: (point: HandPoint) => HandPoint): HandPose {
+  return {
+    wrist: transform(hand.wrist),
+    middleBase: transform(hand.middleBase),
+    thumbTip: transform(hand.thumbTip),
+    indexTip: transform(hand.indexTip),
+  }
 }
 
-function rotateHand(hand: HandPose, axis: "x" | "y"): HandPose {
-	const angle = (85 * Math.PI) / 180;
-	const cosine = Math.cos(angle);
-	const sine = Math.sin(angle);
-	return transformHand(hand, (point) => {
-		const x = point.x - 0.5;
-		const y = point.y - 0.5;
-		return axis === "x"
-			? {
-					x: point.x,
-					y: 0.5 + y * cosine - point.z * sine,
-					z: y * sine + point.z * cosine,
-				}
-			: {
-					x: 0.5 + x * cosine + point.z * sine,
-					y: point.y,
-					z: -x * sine + point.z * cosine,
-				};
-	});
+function rotateHand(hand: HandPose, axis: 'x' | 'y'): HandPose {
+  const angle = (85 * Math.PI) / 180
+  const cosine = Math.cos(angle)
+  const sine = Math.sin(angle)
+  return transformHand(hand, (point) => {
+    const x = point.x - 0.5
+    const y = point.y - 0.5
+    return axis === 'x'
+      ? {
+          x: point.x,
+          y: 0.5 + y * cosine - point.z * sine,
+          z: y * sine + point.z * cosine,
+        }
+      : {
+          x: 0.5 + x * cosine + point.z * sine,
+          y: point.y,
+          z: -x * sine + point.z * cosine,
+        }
+  })
 }
 
 function startPinch() {
-	const detector = createPinchDetector();
-	detector.update(createHand(0.04), 1, 0);
-	expect(detector.update(createHand(0.04), 1, 40)?.type).toBe("pinch:start");
-	return detector;
+  const detector = createPinchDetector()
+  detector.update(createHand(0.04), 1, 0)
+  expect(detector.update(createHand(0.04), 1, 40)?.type).toBe('pinch:start')
+  return detector
 }
 
-describe("Pinch detector", () => {
-	it("requires a sustained pinch to start", () => {
-		const detector = createPinchDetector();
-		expect(detector.update(createHand(0.2), 1, 0)).toBeNull();
-		expect(detector.update(createHand(0.2), 1, 100)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 200)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 239)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 240)?.type).toBe("pinch:start");
-	});
+describe('Pinch detector', () => {
+  it('requires a sustained pinch to start', () => {
+    const detector = createPinchDetector()
+    expect(detector.update(createHand(0.2), 1, 0)).toBeNull()
+    expect(detector.update(createHand(0.2), 1, 100)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 200)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 239)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 240)?.type).toBe('pinch:start')
+  })
 
-	it("discards a brief pinch before confirming a new one", () => {
-		const detector = createPinchDetector();
-		detector.update(createHand(0.04), 1, 0);
-		detector.update(createHand(0.2), 1, 30);
-		expect(detector.update(createHand(0.04), 1, 60)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 100)?.type).toBe("pinch:start");
-	});
+  it('discards a brief pinch before confirming a new one', () => {
+    const detector = createPinchDetector()
+    detector.update(createHand(0.04), 1, 0)
+    detector.update(createHand(0.2), 1, 30)
+    expect(detector.update(createHand(0.04), 1, 60)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 100)?.type).toBe('pinch:start')
+  })
 
-	it("keeps an active pinch between the start and end thresholds", () => {
-		const detector = startPinch();
-		expect(detector.update(createHand(0.1), 1, 80)?.type).toBe("pinch:move");
-		expect(detector.update(createHand(0.1), 1, 200)?.type).toBe("pinch:move");
-	});
+  it('keeps an active pinch between the start and end thresholds', () => {
+    const detector = startPinch()
+    expect(detector.update(createHand(0.1), 1, 80)?.type).toBe('pinch:move')
+    expect(detector.update(createHand(0.1), 1, 200)?.type).toBe('pinch:move')
+  })
 
-	it("pauses on isolated release noise and resumes the same stroke", () => {
-		const detector = startPinch();
-		expect(detector.update(createHand(0.5), 1, 80)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 100)?.type).toBe("pinch:move");
-		expect(detector.update(createHand(0.2), 1, 120)).toBeNull();
-		expect(detector.update(createHand(0.2), 1, 179)).toBeNull();
-		expect(detector.update(createHand(0.2), 1, 180)).toMatchObject({
-			type: "pinch:end",
-			reason: "released",
-		});
-		expect(detector.update(createHand(0.2), 1, 220)).toBeNull();
-	});
+  it('pauses on isolated release noise and resumes the same stroke', () => {
+    const detector = startPinch()
+    expect(detector.update(createHand(0.5), 1, 80)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 100)?.type).toBe('pinch:move')
+    expect(detector.update(createHand(0.2), 1, 120)).toBeNull()
+    expect(detector.update(createHand(0.2), 1, 179)).toBeNull()
+    expect(detector.update(createHand(0.2), 1, 180)).toMatchObject({
+      type: 'pinch:end',
+      reason: 'released',
+    })
+    expect(detector.update(createHand(0.2), 1, 220)).toBeNull()
+  })
 
-	it("ends at the last reliable index position without emitting the release movement", () => {
-		const detector = startPinch();
-		const lastMove = detector.update(createHand(0.06), 1, 60);
-		expect(detector.update(createHand(0.2), 1, 80)).toBeNull();
-		expect(detector.update(createHand(0.3), 1, 120)).toBeNull();
-		expect(detector.update(createHand(0.4), 1, 140)).toMatchObject({
-			type: "pinch:end",
-			reason: "released",
-			position: lastMove?.position,
-		});
-	});
+  it('ends at the last reliable index position without emitting the release movement', () => {
+    const detector = startPinch()
+    const lastMove = detector.update(createHand(0.06), 1, 60)
+    expect(detector.update(createHand(0.2), 1, 80)).toBeNull()
+    expect(detector.update(createHand(0.3), 1, 120)).toBeNull()
+    expect(detector.update(createHand(0.4), 1, 140)).toMatchObject({
+      type: 'pinch:end',
+      reason: 'released',
+      position: lastMove?.position,
+    })
+  })
 
-	it("reports tracking loss even while a release is pending", () => {
-		const detector = startPinch();
-		detector.update(createHand(0.2), 1, 80);
-		expect(detector.update(null, 1, 100)).toMatchObject({
-			type: "pinch:end",
-			reason: "tracking-lost",
-			position: { x: 0.54, y: 0.4 },
-		});
-		expect(detector.update(null, 1, 140)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 160)).toBeNull();
-	});
+  it('reports tracking loss even while a release is pending', () => {
+    const detector = startPinch()
+    detector.update(createHand(0.2), 1, 80)
+    expect(detector.update(null, 1, 100)).toMatchObject({
+      type: 'pinch:end',
+      reason: 'tracking-lost',
+      position: { x: 0.54, y: 0.4 },
+    })
+    expect(detector.update(null, 1, 140)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 160)).toBeNull()
+  })
 
-	it("follows the index when only the thumb moves", () => {
-		const detector = startPinch();
-		const hand = createHand(0.04);
-		hand.thumbTip = { ...hand.thumbTip, x: hand.thumbTip.x + 0.02 };
-		expect(detector.update(hand, 1, 80)?.position).toEqual({ x: 0.54, y: 0.4 });
-	});
+  it('follows the index when only the thumb moves', () => {
+    const detector = startPinch()
+    const hand = createHand(0.04)
+    hand.thumbTip = { ...hand.thumbTip, x: hand.thumbTip.x + 0.02 }
+    expect(detector.update(hand, 1, 80)?.position).toEqual({ x: 0.54, y: 0.4 })
+  })
 
-	it("corrects distances for the video aspect ratio", () => {
-		const detector = createPinchDetector();
-		detector.update(createHand(0.06), 2, 0);
-		expect(detector.update(createHand(0.06), 2, 100)).toBeNull();
-		detector.update(createHand(0.03), 2, 120);
-		expect(detector.update(createHand(0.03), 2, 160)?.type).toBe("pinch:start");
-	});
+  it('corrects distances for the video aspect ratio', () => {
+    const detector = createPinchDetector()
+    detector.update(createHand(0.06), 2, 0)
+    expect(detector.update(createHand(0.06), 2, 100)).toBeNull()
+    detector.update(createHand(0.03), 2, 120)
+    expect(detector.update(createHand(0.03), 2, 160)?.type).toBe('pinch:start')
+  })
 
-	it("does not pinch when separated fingertips only overlap in the image", () => {
-		const hand = rotateHand(createHand(0.2), "y");
-		expect(
-			Math.hypot(
-				hand.thumbTip.x - hand.indexTip.x,
-				hand.thumbTip.y - hand.indexTip.y,
-			),
-		).toBeLessThan(0.02);
-		const detector = createPinchDetector();
-		for (const timestamp of [0, 40, 80]) {
-			expect(detector.update(hand, 1, timestamp)).toBeNull();
-		}
-	});
+  it('does not pinch when separated fingertips only overlap in the image', () => {
+    const hand = rotateHand(createHand(0.2), 'y')
+    expect(
+      Math.hypot(hand.thumbTip.x - hand.indexTip.x, hand.thumbTip.y - hand.indexTip.y),
+    ).toBeLessThan(0.02)
+    const detector = createPinchDetector()
+    for (const timestamp of [0, 40, 80]) {
+      expect(detector.update(hand, 1, timestamp)).toBeNull()
+    }
+  })
 
-	it.each(["x", "y"] as const)(
-		"keeps a true pinch and its release timing after a depth rotation around %s",
-		(axis) => {
-			const detector = createPinchDetector();
-			const pinched = rotateHand(createHand(0.04), axis);
-			expect(detector.update(pinched, 1, 0)).toBeNull();
-			const started = detector.update(pinched, 1, 40);
-			expect(started?.type).toBe("pinch:start");
-			expect(started?.ratio).toBeCloseTo(0.16);
-			expect(started?.position).toEqual({
-				x: pinched.indexTip.x,
-				y: pinched.indexTip.y,
-			});
-			const moved = detector.update(pinched, 1, 60);
-			expect(moved?.type).toBe("pinch:move");
-			expect(moved?.position).toEqual(started?.position);
-			const released = rotateHand(createHand(0.2), axis);
-			expect(detector.update(released, 1, 80)).toBeNull();
-			expect(detector.update(released, 1, 139)).toBeNull();
-			expect(detector.update(released, 1, 140)).toMatchObject({
-				type: "pinch:end",
-				reason: "released",
-				position: started?.position,
-			});
-		},
-	);
+  it.each(['x', 'y'] as const)(
+    'keeps a true pinch and its release timing after a depth rotation around %s',
+    (axis) => {
+      const detector = createPinchDetector()
+      const pinched = rotateHand(createHand(0.04), axis)
+      expect(detector.update(pinched, 1, 0)).toBeNull()
+      const started = detector.update(pinched, 1, 40)
+      expect(started?.type).toBe('pinch:start')
+      expect(started?.ratio).toBeCloseTo(0.16)
+      expect(started?.position).toEqual({
+        x: pinched.indexTip.x,
+        y: pinched.indexTip.y,
+      })
+      const moved = detector.update(pinched, 1, 60)
+      expect(moved?.type).toBe('pinch:move')
+      expect(moved?.position).toEqual(started?.position)
+      const released = rotateHand(createHand(0.2), axis)
+      expect(detector.update(released, 1, 80)).toBeNull()
+      expect(detector.update(released, 1, 139)).toBeNull()
+      expect(detector.update(released, 1, 140)).toMatchObject({
+        type: 'pinch:end',
+        reason: 'released',
+        position: started?.position,
+      })
+    },
+  )
 
-	it.each([0.75, 1, 16 / 9, 2])(
-		"keeps the depth-aware pinch ratio across scales at image aspect %s",
-		(aspectRatio) => {
-			for (const scale of [0.5, 1, 1.5]) {
-				const hand = transformHand(
-					rotateHand(createHand(0.04), "y"),
-					(point) => ({
-						x: 0.5 + ((point.x - 0.5) * scale) / aspectRatio,
-						y: 0.5 + (point.y - 0.5) * scale,
-						z: (point.z * scale) / aspectRatio,
-					}),
-				);
-				const detector = createPinchDetector();
-				detector.update(hand, aspectRatio, 0);
-				const started = detector.update(hand, aspectRatio, 40);
-				expect(started?.type).toBe("pinch:start");
-				expect(started?.ratio).toBeCloseTo(0.16);
-			}
-		},
-	);
+  it.each([0.75, 1, 16 / 9, 2])(
+    'keeps the depth-aware pinch ratio across scales at image aspect %s',
+    (aspectRatio) => {
+      for (const scale of [0.5, 1, 1.5]) {
+        const hand = transformHand(rotateHand(createHand(0.04), 'y'), (point) => ({
+          x: 0.5 + ((point.x - 0.5) * scale) / aspectRatio,
+          y: 0.5 + (point.y - 0.5) * scale,
+          z: (point.z * scale) / aspectRatio,
+        }))
+        const detector = createPinchDetector()
+        detector.update(hand, aspectRatio, 0)
+        const started = detector.update(hand, aspectRatio, 40)
+        expect(started?.type).toBe('pinch:start')
+        expect(started?.ratio).toBeCloseTo(0.16)
+      }
+    },
+  )
 
-	it("treats a degenerate palm as tracking loss", () => {
-		const detector = startPinch();
-		const hand = createHand(0.04);
-		hand.middleBase = hand.wrist;
-		expect(detector.update(hand, 1, 80)).toMatchObject({
-			type: "pinch:end",
-			reason: "tracking-lost",
-		});
-	});
+  it('treats a degenerate palm as tracking loss', () => {
+    const detector = startPinch()
+    const hand = createHand(0.04)
+    hand.middleBase = hand.wrist
+    expect(detector.update(hand, 1, 80)).toMatchObject({
+      type: 'pinch:end',
+      reason: 'tracking-lost',
+    })
+  })
 
-	it("does not confirm a transition across missing observations", () => {
-		const detector = startPinch();
-		detector.update(createHand(0.2), 1, 80);
-		detector.suspend();
-		expect(detector.update(createHand(0.2), 1, 160)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 180)?.type).toBe("pinch:move");
-	});
+  it('does not confirm a transition across missing observations', () => {
+    const detector = startPinch()
+    detector.update(createHand(0.2), 1, 80)
+    detector.suspend()
+    expect(detector.update(createHand(0.2), 1, 160)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 180)?.type).toBe('pinch:move')
+  })
 
-	it("starts fresh after reset", () => {
-		const detector = startPinch();
-		detector.reset();
-		expect(detector.update(createHand(0.04), 1, 80)).toBeNull();
-		expect(detector.update(createHand(0.04), 1, 120)?.type).toBe("pinch:start");
-	});
+  it('starts fresh after reset', () => {
+    const detector = startPinch()
+    detector.reset()
+    expect(detector.update(createHand(0.04), 1, 80)).toBeNull()
+    expect(detector.update(createHand(0.04), 1, 120)?.type).toBe('pinch:start')
+  })
 
-	it.each([15, 30, 60])(
-		"uses the same confirmation durations at %i fps",
-		(fps) => {
-			const detector = createPinchDetector();
-			const interval = 1000 / fps;
-			const events: PinchEvent[] = [];
-			for (let frame = 0; frame <= fps; frame++) {
-				const event = detector.update(
-					createHand(frame < fps / 2 ? 0.04 : 0.2),
-					1,
-					frame * interval,
-				);
-				if (event) events.push(event);
-			}
-			const start = events.find((event) => event.type === "pinch:start");
-			const end = events.find((event) => event.type === "pinch:end");
-			const releaseTime = Math.ceil(fps / 2) * interval;
-			expect(start?.timestamp).toBeGreaterThanOrEqual(40);
-			expect(start?.timestamp).toBeLessThanOrEqual(40 + interval);
-			expect(end?.timestamp).toBeGreaterThanOrEqual(releaseTime + 60);
-			expect(end?.timestamp).toBeLessThanOrEqual(releaseTime + 60 + interval);
-			expect(events.filter((event) => event.type === "pinch:end")).toHaveLength(
-				1,
-			);
-		},
-	);
-});
+  it.each([15, 30, 60])('uses the same confirmation durations at %i fps', (fps) => {
+    const detector = createPinchDetector()
+    const interval = 1000 / fps
+    const events: PinchEvent[] = []
+    for (let frame = 0; frame <= fps; frame++) {
+      const event = detector.update(createHand(frame < fps / 2 ? 0.04 : 0.2), 1, frame * interval)
+      if (event) events.push(event)
+    }
+    const start = events.find((event) => event.type === 'pinch:start')
+    const end = events.find((event) => event.type === 'pinch:end')
+    const releaseTime = Math.ceil(fps / 2) * interval
+    expect(start?.timestamp).toBeGreaterThanOrEqual(40)
+    expect(start?.timestamp).toBeLessThanOrEqual(40 + interval)
+    expect(end?.timestamp).toBeGreaterThanOrEqual(releaseTime + 60)
+    expect(end?.timestamp).toBeLessThanOrEqual(releaseTime + 60 + interval)
+    expect(events.filter((event) => event.type === 'pinch:end')).toHaveLength(1)
+  })
+})

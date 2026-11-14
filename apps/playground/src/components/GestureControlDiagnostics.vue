@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import {
-	CONTROL_HOLD_MS,
-	type GestureControlFrame,
-	type HandPointerFrame,
-} from "@handfinity/engine";
+  CONTROL_HOLD_MS,
+  type GestureControlFrame,
+  type HandPointerFrame,
+} from '@handfinity/engine'
 
 defineProps<{
-	state: GestureControlFrame;
-	running: boolean;
-	selectionStatus: HandPointerFrame["selectionStatus"];
-}>();
-const holdSeconds = CONTROL_HOLD_MS / 1000;
+  state: GestureControlFrame
+  running: boolean
+  selectionStatus: HandPointerFrame['selectionStatus']
+}>()
+const holdSeconds = CONTROL_HOLD_MS / 1000
 </script>
 
 <template>

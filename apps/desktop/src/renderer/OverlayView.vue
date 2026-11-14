@@ -1,30 +1,30 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
-import VirtualKeyboard from "./components/VirtualKeyboard.vue";
+import { onBeforeUnmount, onMounted } from 'vue'
+import VirtualKeyboard from './components/VirtualKeyboard.vue'
 
-const overlayBridge = window.handfinityOverlay;
+const overlayBridge = window.handfinityOverlay
 
 function onKeyPress(key: string) {
-	overlayBridge?.pressKey(key);
+  overlayBridge?.pressKey(key)
 }
 
 function onClose() {
-	overlayBridge?.close();
+  overlayBridge?.close()
 }
 
 function onKeyDown(event: KeyboardEvent) {
-	if (event.key === "Escape") {
-		onClose();
-	}
+  if (event.key === 'Escape') {
+    onClose()
+  }
 }
 
 onMounted(() => {
-	window.addEventListener("keydown", onKeyDown);
-});
+  window.addEventListener('keydown', onKeyDown)
+})
 
 onBeforeUnmount(() => {
-	window.removeEventListener("keydown", onKeyDown);
-});
+  window.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <template>

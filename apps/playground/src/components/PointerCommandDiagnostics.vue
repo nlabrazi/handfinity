@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { PointerSimulationFrame } from "../pointer-simulation";
+import type { PointerSimulationFrame } from '../pointer-simulation'
 
-defineProps<{ frame: PointerSimulationFrame }>();
+defineProps<{ frame: PointerSimulationFrame }>()
 </script>
 
 <template>

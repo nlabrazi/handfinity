@@ -1,38 +1,39 @@
 {
-	"name": "handfinity",
-	"version": "1.0.0",
-	"description": "Handfinity : interface gestuelle pour remplacer progressivement la souris et le clavier sur PC.",
-	"scripts": {
-		"dev": "npm run dev -w hub",
-		"setup:assets": "node scripts/setup-offline-assets.mjs",
-		"dev:desktop": "npm run dev -w desktop",
-		"build:desktop": "npm run build -w desktop",
-		"start:desktop": "npm run start -w desktop --",
-		"build": "npm run build -w playground && npm run build -w hub",
-		"test": "npm test --workspaces --if-present",
-		"check": "biome check .",
-		"format": "biome format --write .",
-		"lint": "biome lint .",
-		"format:check": "biome format ."
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/nlabrazi/handfinity.git"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"type": "commonjs",
-	"bugs": {
-		"url": "https://github.com/nlabrazi/handfinity/issues"
-	},
-	"homepage": "https://github.com/nlabrazi/handfinity#readme",
-	"private": true,
-	"workspaces": [
-		"apps/*",
-		"packages/*"
-	],
-	"devDependencies": {
-		"@biomejs/biome": "2.5.15"
-	}
+  "name": "handfinity",
+  "version": "1.0.0",
+  "description": "Handfinity : interface gestuelle pour remplacer progressivement la souris et le clavier sur PC.",
+  "scripts": {
+    "dev": "npm run dev -w hub",
+    "setup:assets": "node scripts/setup-offline-assets.mjs",
+    "dev:desktop": "npm run dev -w desktop",
+    "build:desktop": "npm run build -w desktop",
+    "start:desktop": "npm run start -w desktop --",
+    "build": "npm run build -w playground && npm run build -w hub",
+    "test": "npm test --workspaces --if-present",
+    "check": "biome check .",
+    "check:write": "biome check --write .",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "format:check": "biome format ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nlabrazi/handfinity.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/nlabrazi/handfinity/issues"
+  },
+  "homepage": "https://github.com/nlabrazi/handfinity#readme",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@nlabrazi/config-biome": "^0.2.0"
+  }
 }
