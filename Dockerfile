@@ -1,6 +1,6 @@
 
 # syntax=docker/dockerfile:1
-ARG NODE_IMAGE=node:24-bookworm-slim
+ARG NODE_IMAGE=node:26-bookworm-slim
 
 # Base : dépendances du monorepo
 FROM ${NODE_IMAGE} AS base
