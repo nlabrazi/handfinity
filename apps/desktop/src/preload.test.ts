@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
-import ts from 'typescript'
+import { transformWithOxc } from 'vite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   PointerControlState,
@@ -16,19 +16,15 @@ const electron = vi.hoisted(() => ({
   removeListener: vi.fn(),
 }))
 
-function loadBridges(): {
+async function loadBridges(): Promise<{
   pointer: SystemPointerBridge
   overlay: SystemOverlayBridge
-} {
+}> {
   const source = readFileSync(new URL('./preload.cts', import.meta.url), 'utf8')
-  const compiled = ts.transpileModule(source, {
-    fileName: 'preload.cts',
-    compilerOptions: {
-      module: ts.ModuleKind.NodeNext,
-      target: ts.ScriptTarget.ES2023,
-      verbatimModuleSyntax: true,
-    },
-  }).outputText
+  const { code } = await transformWithOxc(source, 'preload.cts', {
+    target: 'es2023',
+  })
+  const compiled = code.replace(/^export \{\};\s*$/m, '')
   const loadModule = vi.fn((specifier: string) => {
     if (specifier !== 'electron') {
       throw new Error(`Sandbox preload cannot require ${specifier}`)
@@ -66,7 +62,7 @@ beforeEach(() => {
 
 describe('System pointer preload bridge', () => {
   it('exposes fixed capabilities without a general Electron API', async () => {
-    const { pointer: bridge } = loadBridges()
+    const { pointer: bridge } = await loadBridges()
     expect(Object.keys(bridge)).toEqual(['getState', 'enable', 'disable', 'submit', 'subscribe'])
     const state: PointerControlState = {
       phase: 'disabled',
@@ -93,7 +89,7 @@ describe('System pointer preload bridge', () => {
   })
 
   it('forwards state without the privileged event and unsubscribes the exact listener', async () => {
-    const { pointer: bridge } = loadBridges()
+    const { pointer: bridge } = await loadBridges()
     const listener = vi.fn()
     const unsubscribe = bridge.subscribe(listener)
     expect(electron.on).toHaveBeenCalledOnce()
@@ -112,7 +108,7 @@ describe('System pointer preload bridge', () => {
   })
 
   it('rejects an invalid state callback before registering a listener', async () => {
-    const { pointer: bridge } = loadBridges()
+    const { pointer: bridge } = await loadBridges()
     expect(() =>
       bridge.subscribe(null as unknown as Parameters<typeof bridge.subscribe>[0]),
     ).toThrow('A pointer state listener is required')
@@ -120,7 +116,7 @@ describe('System pointer preload bridge', () => {
   })
 
   it('exposes fixed overlay capabilities and delegates messages properly', async () => {
-    const { overlay } = loadBridges()
+    const { overlay } = await loadBridges()
     expect(Object.keys(overlay)).toEqual([
       'toggle',
       'pressKey',
