@@ -1,514 +1,466 @@
 <script setup lang="ts">
 import {
-	type BimanualGestureState,
-	CONTROL_HOLD_MS,
-	createGestureEngine,
-	DEFAULT_ACTIVE_ZONE,
-	type GestureEngineFrame,
-	type HandObservation,
-	type HandPointerFrame,
-	type PointerActionCommand,
-	type TrackedHand,
-	type TrackedHandPose,
-} from "@handfinity/engine";
+  type BimanualGestureState,
+  CONTROL_HOLD_MS,
+  createGestureEngine,
+  DEFAULT_ACTIVE_ZONE,
+  type GestureEngineFrame,
+  type HandObservation,
+  type HandPointerFrame,
+  type PointerActionCommand,
+  type TrackedHand,
+  type TrackedHandPose,
+} from '@handfinity/engine'
 import {
-	createTrackingSession,
-	HAND_CONNECTIONS,
-	type TrackingSessionFrame,
-} from "@handfinity/vision";
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
-import type { PointerControlState } from "../pointer-contract";
-import { toPointerUpdate } from "./pointer-update";
+  createTrackingSession,
+  HAND_CONNECTIONS,
+  type TrackingSessionFrame,
+} from '@handfinity/vision'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import type { PointerControlState } from '../pointer-contract'
+import { toPointerUpdate } from './pointer-update'
 
-const bridge = window.handfinityPointer;
+const bridge = window.handfinityPointer
 const state = shallowRef<PointerControlState>({
-	phase: bridge ? "disabled" : "error",
-	sessionId: null,
-	error: bridge ? null : "Pointer control is unavailable. Relaunch Handfinity.",
-});
+  phase: bridge ? 'disabled' : 'error',
+  sessionId: null,
+  error: bridge ? null : 'Pointer control is unavailable. Relaunch Handfinity.',
+})
 
-const videoRef = ref<HTMLVideoElement | null>(null);
-const canvasRef = ref<HTMLCanvasElement | null>(null);
+const videoRef = ref<HTMLVideoElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-const isRunning = ref(false);
-const isLoading = ref(false);
-const overlayKeyboardOpen = ref(false);
-const handCount = ref(0);
-const processedFrames = ref(0);
-const cameraError = ref("");
+const isRunning = ref(false)
+const isLoading = ref(false)
+const overlayKeyboardOpen = ref(false)
+const handCount = ref(0)
+const processedFrames = ref(0)
+const cameraError = ref('')
 
-const trackedHands = shallowRef<readonly TrackedHand[]>([]);
-const trackingAmbiguous = ref(false);
-const handPoses = shallowRef<readonly TrackedHandPose[]>([]);
+const trackedHands = shallowRef<readonly TrackedHand[]>([])
+const trackingAmbiguous = ref(false)
+const handPoses = shallowRef<readonly TrackedHandPose[]>([])
 const emptyPointers: HandPointerFrame = {
-	timestamp: 0,
-	pointers: [],
-	primaryHandId: null,
-	selectionStatus: "unselected",
-};
-const pointerFrame = shallowRef(emptyPointers);
+  timestamp: 0,
+  pointers: [],
+  primaryHandId: null,
+  selectionStatus: 'unselected',
+}
+const pointerFrame = shallowRef(emptyPointers)
 
-const engine = createGestureEngine({ activeZone: DEFAULT_ACTIVE_ZONE });
-const controlFrame = shallowRef(engine.getControlState());
-const actionState = shallowRef(engine.getActionState());
+const engine = createGestureEngine({ activeZone: DEFAULT_ACTIVE_ZONE })
+const controlFrame = shallowRef(engine.getControlState())
+const actionState = shallowRef(engine.getActionState())
 const bimanualState = shallowRef<BimanualGestureState>({
-	phase: "idle",
-	distance: null,
-	progress: 0,
-	keyboardToggle: false,
-});
-const lastActionLabel = ref("None");
+  phase: 'idle',
+  distance: null,
+  progress: 0,
+  keyboardToggle: false,
+})
+const lastActionLabel = ref('None')
 
-const enabled = computed(() => state.value.sessionId !== null);
-const starting = computed(() => state.value.phase === "starting");
+const enabled = computed(() => state.value.sessionId !== null)
+const starting = computed(() => state.value.phase === 'starting')
 const pointerStatus = computed(() => {
-	if (state.value.phase === "paused" && controlFrame.value.requiresRelease) {
-		return "Paused — point or fold your fingers before resuming.";
-	}
-	switch (state.value.phase) {
-		case "unsupported":
-			return "Available on Windows only.";
-		case "starting":
-			return "Starting…";
-		case "waiting":
-			return "On — waiting for a pointing hand.";
-		case "moving":
-			return "On — following the pointing hand.";
-		case "paused":
-			return `Paused — hold your open palm for ${CONTROL_HOLD_MS / 1000} seconds to resume.`;
-		case "error":
-			return state.value.error;
-		default:
-			return "Off.";
-	}
-});
+  if (state.value.phase === 'paused' && controlFrame.value.requiresRelease) {
+    return 'Paused — point or fold your fingers before resuming.'
+  }
+  switch (state.value.phase) {
+    case 'unsupported':
+      return 'Available on Windows only.'
+    case 'starting':
+      return 'Starting…'
+    case 'waiting':
+      return 'On — waiting for a pointing hand.'
+    case 'moving':
+      return 'On — following the pointing hand.'
+    case 'paused':
+      return `Paused — hold your open palm for ${CONTROL_HOLD_MS / 1000} seconds to resume.`
+    case 'error':
+      return state.value.error
+    default:
+      return 'Off.'
+  }
+})
 
 const selectionStatus = computed(() => {
-	const { primaryHandId, selectionStatus: status } = pointerFrame.value;
-	switch (status) {
-		case "tracked":
-			return `Controlling hand: #${primaryHandId} (automatic).`;
-		case "missing":
-			return `Waiting for hand #${primaryHandId} to return.`;
-		case "ambiguous":
-			return "Hands are ambiguous. Separate them and point again.";
-		default:
-			return "Show a pointing hand to start controlling the pointer.";
-	}
-});
+  const { primaryHandId, selectionStatus: status } = pointerFrame.value
+  switch (status) {
+    case 'tracked':
+      return `Controlling hand: #${primaryHandId} (automatic).`
+    case 'missing':
+      return `Waiting for hand #${primaryHandId} to return.`
+    case 'ambiguous':
+      return 'Hands are ambiguous. Separate them and point again.'
+    default:
+      return 'Show a pointing hand to start controlling the pointer.'
+  }
+})
 
 const pointerReadiness = computed(() => {
-	if (!isRunning.value) return "Start the camera to begin.";
-	if (bimanualState.value.phase === "palms-together") {
-		return "Paumes jointes détectées 👐 — écartez les mains pour afficher/masquer le clavier pop-up !";
-	}
-	if (controlFrame.value.handId !== null)
-		return `Hold your open palm to ${controlFrame.value.paused ? "resume" : "pause"} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`;
-	if (controlFrame.value.paused)
-		return controlFrame.value.requiresRelease
-			? "Paused — point or fold your fingers before holding your palm to resume."
-			: "Paused — hold your open palm for 1.5 seconds to resume.";
-	if (controlFrame.value.requiresRelease)
-		return "Point or fold your fingers before holding your palm to pause again.";
-	if (pointerFrame.value.selectionStatus !== "tracked")
-		return "Show a pointing hand to control the pointer.";
-	if (actionState.value.leftButtonDown)
-		return "Grab locked — move your closed fist to drag, or open your hand to release.";
-	if (actionState.value.grabProgress > 0)
-		return `Locking fist grab — ${Math.round(actionState.value.grabProgress * 100)}% (hold 0.6s).`;
-	if (actionState.value.pendingChord === "left-click")
-		return "2-finger chord detected — confirming left-click…";
-	if (actionState.value.pendingChord === "right-click")
-		return "3-finger chord detected — confirming right-click…";
-	if (actionState.value.scrolling) {
-		const dir =
-			actionState.value.scrollVelocity === 0
-				? "neutral zone"
-				: actionState.value.scrollVelocity < 0
-					? "scrolling up ↑"
-					: "scrolling down ↓";
-		return `Joystick scroll active (${dir}) — raise or lower your pinched hand.`;
-	}
-	const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary);
-	if (pointer?.active) return "Pointing detected — pointer active.";
-	const pose = handPoses.value.find(
-		(item) => item.handId === pointerFrame.value.primaryHandId,
-	);
-	if (pose?.pose === "pointing")
-		return "Pointer inactive — keep your index inside the camera image.";
-	return `Pointer inactive — detected pose: ${pose?.pose ?? "unknown"}. Show a pointing hand.`;
-});
+  if (!isRunning.value) return 'Start the camera to begin.'
+  if (bimanualState.value.phase === 'palms-together') {
+    return 'Paumes jointes détectées 👐 — écartez les mains pour afficher/masquer le clavier pop-up !'
+  }
+  if (controlFrame.value.handId !== null)
+    return `Hold your open palm to ${controlFrame.value.paused ? 'resume' : 'pause'} — ${Math.round(controlFrame.value.holdProgress * 100)}%.`
+  if (controlFrame.value.paused)
+    return controlFrame.value.requiresRelease
+      ? 'Paused — point or fold your fingers before holding your palm to resume.'
+      : 'Paused — hold your open palm for 1.5 seconds to resume.'
+  if (controlFrame.value.requiresRelease)
+    return 'Point or fold your fingers before holding your palm to pause again.'
+  if (pointerFrame.value.selectionStatus !== 'tracked')
+    return 'Show a pointing hand to control the pointer.'
+  if (actionState.value.leftButtonDown)
+    return 'Grab locked — move your closed fist to drag, or open your hand to release.'
+  if (actionState.value.grabProgress > 0)
+    return `Locking fist grab — ${Math.round(actionState.value.grabProgress * 100)}% (hold 0.6s).`
+  if (actionState.value.pendingChord === 'left-click')
+    return '2-finger chord detected — confirming left-click…'
+  if (actionState.value.pendingChord === 'right-click')
+    return '3-finger chord detected — confirming right-click…'
+  if (actionState.value.scrolling) {
+    const dir =
+      actionState.value.scrollVelocity === 0
+        ? 'neutral zone'
+        : actionState.value.scrollVelocity < 0
+          ? 'scrolling up ↑'
+          : 'scrolling down ↓'
+    return `Joystick scroll active (${dir}) — raise or lower your pinched hand.`
+  }
+  const pointer = pointerFrame.value.pointers.find((item) => item.isPrimary)
+  if (pointer?.active) return 'Pointing detected — pointer active.'
+  const pose = handPoses.value.find((item) => item.handId === pointerFrame.value.primaryHandId)
+  if (pose?.pose === 'pointing')
+    return 'Pointer inactive — keep your index inside the camera image.'
+  return `Pointer inactive — detected pose: ${pose?.pose ?? 'unknown'}. Show a pointing hand.`
+})
 
 const session = createTrackingSession(
-	{
-		onFrame: handleTrackingFrame,
-		onError(err) {
-			stopCamera();
-			cameraError.value =
-				err instanceof Error ? err.message : "Tracking failed";
-		},
-	},
-	{ scheduling: "timer" },
-);
+  {
+    onFrame: handleTrackingFrame,
+    onError(err) {
+      stopCamera()
+      cameraError.value = err instanceof Error ? err.message : 'Tracking failed'
+    },
+  },
+  { scheduling: 'timer' },
+)
 
-let sessionGeneration = 0;
-let unsubscribe: (() => void) | undefined;
-let disposed = false;
+let sessionGeneration = 0
+let unsubscribe: (() => void) | undefined
+let disposed = false
 
 function pushHudState(latestActionStr?: string | null) {
-	if (!window.handfinityOverlay) return;
-	const isLocked = actionState.value.leftButtonDown;
-	const grabProgress = actionState.value.grabProgress;
-	let action = latestActionStr ?? null;
-	if (!action && lastActionLabel.value && lastActionLabel.value !== "None") {
-		action = lastActionLabel.value;
-	}
-	window.handfinityOverlay.updateHud({
-		phase: state.value.phase,
-		statusText: pointerReadiness.value,
-		grabProgress,
-		isLocked,
-		lastAction: action,
-	});
+  if (!window.handfinityOverlay) return
+  const isLocked = actionState.value.leftButtonDown
+  const grabProgress = actionState.value.grabProgress
+  let action = latestActionStr ?? null
+  if (!action && lastActionLabel.value && lastActionLabel.value !== 'None') {
+    action = lastActionLabel.value
+  }
+  window.handfinityOverlay.updateHud({
+    phase: state.value.phase,
+    statusText: pointerReadiness.value,
+    grabProgress,
+    isLocked,
+    lastAction: action,
+  })
 }
 
 function showState(next: PointerControlState) {
-	if (!disposed) {
-		state.value = next;
-		pushHudState();
-	}
+  if (!disposed) {
+    state.value = next
+    pushHudState()
+  }
 }
 
 function showError(error: unknown) {
-	showState({
-		phase: "error",
-		sessionId: null,
-		error: error instanceof Error ? error.message : "Pointer control failed",
-	});
+  showState({
+    phase: 'error',
+    sessionId: null,
+    error: error instanceof Error ? error.message : 'Pointer control failed',
+  })
 }
 
 async function disablePointer() {
-	if (!bridge) return;
-	try {
-		showState(await bridge.disable());
-	} catch (error) {
-		showError(error);
-	}
+  if (!bridge) return
+  try {
+    showState(await bridge.disable())
+  } catch (error) {
+    showError(error)
+  }
 }
 
 async function togglePointer() {
-	if (!bridge) return;
-	if (enabled.value || starting.value) {
-		await disablePointer();
-		return;
-	}
-	if (!isRunning.value) return;
-	try {
-		showState(await bridge.enable());
-	} catch (error) {
-		showError(error);
-	}
+  if (!bridge) return
+  if (enabled.value || starting.value) {
+    await disablePointer()
+    return
+  }
+  if (!isRunning.value) return
+  try {
+    showState(await bridge.enable())
+  } catch (error) {
+    showError(error)
+  }
 }
 
 function formatAction(action: PointerActionCommand): string {
-	switch (action.type) {
-		case "pointer:down":
-			return action.button === "left"
-				? "✊ Saisie verrouillée"
-				: `Bouton ${action.button} enfoncé`;
-		case "pointer:up":
-			return action.button === "left"
-				? "🖐️ Relâchement"
-				: `Bouton ${action.button} relâché`;
-		case "pointer:click":
-			return action.button === "left"
-				? "✌️ Clic gauche"
-				: action.button === "right"
-					? "🤟 Clic droit"
-					: `Clic ${action.button}`;
-		case "pointer:scroll":
-			return `📜 Défilement (${action.deltaY > 0 ? "↓" : "↑"})`;
-	}
+  switch (action.type) {
+    case 'pointer:down':
+      return action.button === 'left' ? '✊ Saisie verrouillée' : `Bouton ${action.button} enfoncé`
+    case 'pointer:up':
+      return action.button === 'left' ? '🖐️ Relâchement' : `Bouton ${action.button} relâché`
+    case 'pointer:click':
+      return action.button === 'left'
+        ? '✌️ Clic gauche'
+        : action.button === 'right'
+          ? '🤟 Clic droit'
+          : `Clic ${action.button}`
+    case 'pointer:scroll':
+      return `📜 Défilement (${action.deltaY > 0 ? '↓' : '↑'})`
+  }
 }
 
 function submit(frame: GestureEngineFrame) {
-	const sessionId = state.value.sessionId;
-	if (!bridge || sessionId === null) return;
-	const update = toPointerUpdate(frame, sessionId, performance.timeOrigin);
-	if (update) bridge.submit(update);
+  const sessionId = state.value.sessionId
+  if (!bridge || sessionId === null) return
+  const update = toPointerUpdate(frame, sessionId, performance.timeOrigin)
+  if (update) bridge.submit(update)
 }
 
 function handColor(id: number) {
-	return (
-		["#22d3ee", "#fb923c", "#a78bfa", "#4ade80"][(id - 1) % 4] ?? "#22d3ee"
-	);
+  return ['#22d3ee', '#fb923c', '#a78bfa', '#4ade80'][(id - 1) % 4] ?? '#22d3ee'
 }
 
 function drawHands(hands: readonly HandObservation[]) {
-	const canvas = canvasRef.value;
-	const video = videoRef.value;
-	if (!canvas || !video) return;
+  const canvas = canvasRef.value
+  const video = videoRef.value
+  if (!canvas || !video) return
 
-	if (
-		canvas.width !== video.videoWidth ||
-		canvas.height !== video.videoHeight
-	) {
-		canvas.width = video.videoWidth;
-		canvas.height = video.videoHeight;
-	}
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+  }
 
-	const ctx = canvas.getContext("2d");
-	if (!ctx) return;
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
 
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-	const az = engine.getActiveZone();
-	if (az) {
-		ctx.save();
-		ctx.strokeStyle = "#38bdf855";
-		ctx.lineWidth = 2;
-		ctx.setLineDash([6, 6]);
-		ctx.strokeRect(
-			az.minX * canvas.width,
-			az.minY * canvas.height,
-			(az.maxX - az.minX) * canvas.width,
-			(az.maxY - az.minY) * canvas.height,
-		);
-		ctx.fillStyle = "#38bdf8aa";
-		ctx.font = "11px monospace";
-		ctx.fillText(
-			"ZONE ACTIVE",
-			az.minX * canvas.width + 6,
-			az.minY * canvas.height + 14,
-		);
-		ctx.restore();
-	}
+  const az = engine.getActiveZone()
+  if (az) {
+    ctx.save()
+    ctx.strokeStyle = '#38bdf855'
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 6])
+    ctx.strokeRect(
+      az.minX * canvas.width,
+      az.minY * canvas.height,
+      (az.maxX - az.minX) * canvas.width,
+      (az.maxY - az.minY) * canvas.height,
+    )
+    ctx.fillStyle = '#38bdf8aa'
+    ctx.font = '11px monospace'
+    ctx.fillText('ZONE ACTIVE', az.minX * canvas.width + 6, az.minY * canvas.height + 14)
+    ctx.restore()
+  }
 
-	for (const observation of hands) {
-		const points = observation.landmarks;
-		const tracked = trackedHands.value.find(
-			(hand) => hand.status === "tracked" && hand.observation === observation,
-		);
-		ctx.strokeStyle = tracked ? handColor(tracked.id) : "#94a3b8";
-		ctx.lineWidth = 3;
+  for (const observation of hands) {
+    const points = observation.landmarks
+    const tracked = trackedHands.value.find(
+      (hand) => hand.status === 'tracked' && hand.observation === observation,
+    )
+    ctx.strokeStyle = tracked ? handColor(tracked.id) : '#94a3b8'
+    ctx.lineWidth = 3
 
-		for (const connection of HAND_CONNECTIONS) {
-			const start = points[connection.start];
-			const end = points[connection.end];
-			if (!start || !end) continue;
+    for (const connection of HAND_CONNECTIONS) {
+      const start = points[connection.start]
+      const end = points[connection.end]
+      if (!start || !end) continue
 
-			ctx.beginPath();
-			ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-			ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
-			ctx.stroke();
-		}
+      ctx.beginPath()
+      ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
+      ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
+      ctx.stroke()
+    }
 
-		ctx.fillStyle = "#facc15";
-		for (const point of points) {
-			ctx.beginPath();
-			ctx.arc(
-				point.x * canvas.width,
-				point.y * canvas.height,
-				5,
-				0,
-				Math.PI * 2,
-			);
-			ctx.fill();
-		}
-	}
+    ctx.fillStyle = '#facc15'
+    for (const point of points) {
+      ctx.beginPath()
+      ctx.arc(point.x * canvas.width, point.y * canvas.height, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
 
-	for (const pointer of pointerFrame.value.pointers) {
-		if (
-			pointer.isPrimary &&
-			(actionState.value.grabProgress > 0 ||
-				actionState.value.leftButtonDown ||
-				actionState.value.scrolling)
-		) {
-			ctx.save();
-			ctx.translate(
-				pointer.palmPosition.x * canvas.width,
-				pointer.palmPosition.y * canvas.height,
-			);
-			ctx.fillStyle = "#020617cc";
-			ctx.beginPath();
-			ctx.arc(0, 0, 22, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.lineWidth = 4;
-			ctx.strokeStyle = actionState.value.scrolling ? "#38bdf8" : "#4ade80";
-			const progress = actionState.value.scrolling
-				? 1
-				: actionState.value.grabProgress;
-			ctx.beginPath();
-			ctx.arc(
-				0,
-				0,
-				22,
-				-Math.PI / 2,
-				-Math.PI / 2 + Math.PI * 2 * Math.max(0.08, progress),
-			);
-			ctx.stroke();
-			ctx.restore();
-		}
-		if (!pointer.active) continue;
-		ctx.save();
-		ctx.translate(
-			pointer.position.x * canvas.width,
-			pointer.position.y * canvas.height,
-		);
-		ctx.strokeStyle = pointer.isPrimary ? "#ffffff" : "#fb923c";
-		ctx.fillStyle = "#020617dd";
-		ctx.lineWidth = 3;
-		ctx.setLineDash(pointer.isPrimary ? [] : [5, 4]);
-		ctx.beginPath();
-		ctx.arc(0, 0, 18, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.stroke();
-		ctx.restore();
-	}
+  for (const pointer of pointerFrame.value.pointers) {
+    if (
+      pointer.isPrimary &&
+      (actionState.value.grabProgress > 0 ||
+        actionState.value.leftButtonDown ||
+        actionState.value.scrolling)
+    ) {
+      ctx.save()
+      ctx.translate(pointer.palmPosition.x * canvas.width, pointer.palmPosition.y * canvas.height)
+      ctx.fillStyle = '#020617cc'
+      ctx.beginPath()
+      ctx.arc(0, 0, 22, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.lineWidth = 4
+      ctx.strokeStyle = actionState.value.scrolling ? '#38bdf8' : '#4ade80'
+      const progress = actionState.value.scrolling ? 1 : actionState.value.grabProgress
+      ctx.beginPath()
+      ctx.arc(0, 0, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.08, progress))
+      ctx.stroke()
+      ctx.restore()
+    }
+    if (!pointer.active) continue
+    ctx.save()
+    ctx.translate(pointer.position.x * canvas.width, pointer.position.y * canvas.height)
+    ctx.strokeStyle = pointer.isPrimary ? '#ffffff' : '#fb923c'
+    ctx.fillStyle = '#020617dd'
+    ctx.lineWidth = 3
+    ctx.setLineDash(pointer.isPrimary ? [] : [5, 4])
+    ctx.beginPath()
+    ctx.arc(0, 0, 18, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+  }
 
-	if (
-		bimanualState.value.phase === "palms-together" &&
-		pointerFrame.value.pointers.length >= 2
-	) {
-		const p1 = pointerFrame.value.pointers[0]?.palmPosition;
-		const p2 = pointerFrame.value.pointers[1]?.palmPosition;
-		if (p1 && p2) {
-			ctx.save();
-			ctx.strokeStyle = "#38bdf8";
-			ctx.lineWidth = 3;
-			ctx.setLineDash([6, 4]);
-			ctx.beginPath();
-			ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
-			ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
-			ctx.stroke();
-			ctx.fillStyle = "#38bdf8";
-			ctx.font = "bold 12px sans-serif";
-			const midX = ((p1.x + p2.x) / 2) * canvas.width;
-			const midY = ((p1.y + p2.y) / 2) * canvas.height;
-			ctx.fillText(
-				"👐 Écartez pour ouvrir le clavier",
-				Math.max(10, midX - 90),
-				midY - 12,
-			);
-			ctx.restore();
-		}
-	}
+  if (bimanualState.value.phase === 'palms-together' && pointerFrame.value.pointers.length >= 2) {
+    const p1 = pointerFrame.value.pointers[0]?.palmPosition
+    const p2 = pointerFrame.value.pointers[1]?.palmPosition
+    if (p1 && p2) {
+      ctx.save()
+      ctx.strokeStyle = '#38bdf8'
+      ctx.lineWidth = 3
+      ctx.setLineDash([6, 4])
+      ctx.beginPath()
+      ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height)
+      ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height)
+      ctx.stroke()
+      ctx.fillStyle = '#38bdf8'
+      ctx.font = 'bold 12px sans-serif'
+      const midX = ((p1.x + p2.x) / 2) * canvas.width
+      const midY = ((p1.y + p2.y) / 2) * canvas.height
+      ctx.fillText('👐 Écartez pour ouvrir le clavier', Math.max(10, midX - 90), midY - 12)
+      ctx.restore()
+    }
+  }
 }
 
 async function toggleKeyboard() {
-	if (window.handfinityOverlay) {
-		overlayKeyboardOpen.value = await window.handfinityOverlay.toggle();
-	} else {
-		overlayKeyboardOpen.value = !overlayKeyboardOpen.value;
-	}
+  if (window.handfinityOverlay) {
+    overlayKeyboardOpen.value = await window.handfinityOverlay.toggle()
+  } else {
+    overlayKeyboardOpen.value = !overlayKeyboardOpen.value
+  }
 }
 
-function handleTrackingFrame({
-	tracking,
-	aspectRatio,
-	hasNewFrame,
-}: TrackingSessionFrame) {
-	const frame = engine.update(tracking, aspectRatio);
-	if (hasNewFrame) processedFrames.value += 1;
-	trackedHands.value = frame.tracking.hands;
-	trackingAmbiguous.value = frame.tracking.ambiguous;
-	handPoses.value = frame.poses;
-	pointerFrame.value = frame.pointers;
-	controlFrame.value = frame.control;
-	actionState.value = frame.actionState;
-	bimanualState.value = frame.bimanual;
-	if (frame.bimanual.keyboardToggle) {
-		void toggleKeyboard();
-		lastActionLabel.value = "👐 Clavier virtuel Windows";
-	}
-	const latestAction = frame.actions.at(-1);
-	if (latestAction) {
-		lastActionLabel.value = formatAction(latestAction);
-	}
-	pushHudState(latestAction ? formatAction(latestAction) : null);
-	submit(frame);
-	const visible = frame.tracking.hands
-		.filter((hand) => hand.status === "tracked")
-		.map((hand) => hand.observation);
-	handCount.value = visible.length;
-	drawHands(visible);
+function handleTrackingFrame({ tracking, aspectRatio, hasNewFrame }: TrackingSessionFrame) {
+  const frame = engine.update(tracking, aspectRatio)
+  if (hasNewFrame) processedFrames.value += 1
+  trackedHands.value = frame.tracking.hands
+  trackingAmbiguous.value = frame.tracking.ambiguous
+  handPoses.value = frame.poses
+  pointerFrame.value = frame.pointers
+  controlFrame.value = frame.control
+  actionState.value = frame.actionState
+  bimanualState.value = frame.bimanual
+  if (frame.bimanual.keyboardToggle) {
+    void toggleKeyboard()
+    lastActionLabel.value = '👐 Clavier virtuel Windows'
+  }
+  const latestAction = frame.actions.at(-1)
+  if (latestAction) {
+    lastActionLabel.value = formatAction(latestAction)
+  }
+  pushHudState(latestAction ? formatAction(latestAction) : null)
+  submit(frame)
+  const visible = frame.tracking.hands
+    .filter((hand) => hand.status === 'tracked')
+    .map((hand) => hand.observation)
+  handCount.value = visible.length
+  drawHands(visible)
 }
 
 function stopCamera() {
-	sessionGeneration += 1;
-	void disablePointer();
-	session.stop();
+  sessionGeneration += 1
+  void disablePointer()
+  session.stop()
 
-	const canvas = canvasRef.value;
-	if (canvas) {
-		canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
-	}
+  const canvas = canvasRef.value
+  if (canvas) {
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+  }
 
-	isRunning.value = false;
-	isLoading.value = false;
-	handCount.value = 0;
-	processedFrames.value = 0;
-	trackedHands.value = [];
-	engine.reset();
-	controlFrame.value = engine.getControlState();
-	actionState.value = engine.getActionState();
-	bimanualState.value = {
-		phase: "idle",
-		distance: null,
-		progress: 0,
-		keyboardToggle: false,
-	};
-	lastActionLabel.value = "None";
-	handPoses.value = [];
-	pointerFrame.value = emptyPointers;
-	trackingAmbiguous.value = false;
-	pushHudState(null);
+  isRunning.value = false
+  isLoading.value = false
+  handCount.value = 0
+  processedFrames.value = 0
+  trackedHands.value = []
+  engine.reset()
+  controlFrame.value = engine.getControlState()
+  actionState.value = engine.getActionState()
+  bimanualState.value = {
+    phase: 'idle',
+    distance: null,
+    progress: 0,
+    keyboardToggle: false,
+  }
+  lastActionLabel.value = 'None'
+  handPoses.value = []
+  pointerFrame.value = emptyPointers
+  trackingAmbiguous.value = false
+  pushHudState(null)
 }
 
 async function toggleCamera() {
-	if (disposed || isLoading.value) return;
+  if (disposed || isLoading.value) return
 
-	if (isRunning.value) {
-		stopCamera();
-		return;
-	}
+  if (isRunning.value) {
+    stopCamera()
+    return
+  }
 
-	const video = videoRef.value;
-	if (!video) return;
+  const video = videoRef.value
+  if (!video) return
 
-	isLoading.value = true;
-	cameraError.value = "";
+  isLoading.value = true
+  cameraError.value = ''
 
-	const generation = sessionGeneration;
-	try {
-		await session.start(video);
-		if (disposed || generation !== sessionGeneration) return;
-		isRunning.value = true;
-	} catch (err) {
-		if (disposed || generation !== sessionGeneration) return;
-		stopCamera();
-		cameraError.value =
-			err instanceof Error ? err.message : "Camera unavailable";
-	} finally {
-		if (generation === sessionGeneration) isLoading.value = false;
-	}
+  const generation = sessionGeneration
+  try {
+    await session.start(video)
+    if (disposed || generation !== sessionGeneration) return
+    isRunning.value = true
+  } catch (err) {
+    if (disposed || generation !== sessionGeneration) return
+    stopCamera()
+    cameraError.value = err instanceof Error ? err.message : 'Camera unavailable'
+  } finally {
+    if (generation === sessionGeneration) isLoading.value = false
+  }
 }
 
 onMounted(async () => {
-	if (!bridge) return;
-	unsubscribe = bridge.subscribe(showState);
-	try {
-		showState(await bridge.getState());
-	} catch (error) {
-		showError(error);
-	}
-});
+  if (!bridge) return
+  unsubscribe = bridge.subscribe(showState)
+  try {
+    showState(await bridge.getState())
+  } catch (error) {
+    showError(error)
+  }
+})
 
 onBeforeUnmount(() => {
-	disposed = true;
-	unsubscribe?.();
-	stopCamera();
-});
+  disposed = true
+  unsubscribe?.()
+  stopCamera()
+})
 </script>
 
 <template>

@@ -1,215 +1,199 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from 'vue'
 
 const props = defineProps<{
-	disabled?: boolean;
-}>();
+  disabled?: boolean
+}>()
 
 const emit = defineEmits<{
-	"press-key": [key: string];
-	close: [];
-}>();
+  'press-key': [key: string]
+  close: []
+}>()
 
-const layout = ref<"azerty" | "qwerty">("azerty");
-const uppercase = ref(false);
-const lastSentKey = ref<string | null>(null);
+const layout = ref<'azerty' | 'qwerty'>('azerty')
+const uppercase = ref(false)
+const lastSentKey = ref<string | null>(null)
 
 const opacityOptions = [
-	{
-		label: "20%",
-		class:
-			"bg-slate-950/20 border-cyan-500/25 shadow-black/40 backdrop-blur-md",
-	},
-	{
-		label: "40%",
-		class:
-			"bg-slate-950/40 border-cyan-500/35 shadow-black/60 backdrop-blur-lg",
-	},
-	{
-		label: "70%",
-		class:
-			"bg-slate-900/70 border-cyan-500/45 shadow-black/80 backdrop-blur-xl",
-	},
-] as const;
+  {
+    label: '20%',
+    class: 'bg-slate-950/20 border-cyan-500/25 shadow-black/40 backdrop-blur-md',
+  },
+  {
+    label: '40%',
+    class: 'bg-slate-950/40 border-cyan-500/35 shadow-black/60 backdrop-blur-lg',
+  },
+  {
+    label: '70%',
+    class: 'bg-slate-900/70 border-cyan-500/45 shadow-black/80 backdrop-blur-xl',
+  },
+] as const
 
-const opacityIndex = ref(0);
+const opacityIndex = ref(0)
 const currentOpacityClass = computed(
-	() => opacityOptions[opacityIndex.value]?.class ?? opacityOptions[0].class,
-);
-const currentOpacityLabel = computed(
-	() => opacityOptions[opacityIndex.value]?.label ?? "20%",
-);
+  () => opacityOptions[opacityIndex.value]?.class ?? opacityOptions[0].class,
+)
+const currentOpacityLabel = computed(() => opacityOptions[opacityIndex.value]?.label ?? '20%')
 
 function cycleOpacity() {
-	opacityIndex.value = (opacityIndex.value + 1) % opacityOptions.length;
+  opacityIndex.value = (opacityIndex.value + 1) % opacityOptions.length
 }
 
-const isDragging = ref(false);
-let isPointerDown = false;
-let isInteractiveTarget = false;
-let startX = 0;
-let startY = 0;
-let lastX = 0;
-let lastY = 0;
-let accumulatedDeltaX = 0;
-let accumulatedDeltaY = 0;
-let rafId: number | null = null;
-const DRAG_THRESHOLD = 4;
+const isDragging = ref(false)
+let isPointerDown = false
+let isInteractiveTarget = false
+let startX = 0
+let startY = 0
+let lastX = 0
+let lastY = 0
+let accumulatedDeltaX = 0
+let accumulatedDeltaY = 0
+let rafId: number | null = null
+const DRAG_THRESHOLD = 4
 
 function flushMove() {
-	if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
-		window.handfinityOverlay?.moveBy(accumulatedDeltaX, accumulatedDeltaY);
-		accumulatedDeltaX = 0;
-		accumulatedDeltaY = 0;
-	}
-	rafId = null;
+  if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
+    window.handfinityOverlay?.moveBy(accumulatedDeltaX, accumulatedDeltaY)
+    accumulatedDeltaX = 0
+    accumulatedDeltaY = 0
+  }
+  rafId = null
 }
 
 function queueMove(stepX: number, stepY: number) {
-	accumulatedDeltaX += stepX;
-	accumulatedDeltaY += stepY;
-	if (
-		typeof window !== "undefined" &&
-		typeof window.requestAnimationFrame === "function"
-	) {
-		if (rafId === null) {
-			rafId = window.requestAnimationFrame(flushMove);
-		}
-	} else {
-		flushMove();
-	}
+  accumulatedDeltaX += stepX
+  accumulatedDeltaY += stepY
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    if (rafId === null) {
+      rafId = window.requestAnimationFrame(flushMove)
+    }
+  } else {
+    flushMove()
+  }
 }
 
 function isInteractiveControl(target: EventTarget | null): boolean {
-	if (!(target instanceof HTMLElement)) return false;
-	return !!target.closest("button");
+  if (!(target instanceof HTMLElement)) return false
+  return !!target.closest('button')
 }
 
 function onMouseDown(event: MouseEvent) {
-	if (event.button !== 0) return;
-	isPointerDown = true;
-	isDragging.value = false;
-	isInteractiveTarget = isInteractiveControl(event.target);
-	startX = event.screenX;
-	startY = event.screenY;
-	lastX = event.screenX;
-	lastY = event.screenY;
-	accumulatedDeltaX = 0;
-	accumulatedDeltaY = 0;
+  if (event.button !== 0) return
+  isPointerDown = true
+  isDragging.value = false
+  isInteractiveTarget = isInteractiveControl(event.target)
+  startX = event.screenX
+  startY = event.screenY
+  lastX = event.screenX
+  lastY = event.screenY
+  accumulatedDeltaX = 0
+  accumulatedDeltaY = 0
 
-	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mouseup", onMouseUp, { capture: true });
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp, { capture: true })
 }
 
 function onMouseMove(event: MouseEvent) {
-	if (!isPointerDown) return;
-	const totalDist = Math.hypot(event.screenX - startX, event.screenY - startY);
-	const threshold = isInteractiveTarget ? DRAG_THRESHOLD : 1;
+  if (!isPointerDown) return
+  const totalDist = Math.hypot(event.screenX - startX, event.screenY - startY)
+  const threshold = isInteractiveTarget ? DRAG_THRESHOLD : 1
 
-	if (!isDragging.value && totalDist >= threshold) {
-		isDragging.value = true;
-	}
+  if (!isDragging.value && totalDist >= threshold) {
+    isDragging.value = true
+  }
 
-	if (isDragging.value) {
-		const stepX = event.screenX - lastX;
-		const stepY = event.screenY - lastY;
-		lastX = event.screenX;
-		lastY = event.screenY;
+  if (isDragging.value) {
+    const stepX = event.screenX - lastX
+    const stepY = event.screenY - lastY
+    lastX = event.screenX
+    lastY = event.screenY
 
-		if (stepX !== 0 || stepY !== 0) {
-			queueMove(stepX, stepY);
-		}
-	}
+    if (stepX !== 0 || stepY !== 0) {
+      queueMove(stepX, stepY)
+    }
+  }
 }
 
 function onMouseUp() {
-	if (!isPointerDown) return;
-	isPointerDown = false;
-	window.removeEventListener("mousemove", onMouseMove);
-	window.removeEventListener("mouseup", onMouseUp, { capture: true });
+  if (!isPointerDown) return
+  isPointerDown = false
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp, { capture: true })
 
-	if (rafId !== null) {
-		if (
-			typeof window !== "undefined" &&
-			typeof window.cancelAnimationFrame === "function"
-		) {
-			window.cancelAnimationFrame(rafId);
-		}
-		rafId = null;
-	}
-	flushMove();
+  if (rafId !== null) {
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId)
+    }
+    rafId = null
+  }
+  flushMove()
 
-	if (isDragging.value) {
-		isDragging.value = false;
-		const suppressClick = (e: MouseEvent) => {
-			e.stopPropagation();
-			e.preventDefault();
-		};
-		window.addEventListener("click", suppressClick, {
-			capture: true,
-			once: true,
-		});
-		setTimeout(() => {
-			window.removeEventListener("click", suppressClick, { capture: true });
-		}, 50);
-	}
+  if (isDragging.value) {
+    isDragging.value = false
+    const suppressClick = (e: MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    window.addEventListener('click', suppressClick, {
+      capture: true,
+      once: true,
+    })
+    setTimeout(() => {
+      window.removeEventListener('click', suppressClick, { capture: true })
+    }, 50)
+  }
 }
 
 function resetPosition() {
-	window.handfinityOverlay?.resetPosition();
+  window.handfinityOverlay?.resetPosition()
 }
 
 onBeforeUnmount(() => {
-	isPointerDown = false;
-	isDragging.value = false;
-	window.removeEventListener("mousemove", onMouseMove);
-	window.removeEventListener("mouseup", onMouseUp, { capture: true });
-	if (rafId !== null) {
-		if (
-			typeof window !== "undefined" &&
-			typeof window.cancelAnimationFrame === "function"
-		) {
-			window.cancelAnimationFrame(rafId);
-		}
-		rafId = null;
-	}
-});
+  isPointerDown = false
+  isDragging.value = false
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp, { capture: true })
+  if (rafId !== null) {
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId)
+    }
+    rafId = null
+  }
+})
 
 const rows = computed(() => {
-	const base =
-		layout.value === "azerty"
-			? [
-					["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-					["a", "z", "e", "r", "t", "y", "u", "i", "o", "p"],
-					["q", "s", "d", "f", "g", "h", "j", "k", "l", "m"],
-					["w", "x", "c", "v", "b", "n", ",", ".", "-", "'"],
-				]
-			: [
-					["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-					["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-					["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
-					["z", "x", "c", "v", "b", "n", "m", ",", ".", "-"],
-				];
-	return base.map((row) =>
-		row.map((ch) => (uppercase.value ? ch.toUpperCase() : ch)),
-	);
-});
+  const base =
+    layout.value === 'azerty'
+      ? [
+          ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+          ['a', 'z', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+          ['q', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm'],
+          ['w', 'x', 'c', 'v', 'b', 'n', ',', '.', '-', "'"],
+        ]
+      : [
+          ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+          ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+          ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';'],
+          ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '-'],
+        ]
+  return base.map((row) => row.map((ch) => (uppercase.value ? ch.toUpperCase() : ch)))
+})
 
 const specialKeys = [
-	{ label: "⌫ Backspace", value: "Backspace" },
-	{ label: "⇥ Tab", value: "Tab" },
-	{ label: "␣ Space", value: "Space" },
-	{ label: "↵ Enter", value: "Enter" },
-	{ label: "←", value: "ArrowLeft" },
-	{ label: "↑", value: "ArrowUp" },
-	{ label: "↓", value: "ArrowDown" },
-	{ label: "→", value: "ArrowRight" },
-] as const;
+  { label: '⌫ Backspace', value: 'Backspace' },
+  { label: '⇥ Tab', value: 'Tab' },
+  { label: '␣ Space', value: 'Space' },
+  { label: '↵ Enter', value: 'Enter' },
+  { label: '←', value: 'ArrowLeft' },
+  { label: '↑', value: 'ArrowUp' },
+  { label: '↓', value: 'ArrowDown' },
+  { label: '→', value: 'ArrowRight' },
+] as const
 
 function send(key: string) {
-	if (props.disabled) return;
-	lastSentKey.value = key;
-	emit("press-key", key);
+  if (props.disabled) return
+  lastSentKey.value = key
+  emit('press-key', key)
 }
 </script>
 

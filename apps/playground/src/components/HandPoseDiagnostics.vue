@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import type { HandPoseKind, TrackedHandPose } from "@handfinity/engine";
+import type { HandPoseKind, TrackedHandPose } from '@handfinity/engine'
 
-defineProps<{ hands: readonly TrackedHandPose[] }>();
+defineProps<{ hands: readonly TrackedHandPose[] }>()
 
 const poseLabels: Record<HandPoseKind, string> = {
-	unknown: "Unknown",
-	pointing: "Pointing",
-	"open-palm": "Open palm",
-	pinch: "Pinch",
-};
+  unknown: 'Unknown',
+  pointing: 'Pointing',
+  'open-palm': 'Open palm',
+  pinch: 'Pinch',
+}
 
 const fingers = [
-	{ key: "thumb", label: "Thumb" },
-	{ key: "index", label: "Index" },
-	{ key: "middle", label: "Middle" },
-	{ key: "ring", label: "Ring" },
-	{ key: "pinky", label: "Little" },
-] as const;
+  { key: 'thumb', label: 'Thumb' },
+  { key: 'index', label: 'Index' },
+  { key: 'middle', label: 'Middle' },
+  { key: 'ring', label: 'Ring' },
+  { key: 'pinky', label: 'Little' },
+] as const
 </script>
 
 <template>

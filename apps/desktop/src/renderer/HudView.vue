@@ -1,188 +1,182 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { OverlayHudState } from "../pointer-contract";
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { OverlayHudState } from '../pointer-contract'
 
-const overlayBridge = window.handfinityOverlay;
+const overlayBridge = window.handfinityOverlay
 
 const hudState = ref<OverlayHudState>({
-	phase: "waiting",
-	statusText: "Mode pointeur prêt",
-	grabProgress: 0,
-	isLocked: false,
-	lastAction: null,
-});
+  phase: 'waiting',
+  statusText: 'Mode pointeur prêt',
+  grabProgress: 0,
+  isLocked: false,
+  lastAction: null,
+})
 
-const currentFeedback = ref<string | null>(null);
-let feedbackTimeout: ReturnType<typeof setTimeout> | undefined;
-let unsubscribeFeedback: (() => void) | undefined;
-let unsubscribeHud: (() => void) | undefined;
+const currentFeedback = ref<string | null>(null)
+let feedbackTimeout: ReturnType<typeof setTimeout> | undefined
+let unsubscribeFeedback: (() => void) | undefined
+let unsubscribeHud: (() => void) | undefined
 
-let isDragging = false;
-let lastX = 0;
-let lastY = 0;
-let accumulatedDeltaX = 0;
-let accumulatedDeltaY = 0;
-let rafId: number | null = null;
+let isDragging = false
+let lastX = 0
+let lastY = 0
+let accumulatedDeltaX = 0
+let accumulatedDeltaY = 0
+let rafId: number | null = null
 
 function flushMove() {
-	if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
-		overlayBridge?.moveBy(accumulatedDeltaX, accumulatedDeltaY);
-		accumulatedDeltaX = 0;
-		accumulatedDeltaY = 0;
-	}
-	rafId = null;
+  if (accumulatedDeltaX !== 0 || accumulatedDeltaY !== 0) {
+    overlayBridge?.moveBy(accumulatedDeltaX, accumulatedDeltaY)
+    accumulatedDeltaX = 0
+    accumulatedDeltaY = 0
+  }
+  rafId = null
 }
 
 function queueMove(stepX: number, stepY: number) {
-	accumulatedDeltaX += stepX;
-	accumulatedDeltaY += stepY;
-	if (
-		typeof window !== "undefined" &&
-		typeof window.requestAnimationFrame === "function"
-	) {
-		if (rafId === null) {
-			rafId = window.requestAnimationFrame(flushMove);
-		}
-	} else {
-		flushMove();
-	}
+  accumulatedDeltaX += stepX
+  accumulatedDeltaY += stepY
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    if (rafId === null) {
+      rafId = window.requestAnimationFrame(flushMove)
+    }
+  } else {
+    flushMove()
+  }
 }
 
 function onMouseDown(event: MouseEvent) {
-	if (event.button !== 0) return;
-	const target = event.target as HTMLElement | null;
-	const button = target?.closest("button");
-	if (button && !button.hasAttribute("data-hud-drag-handle")) {
-		return;
-	}
-	isDragging = true;
-	lastX = event.screenX;
-	lastY = event.screenY;
-	accumulatedDeltaX = 0;
-	accumulatedDeltaY = 0;
-	window.addEventListener("mousemove", onMouseMove);
-	window.addEventListener("mouseup", onMouseUp);
+  if (event.button !== 0) return
+  const target = event.target as HTMLElement | null
+  const button = target?.closest('button')
+  if (button && !button.hasAttribute('data-hud-drag-handle')) {
+    return
+  }
+  isDragging = true
+  lastX = event.screenX
+  lastY = event.screenY
+  accumulatedDeltaX = 0
+  accumulatedDeltaY = 0
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
 }
 
 function onMouseMove(event: MouseEvent) {
-	if (!isDragging) return;
-	const stepX = event.screenX - lastX;
-	const stepY = event.screenY - lastY;
-	lastX = event.screenX;
-	lastY = event.screenY;
-	if (stepX !== 0 || stepY !== 0) {
-		queueMove(stepX, stepY);
-	}
+  if (!isDragging) return
+  const stepX = event.screenX - lastX
+  const stepY = event.screenY - lastY
+  lastX = event.screenX
+  lastY = event.screenY
+  if (stepX !== 0 || stepY !== 0) {
+    queueMove(stepX, stepY)
+  }
 }
 
 function onMouseUp() {
-	if (!isDragging) return;
-	isDragging = false;
-	window.removeEventListener("mousemove", onMouseMove);
-	window.removeEventListener("mouseup", onMouseUp);
-	if (rafId !== null) {
-		if (
-			typeof window !== "undefined" &&
-			typeof window.cancelAnimationFrame === "function"
-		) {
-			window.cancelAnimationFrame(rafId);
-		}
-		rafId = null;
-	}
-	flushMove();
+  if (!isDragging) return
+  isDragging = false
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp)
+  if (rafId !== null) {
+    if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(rafId)
+    }
+    rafId = null
+  }
+  flushMove()
 }
 
 function resetPosition() {
-	overlayBridge?.resetPosition();
+  overlayBridge?.resetPosition()
 }
 
 function toggleKeyboard() {
-	void overlayBridge?.toggle();
+  void overlayBridge?.toggle()
 }
 
 function onClose() {
-	overlayBridge?.close();
+  overlayBridge?.close()
 }
 
 function flashFeedback(text: string) {
-	currentFeedback.value = text;
-	if (feedbackTimeout) clearTimeout(feedbackTimeout);
-	feedbackTimeout = setTimeout(() => {
-		currentFeedback.value = null;
-	}, 1800);
+  currentFeedback.value = text
+  if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  feedbackTimeout = setTimeout(() => {
+    currentFeedback.value = null
+  }, 1800)
 }
 
 const phaseLabel = computed(() => {
-	switch (hudState.value.phase) {
-		case "moving":
-			return "Pointeur actif";
-		case "waiting":
-			return "En attente";
-		case "paused":
-			return "En pause";
-		case "starting":
-			return "Démarrage…";
-		case "disabled":
-			return "Inactif";
-		case "error":
-			return "Erreur";
-		default:
-			return "Handfinity";
-	}
-});
+  switch (hudState.value.phase) {
+    case 'moving':
+      return 'Pointeur actif'
+    case 'waiting':
+      return 'En attente'
+    case 'paused':
+      return 'En pause'
+    case 'starting':
+      return 'Démarrage…'
+    case 'disabled':
+      return 'Inactif'
+    case 'error':
+      return 'Erreur'
+    default:
+      return 'Handfinity'
+  }
+})
 
 const phaseBadgeClass = computed(() => {
-	switch (hudState.value.phase) {
-		case "moving":
-			return "border-emerald-500/40 bg-emerald-950/80 text-emerald-300";
-		case "waiting":
-			return "border-sky-500/40 bg-sky-950/80 text-sky-300";
-		case "paused":
-			return "border-amber-500/40 bg-amber-950/80 text-amber-300";
-		case "starting":
-			return "border-cyan-500/40 bg-cyan-950/80 text-cyan-300";
-		case "error":
-			return "border-red-500/40 bg-red-950/80 text-red-300";
-		default:
-			return "border-slate-700/50 bg-slate-900/80 text-slate-400";
-	}
-});
+  switch (hudState.value.phase) {
+    case 'moving':
+      return 'border-emerald-500/40 bg-emerald-950/80 text-emerald-300'
+    case 'waiting':
+      return 'border-sky-500/40 bg-sky-950/80 text-sky-300'
+    case 'paused':
+      return 'border-amber-500/40 bg-amber-950/80 text-amber-300'
+    case 'starting':
+      return 'border-cyan-500/40 bg-cyan-950/80 text-cyan-300'
+    case 'error':
+      return 'border-red-500/40 bg-red-950/80 text-red-300'
+    default:
+      return 'border-slate-700/50 bg-slate-900/80 text-slate-400'
+  }
+})
 
 const phaseDotClass = computed(() => {
-	switch (hudState.value.phase) {
-		case "moving":
-			return "bg-emerald-400 animate-pulse";
-		case "waiting":
-			return "bg-sky-400 animate-pulse";
-		case "paused":
-			return "bg-amber-400";
-		case "starting":
-			return "bg-cyan-400 animate-pulse";
-		case "error":
-			return "bg-red-400 animate-pulse";
-		default:
-			return "bg-slate-500";
-	}
-});
+  switch (hudState.value.phase) {
+    case 'moving':
+      return 'bg-emerald-400 animate-pulse'
+    case 'waiting':
+      return 'bg-sky-400 animate-pulse'
+    case 'paused':
+      return 'bg-amber-400'
+    case 'starting':
+      return 'bg-cyan-400 animate-pulse'
+    case 'error':
+      return 'bg-red-400 animate-pulse'
+    default:
+      return 'bg-slate-500'
+  }
+})
 
 onMounted(() => {
-	unsubscribeFeedback = overlayBridge?.subscribeFeedback((feedback) => {
-		flashFeedback(feedback);
-	});
-	unsubscribeHud = overlayBridge?.subscribeHud((state) => {
-		hudState.value = state;
-		if (state.lastAction) {
-			flashFeedback(state.lastAction);
-		}
-	});
-});
+  unsubscribeFeedback = overlayBridge?.subscribeFeedback((feedback) => {
+    flashFeedback(feedback)
+  })
+  unsubscribeHud = overlayBridge?.subscribeHud((state) => {
+    hudState.value = state
+    if (state.lastAction) {
+      flashFeedback(state.lastAction)
+    }
+  })
+})
 
 onBeforeUnmount(() => {
-	onMouseUp();
-	if (feedbackTimeout) clearTimeout(feedbackTimeout);
-	unsubscribeFeedback?.();
-	unsubscribeHud?.();
-});
+  onMouseUp()
+  if (feedbackTimeout) clearTimeout(feedbackTimeout)
+  unsubscribeFeedback?.()
+  unsubscribeHud?.()
+})
 </script>
 
 <template>

@@ -1,4 +1,3 @@
-
 @Library('nabster-ci') _
 
 pipeline {
@@ -22,19 +21,13 @@ pipeline {
 
         stage('Install') {
             steps {
-                sh 'npm ci'
+                npmCi()
             }
         }
 
-        stage('Lint') {
+        stage('Check') {
             steps {
-                sh 'npm run lint'
-            }
-        }
-
-        stage('Format check') {
-            steps {
-                sh 'npm run format:check'
+                sh 'npm run check'
             }
         }
 

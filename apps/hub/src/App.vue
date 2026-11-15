@@ -1,21 +1,20 @@
 <script setup lang="ts">
-import { useId } from "vue";
-import { RouterLink, RouterView, useRoute } from "vue-router";
-import { provideMotionPreferences } from "./composables/useMotionPreferences";
-import { usePageTransition } from "./composables/usePageTransition";
+import { useId } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { provideMotionPreferences } from './composables/useMotionPreferences'
+import { usePageTransition } from './composables/usePageTransition'
 
-const route = useRoute();
-const brandGradient = useId();
-const { reducedMotion, paused, motionPaused, toggleMotion } =
-	provideMotionPreferences();
-const pageTransition = usePageTransition(motionPaused);
+const route = useRoute()
+const brandGradient = useId()
+const { reducedMotion, paused, motionPaused, toggleMotion } = provideMotionPreferences()
+const pageTransition = usePageTransition(motionPaused)
 
 function focusPage(element: Element) {
-	const heading = element.querySelector("h1");
-	if (heading) {
-		heading.setAttribute("tabindex", "-1");
-		heading.focus({ preventScroll: true });
-	}
+  const heading = element.querySelector('h1')
+  if (heading) {
+    heading.setAttribute('tabindex', '-1')
+    heading.focus({ preventScroll: true })
+  }
 }
 </script>
 

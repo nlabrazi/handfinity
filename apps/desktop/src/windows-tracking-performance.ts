@@ -1,5 +1,5 @@
-import { execFile } from "node:child_process";
-import { win32 } from "node:path";
+import { execFile } from 'node:child_process'
+import { win32 } from 'node:path'
 
 // Programme fixe : le PID validé est fourni par le main dans l'environnement.
 const configureScript = `
@@ -49,70 +49,54 @@ public static class HandfinityTrackingPerformance {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 1
 }
-`;
+`
 
 /** Politique de puissance locale au renderer ; sa priorité CPU reste inchangée. */
 export async function configureWindowsTracking(
-	processId: number,
-	signal?: AbortSignal,
+  processId: number,
+  signal?: AbortSignal,
 ): Promise<void> {
-	if (process.platform !== "win32") return;
-	if (
-		!Number.isSafeInteger(processId) ||
-		processId <= 0 ||
-		processId > 0xffffffff
-	)
-		throw new Error("Invalid renderer process ID");
-	signal?.throwIfAborted();
-	const systemRoot = process.env.SystemRoot || "C:\\Windows";
-	if (!win32.isAbsolute(systemRoot))
-		throw new Error("Windows system directory must be absolute");
-	await new Promise<void>((resolve, reject) => {
-		execFile(
-			win32.join(
-				systemRoot,
-				"System32",
-				"WindowsPowerShell",
-				"v1.0",
-				"powershell.exe",
-			),
-			[
-				"-NoLogo",
-				"-NoProfile",
-				"-NonInteractive",
-				"-EncodedCommand",
-				Buffer.from(configureScript, "utf16le").toString("base64"),
-			],
-			{
-				encoding: "utf8",
-				env: {
-					...process.env,
-					HANDFINITY_TRACKING_PROCESS_ID: String(processId),
-				},
-				timeout: 10000,
-				maxBuffer: 4096,
-				windowsHide: true,
-				shell: false,
-				signal,
-			},
-			(error, stdout, stderr) => {
-				if (error?.name === "AbortError") return reject(error);
-				if (error) {
-					const detail =
-						stderr.trim() ||
-						(error.killed ? "Helper timed out" : error.code || error.message);
-					return reject(
-						new Error(
-							`Windows tracking performance setup failed: ${String(detail).slice(0, 512)}`,
-						),
-					);
-				}
-				if (stdout.trim() !== `configured:${processId}`)
-					return reject(
-						new Error("Windows did not confirm tracking performance setup"),
-					);
-				resolve();
-			},
-		);
-	});
+  if (process.platform !== 'win32') return
+  if (!Number.isSafeInteger(processId) || processId <= 0 || processId > 0xffffffff)
+    throw new Error('Invalid renderer process ID')
+  signal?.throwIfAborted()
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows'
+  if (!win32.isAbsolute(systemRoot)) throw new Error('Windows system directory must be absolute')
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-EncodedCommand',
+        Buffer.from(configureScript, 'utf16le').toString('base64'),
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HANDFINITY_TRACKING_PROCESS_ID: String(processId),
+        },
+        timeout: 10000,
+        maxBuffer: 4096,
+        windowsHide: true,
+        shell: false,
+        signal,
+      },
+      (error, stdout, stderr) => {
+        if (error?.name === 'AbortError') return reject(error)
+        if (error) {
+          const detail =
+            stderr.trim() || (error.killed ? 'Helper timed out' : error.code || error.message)
+          return reject(
+            new Error(`Windows tracking performance setup failed: ${String(detail).slice(0, 512)}`),
+          )
+        }
+        if (stdout.trim() !== `configured:${processId}`)
+          return reject(new Error('Windows did not confirm tracking performance setup'))
+        resolve()
+      },
+    )
+  })
 }
