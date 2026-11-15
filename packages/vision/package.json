@@ -12,9 +12,9 @@
   "license": "ISC",
   "dependencies": {
     "@handfinity/engine": "1.0.0",
-    "@mediapipe/tasks-vision": "^1.1.1"
+    "@mediapipe/tasks-vision": "^1.2.3"
   },
   "devDependencies": {
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
