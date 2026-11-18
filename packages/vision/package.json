@@ -7,14 +7,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "license": "ISC",
   "dependencies": {
     "@handfinity/engine": "1.0.0",
     "@mediapipe/tasks-vision": "^1.2.3"
-  },
-  "devDependencies": {
-    "vitest": "^5.1.0"
   }
 }
