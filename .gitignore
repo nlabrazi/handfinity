@@ -19,3 +19,6 @@ dist/
 
 # MediaPipe offline assets
 public/mediapipe/
+
+# Code coverage
+coverage/
