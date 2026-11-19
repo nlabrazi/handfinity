@@ -36,6 +36,6 @@
   ],
   "devDependencies": {
     "@nlabrazi/config-biome": "^0.2.0",
-    "@nlabrazi/config-vitest": "^0.2.0"
+    "@nlabrazi/config-vitest": "^0.2.2"
   }
 }
