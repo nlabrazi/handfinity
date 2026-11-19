@@ -5,5 +5,8 @@ export default defineSharedVitestConfig({
   include: ['src/**/*.test.ts'],
   coverage: {
     include: ['src/**/*.ts'],
+    thresholds: {
+      lines: 15,
+    },
   },
 })
